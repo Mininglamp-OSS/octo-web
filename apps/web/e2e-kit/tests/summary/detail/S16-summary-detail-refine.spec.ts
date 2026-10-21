@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable no-undef -- e2e code runs in Node */
 /**
  * spec: e2e-kit/case-specs/summary/detail/S16-summary-detail-refine.md
@@ -15,31 +16,92 @@ const sanityConfig = {
   loginPathRe: /\/login(\?|$)/,
 };
 
-test.describe("@S16 @p2 @summary @detail @summary-detail @summary-refine S16 — Summary 按意见调整", () => {
-  test("提交按意见调整后正文更新", async ({ authedPage }) => {
-    await registerS16SummaryDetailRefine(authedPage);
-    const ctx = startRequestMonitor(authedPage, sanityConfig);
-
-    await authedPage.getByRole("button", { name: "智能总结" }).click();
-    await expect(authedPage.getByText("S16 可调整总结")).toBeVisible({ timeout: 15_000 });
-    await authedPage.getByText("S16 可调整总结").click();
-
-    await expect(authedPage.getByTestId(T.detailTitle)).toBeVisible({ timeout: 15_000 });
-    await expect(authedPage.getByTestId(T.detailTitle)).toContainText("S16 可调整总结");
-    await expect(authedPage.getByText("S16 原始正文内容", { exact: true })).toBeVisible();
-
-    await authedPage.getByTestId(T.detailRegenerateBtn).click();
-    await expect(authedPage.getByTestId(T.regenerateModal)).toBeVisible({ timeout: 15_000 });
-    await expect(authedPage.getByText("修改提示词并重新生成")).toBeVisible();
-    await expect(authedPage.getByText("按意见调整当前结果")).toBeVisible();
-    await authedPage.getByTestId(T.regenerateInput).fill("S16 请补充风险说明");
-    await authedPage.getByTestId(T.regenerateSubmitBtn).click();
-
-    await expect(authedPage.getByText("修改成功，已更新到版本 2")).toBeVisible({ timeout: 15_000 });
-    await expect(authedPage.getByText("S16 已按意见调整正文", { exact: true })).toBeVisible({ timeout: 15_000 });
-    await expect(authedPage.getByText("S16 原始正文内容", { exact: true })).toHaveCount(0);
-    await expect(authedPage.getByText("加载失败")).toHaveCount(0);
-
-    await sanityCheck(authedPage, ctx);
-  });
+test.describe("@S16 @p0 @summary @detail @summary-refine S16 — 继续优化保存", () => {
+  for (const conflict of [false, true]) {
+    test(
+      conflict
+        ? "版本冲突保留预览并允许另存"
+        : "继续优化保存新版本更新共享正文",
+      async ({ authedPage }) => {
+        await registerS16SummaryDetailRefine(authedPage, conflict);
+        const ctx = startRequestMonitor(authedPage, sanityConfig);
+        await authedPage.getByRole("button", { name: "智能总结" }).click();
+        await authedPage.getByText("S16 可调整总结", { exact: true }).click();
+        await expect(authedPage.getByTestId(T.detailRegenerateBtn)).toHaveCount(
+          0
+        );
+        await authedPage.getByTestId(T.detailContinueRefineBtn).click();
+        const workbench = authedPage.getByTestId("summary-workbench");
+        await expect(workbench).toBeVisible();
+        await workbench.locator("textarea").fill("S16 请补充风险说明");
+        await workbench
+          .getByRole("button", { name: "发送", exact: true })
+          .click();
+        await expect(
+          workbench.getByText("S16 已按意见调整正文", { exact: true })
+        ).toBeVisible();
+        await expect(
+          workbench.getByRole("button", { name: "保存为新总结", exact: true })
+        ).toBeVisible();
+        const saveResponse = authedPage.waitForResponse(
+          (response) =>
+            response.url().endsWith("/summaries/agent") &&
+            response.request().method() === "POST"
+        );
+        await workbench
+          .getByRole("button", { name: "保存新版本", exact: true })
+          .click();
+        expect((await saveResponse).status()).toBe(conflict ? 409 : 200);
+        if (conflict) {
+          await expect(
+            workbench.getByRole("button", { name: "保存新版本", exact: true })
+          ).toBeEnabled();
+          await expect(
+            workbench.getByText("S16 已按意见调整正文", { exact: true })
+          ).toBeVisible();
+          await workbench
+            .getByRole("button", { name: "保存为新总结", exact: true })
+            .click();
+          const dialog = authedPage.getByRole("dialog");
+          await dialog.getByRole("textbox").fill("S16 独立副本");
+          await dialog
+            .getByRole("button", { name: "confirm", exact: true })
+            .click();
+          await expect(authedPage.getByTestId(T.detailTitle)).toContainText(
+            "S16 独立副本"
+          );
+        } else {
+          await expect(authedPage.getByTestId(T.detailTitle)).toContainText(
+            "S16 可调整总结"
+          );
+          await expect(
+            authedPage.getByText("S16 已按意见调整正文", { exact: true })
+          ).toBeVisible();
+        }
+        const state = await authedPage.evaluate(
+          () => (window as any).__s16State__
+        );
+        expect(state.targetCalls).toBe(1);
+        expect(state.saves).toHaveLength(conflict ? 2 : 1);
+        expect(state.saves[0].body).toMatchObject({
+          save_mode: "new_version",
+          target: {
+            task_id: 16016,
+            result_kind: "team",
+            expected_revision: "s16-original-revision",
+          },
+          agent_message_id: 160162,
+          snapshot_version: 1,
+          expected_artifact_version: 1,
+        });
+        expect(state.saves[0].key).toBeTruthy();
+        if (conflict) {
+          expect(state.saves[1].body.save_mode).not.toBe("new_version");
+          expect(state.saves[1].body.target).toBeUndefined();
+          expect(state.saves[1].key).not.toBe(state.saves[0].key);
+        }
+        await sanityCheck(authedPage, ctx);
+      }
+    );
+  }
 });

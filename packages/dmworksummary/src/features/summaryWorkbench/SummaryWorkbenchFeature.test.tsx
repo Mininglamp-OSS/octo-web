@@ -4150,6 +4150,21 @@ describe("SummaryWorkbenchFeature", () => {
     expect(mocks.markNotificationEligible).not.toHaveBeenCalled();
   });
 
+  it("remounts the saved detail in the legacy route even for the original task", async () => {
+    vi.mocked(getSummaryOptimizationTarget).mockResolvedValueOnce({target:{task_id:17,result_kind:"team",expected_revision:"base"},title:"Original",can_save_version:true});
+    const savePreview = vi.fn().mockResolvedValue({task_id:17,save_mode:"new_version",version:2});
+    const current=controller({savePreview,model:{currentPreview:{content:"# Updated"}}});
+    current.scope.referencedTaskIds=[17];
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+    render(<SummaryWorkbenchFeature spaceId="space-a" derivedFromTask={{task_id:17,title:"Original"}}/>, {legacyRoot:true});
+    await screen.findByRole("button", {name:"save-new"});
+    fireEvent.click(screen.getByRole("button", {name:"save-preview"}));
+    await waitFor(() => expect(mocks.routePush).toHaveBeenCalled());
+    const detail=mocks.routePush.mock.calls.at(-1)?.[0];
+    expect(detail.props.taskId).toBe(17);
+    expect(detail.key).toBe(`workbench:${current.sessionId}:17`);
+  });
+
   it("can save an optimization as a separate summary without passing the update target", async () => {
     vi.mocked(getSummaryOptimizationTarget).mockResolvedValueOnce({target:{task_id:17,result_kind:"team",expected_revision:"base"},title:"Original",can_save_version:true});
     const savePreview = vi.fn().mockResolvedValue({task_id:99});

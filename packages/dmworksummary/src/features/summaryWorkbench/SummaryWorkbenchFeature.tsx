@@ -885,7 +885,12 @@ export default function SummaryWorkbenchFeature({
       return;
     }
     WKApp.routeRight.popToRoot();
-    WKApp.routeRight.push(<SummaryDetailPage taskId={taskId} emitSelection />);
+    // The legacy route queue can reuse the original detail at the same position
+    // after pop + push are batched. Give the saved detail a session key so it
+    // mounts again and fetches the new version, even when taskId is unchanged.
+    WKApp.routeRight.push(
+      <SummaryDetailPage key={`workbench:${workbench.sessionId}:${taskId}`} taskId={taskId} emitSelection />
+    );
   };
 
   const handleResultAction = async (action: SummaryWorkbenchAction) => {
