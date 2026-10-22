@@ -799,5 +799,14 @@
     "previewLatestHint": "以下内容为该总结的最新版本(可能已经被更新过,与您引用时的快照不完全一致)",
     "previewNotFound": "该总结已删除或您无权访问",
     "previewLoadFailed": "加载失败,请稍后重试"
+  },
+  "search": {
+    "count": "找到 {{count}} 条结果",
+    "topicMatch": "主题：",
+    "historicalRun": "历史运行 · {{date}}",
+    "clear": "清空搜索",
+    "limit": "最多输入 100 个字符，请缩短后搜索",
+    "noMatches": "当前范围没有匹配结果",
+    "searching": "正在搜索…"
   }
 }

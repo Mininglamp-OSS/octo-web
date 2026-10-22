@@ -1,3 +1,4 @@
+import { summarySearchTooLong } from "../utils/summarySearch";
 import React, { Component } from "react";
 import { Button, Dropdown, Spin, Toast, Banner } from "@douyinfe/semi-ui";
 import { IconSearch, IconPlus } from "@douyinfe/semi-icons";
@@ -96,6 +97,7 @@ export default class SummaryListPage extends Component<
         activeTaskId: null,
     };
 
+    private searchComposing = false;
     private searchTimer: ReturnType<typeof setTimeout> | null = null;
     private batchPollTimer: ReturnType<typeof setInterval> | null = null;
     private isBatchPolling = false;
@@ -283,6 +285,7 @@ export default class SummaryListPage extends Component<
     }
 
     async loadData(opts: { silent?: boolean; retainView?: boolean } = {}): Promise<number | undefined> {
+        if (this.searchComposing || this.searchTimer !== null || summarySearchTooLong(this.state.keyword)) return undefined;
         // Bump-and-capture sequence: this loadData's response is only allowed
         // to commit if no newer loadData/filter change has started meanwhile.
         // Extended in round-7 so loadMore also captures pre-await and drops
@@ -300,11 +303,11 @@ export default class SummaryListPage extends Component<
             : 1;
         const isCurrent = () => seq === this.loadDataSeq &&
             this.isMounted_ && WKApp.shared.currentSpaceId === requestSpaceId &&
-            (!opts.retainView || (
+            (
                 this.props.channelId === channelId &&
                 this.state.statusFilter === statusFilter &&
                 this.state.keyword === keyword
-            ));
+            );
         const readPatches: SummaryReadPatch[] = [];
         this.pendingReadPatches.add(readPatches);
         if (!opts.retainView) {
@@ -457,6 +460,7 @@ export default class SummaryListPage extends Component<
     };
 
     async loadMore() {
+        if (this.searchComposing || summarySearchTooLong(this.state.keyword)) return;
         // isLoadingData is a synchronous flag set at loadData entry: closes
         // the "loadData started first, scroll fires before React commits
         // loading:true" ordering that reading state.loading would miss.
@@ -684,9 +688,17 @@ export default class SummaryListPage extends Component<
     };
 
     handleKeywordChange = (value: string) => {
-        this.setState({ keyword: value });
+        // Invalidate immediately, including the debounce/IME/over-limit interval.
+        this.loadDataSeq++;
+        this.isLoadingData = false;
+        this.isLoadingMore = false;
+        this.setState({ keyword: value, page: 1, items: [], total: 0, hasMore: false,
+            error: null, loadingMore: false, loading: !summarySearchTooLong(value) });
         if (this.searchTimer) clearTimeout(this.searchTimer);
+        this.searchTimer = null;
+        if (this.searchComposing || summarySearchTooLong(value)) return;
         this.searchTimer = setTimeout(() => {
+            this.searchTimer = null;
             // 埋点 291:去抖后「发生了一次搜索」，仅在有关键词时发，绝不采关键词值。
             // DAP-271 finding 6：has_result 需在 loadData 拿到结果后才知——移到结果返回后采集。
             //   只在本次搜索关键词非空、且 loadData 返回了有效结果总数(未被更新请求超越/未失败)时打点;
@@ -701,7 +713,7 @@ export default class SummaryListPage extends Component<
                     }
                 });
             });
-        }, 400);
+        }, value === "" ? 0 : 400);
     };
 
     handleDelete = async (taskId: number) => {
@@ -975,8 +987,15 @@ export default class SummaryListPage extends Component<
                             className="summary-list-search-input"
                             placeholder={translate("summary.list.searchPlaceholder")}
                             value={keyword}
+                            aria-label={translate("summary.list.searchPlaceholder")}
+                            aria-invalid={summarySearchTooLong(keyword)}
+                            aria-describedby={summarySearchTooLong(keyword) ? "summary-search-limit" : undefined}
+                            onCompositionStart={() => { this.searchComposing = true; this.handleKeywordChange(this.state.keyword); }}
+                            onCompositionEnd={(e) => { this.searchComposing = false; this.handleKeywordChange(e.currentTarget.value); }}
+                            onKeyDown={(e) => { if (e.key === "Escape" && !this.searchComposing) this.handleKeywordChange(""); }}
                             onChange={(e) => this.handleKeywordChange(e.target.value)}
                         />
+                        {keyword && <button type="button" className="summary-search-clear" aria-label={translate("summary.search.clear")} onClick={() => { this.searchComposing = false; this.handleKeywordChange(""); }}>×</button>}
                     </div>
                     <Dropdown
                         trigger="click"
@@ -1028,10 +1047,14 @@ export default class SummaryListPage extends Component<
                 {loading && (
                     <div className="summary-list-loading">
                         <Spin size="large" />
+                        {keyword.trim() && <span role="status">{translate("summary.search.searching")}</span>}
                     </div>
                 )}
 
-                {!loading && !error && items.length === 0 && (
+                {!loading && !error && !summarySearchTooLong(keyword) && keyword.trim() && <div className="summary-search-feedback" data-testid="summary-search-count" role="status">{translate("summary.search.count", { values: { count: total } })}</div>}
+                {summarySearchTooLong(keyword) && <div id="summary-search-limit" className="summary-search-feedback" role="alert">{translate("summary.search.limit")}</div>}
+                {!loading && !error && !summarySearchTooLong(keyword) && keyword.trim() && items.length === 0 && <div className="summary-list-empty">{translate("summary.search.noMatches")}</div>}
+                {!loading && !error && !keyword.trim() && items.length === 0 && (
                     <div className="summary-list-empty">
                         {isPanel ? (
                             <>

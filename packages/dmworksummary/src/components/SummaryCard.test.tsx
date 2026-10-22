@@ -566,3 +566,24 @@ describe('SummaryCard completed actions', () => {
         expect(screen.queryByText('继续优化')).not.toBeInTheDocument();
     });
 });
+
+describe('SummaryCard F6 search', () => {
+    it('shows original title/topic evidence and opens the matched historical task', () => {
+        const onClick = vi.fn();
+        const { container } = render(<SummaryCard task={makeItem({task_id: 42, schedule_id: 99,
+            title: '😀ＯＣＴＯ', topic: '方案评审', search_match: { title_ranges: [[1,5]], topic_ranges: [[0,4]] },
+            is_historical_match: true }) as any} onClick={onClick} onDelete={noop} />);
+        expect(container.querySelector('.summary-card-title mark')).toHaveTextContent('ＯＣＴＯ');
+        expect(container.querySelector('.summary-card-desc')).toHaveTextContent('主题：方案评审');
+        expect(container.querySelector('.summary-search-history')).toHaveTextContent('2026');
+        fireEvent.click(screen.getByTestId('summary-card-42'));
+        expect(onClick).toHaveBeenCalledWith(42);
+    });
+    it('never invents title highlights for a topic-only match', () => {
+        const { container } = render(<SummaryCard task={makeItem({title:'周会排期',topic:'方案评审',
+            search_match:{ title_ranges:[], topic_ranges:[[0,4]] }}) as any} onClick={noop} onDelete={noop} />);
+        expect(container.querySelector('.summary-card-title')).toHaveTextContent('周会排期');
+        expect(container.querySelector('.summary-card-title mark')).toBeNull();
+        expect(container.querySelector('.summary-card-desc mark')).toHaveTextContent('方案评审');
+    });
+});

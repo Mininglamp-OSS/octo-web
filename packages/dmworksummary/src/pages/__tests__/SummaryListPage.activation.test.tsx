@@ -1,5 +1,5 @@
 import React from "react";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WKApp } from "@octo/base";
 import * as api from "../../api/summaryApi";
@@ -540,4 +540,44 @@ describe("SummaryListPage retained activation refresh", () => {
             expect(ref.current!.state.loading).toBe(false);
         },
     );
+});
+
+describe('SummaryListPage F6 input', () => {
+    beforeEach(() => { vi.resetAllMocks(); WKApp.shared.currentSpaceId = 'space-123'; });
+    afterEach(() => { cleanup(); vi.useRealTimers(); });
+    it('invalidates an old response immediately during debounce and clears old cards', async () => {
+        const { ref } = await mountList();
+        const pending=deferred<ListSummariesResponse>();
+        vi.mocked(api.listSummaries).mockReturnValueOnce(pending.promise);
+        act(()=> { void ref.current!.loadData(); });
+        vi.useFakeTimers();
+        act(()=> { ref.current!.handleKeywordChange('new'); });
+        expect(ref.current!.state.items).toEqual([]);
+        await act(async()=> { pending.resolve(response(rows(1,1,'stale'))); });
+        expect(ref.current!.state.items).toEqual([]);
+        vi.mocked(api.listSummaries).mockResolvedValueOnce(response(rows(42,1,'new'),1));
+        await act(async()=> { await vi.advanceTimersByTimeAsync(400); });
+        expect(ref.current!.state.items[0].task_id).toBe(42);
+    });
+    it('suppresses IME and over-limit requests, then restores list on clear', async () => {
+        const { ref } = await mountList();
+        vi.useFakeTimers();
+        const input=screen.getByTestId(summaryTestIds.listSearch);
+        act(()=> { fireEvent.compositionStart(input); fireEvent.change(input,{target:{value:'fang'}}); });
+        await act(async()=> { await vi.advanceTimersByTimeAsync(500); });
+        expect(api.listSummaries).toHaveBeenCalledTimes(1);
+        vi.mocked(api.listSummaries).mockResolvedValueOnce(response([],0));
+        act(()=> { fireEvent.compositionEnd(input,{data:'方案',target:{value:'方案'}}); });
+        await act(async()=> { await vi.advanceTimersByTimeAsync(400); });
+        expect(api.listSummaries).toHaveBeenCalledTimes(2);
+        act(()=> { ref.current!.handleKeywordChange('😀'.repeat(101)); });
+        await act(async()=> { await vi.advanceTimersByTimeAsync(500); });
+        expect(api.listSummaries).toHaveBeenCalledTimes(2);
+        expect(input).toHaveValue('😀'.repeat(101));
+        expect(screen.getByRole('alert')).toHaveTextContent('100');
+        vi.mocked(api.listSummaries).mockResolvedValueOnce(response(rows(1),20));
+        act(()=> { ref.current!.handleKeywordChange(''); });
+        await act(async()=> { await vi.advanceTimersByTimeAsync(1); });
+        expect(api.listSummaries).toHaveBeenLastCalledWith(expect.objectContaining({keyword:undefined,page:1}));
+    });
 });

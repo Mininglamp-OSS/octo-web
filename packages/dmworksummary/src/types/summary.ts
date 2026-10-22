@@ -177,7 +177,15 @@ export interface MemberStatus {
 }
 
 /** 列表项 */
+export interface SummarySearchMatch {
+    /** Half-open Unicode code-point offsets into the original field. */
+    title_ranges: [number, number][];
+    topic_ranges: [number, number][];
+}
+
 export interface SummaryListItem {
+    search_match?: SummarySearchMatch;
+    is_historical_match?: boolean;
     task_id: number;
     task_no: string;
     title: string;

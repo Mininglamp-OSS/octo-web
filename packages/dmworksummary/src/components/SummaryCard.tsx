@@ -6,6 +6,7 @@ import WKApp from "@octo/base/src/App";
 import { ParticipantStatus, TaskStatus, TriggerType, type SummaryListItem } from "../types/summary";
 import { formatDateOnly, getStatusLabel, getSummaryTypeKind, getSummaryTypeLabel, isReferenceable } from "../utils/summaryHelpers";
 import { deriveSummaryDisplayContent } from "../utils/templateResolver";
+import { summarySearchSegments } from "../utils/summarySearch";
 import { summaryTestIds } from "../utils/testIds";
 
 interface SummaryCardProps {
@@ -81,15 +82,21 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
         || (isMultiParticipant && task.has_pending_submission === true)
         || isPendingInvite;
 
-    const displayTitle = deriveSummaryDisplayContent(task.trigger_type === TriggerType.AGENT
+    const displayTitle = task.search_match ? (task.title || task.task_no) : deriveSummaryDisplayContent(task.trigger_type === TriggerType.AGENT
         ? task.title || task.task_no : task.topic || task.title || task.task_no);
     // Keep the description truthy so an empty topic does not render a
     // 4px-tall empty `.summary-card-desc`, and do NOT gate on length —
     // `.summary-card-desc` already uses `-webkit-line-clamp: 2; overflow:
     // hidden` (src/index.css:476-485), so a topic of any length clamps
     // visually instead of vanishing outright at the 81st character.
-    const description = task.topic?.trim() || "";
-    const showDescription = description !== "" && description !== displayTitle;
+    const description = task.search_match ? (task.topic || "") : (task.topic?.trim() || "");
+    const showDescription = task.search_match
+        ? task.search_match.topic_ranges.length > 0
+        : description !== "" && description !== displayTitle;
+    const highlight = (text: string, ranges: [number, number][] = [], limit?: number) =>
+        summarySearchSegments(text, ranges, limit).map((part, index) => part.matched
+            ? <mark className="summary-search-hit" key={index}>{part.text}</mark>
+            : <React.Fragment key={index}>{part.text}</React.Fragment>);
     const displayStatus = displaysWaiting ? TaskStatus.PENDING : task.status;
     const statusColor = getStatusColor(displayStatus);
     const statusText = getStatusLabel(displayStatus);
@@ -184,13 +191,23 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                                 : <FileText size={14} />}
                         </span>
                     </Tooltip>
-                    <div className="summary-card-title">{displayTitle}</div>
+                    <Tooltip content={highlight(displayTitle, task.search_match?.title_ranges)} position="top">
+                        <div className="summary-card-title">{highlight(displayTitle, task.search_match?.title_ranges)}</div>
+                    </Tooltip>
                 </div>
                 {showDescription && (
-                    <div className="summary-card-desc">{description}</div>
+                    <Tooltip content={highlight(description, task.search_match?.topic_ranges)} position="top">
+                        <div className="summary-card-desc">
+                            {task.search_match && <span>{t("summary.search.topicMatch")}</span>}
+                            {highlight(description, task.search_match?.topic_ranges, task.search_match ? 140 : undefined)}
+                        </div>
+                    </Tooltip>
                 )}
             </div>
 
+            {task.search_match && task.is_historical_match && (
+                <div className="summary-search-history">{t("summary.search.historicalRun", { values: { date: formatDateOnly(task.created_at) } })}</div>
+            )}
             {/* 底部：时间 + 操作菜单 */}
             <div className="summary-card-bottom">
                 {isBotCreated && (
