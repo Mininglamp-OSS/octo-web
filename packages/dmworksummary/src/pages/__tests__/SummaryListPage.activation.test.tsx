@@ -598,6 +598,8 @@ describe('SummaryListPage F6 input', () => {
         await act(async () => { await vi.advanceTimersByTimeAsync(500); });
         expect(api.listSummaries).toHaveBeenCalledTimes(1);
         expect(ref.current!.state.loading).toBe(false);
+        expect(screen.queryByTestId('summary-search-count')).not.toBeInTheDocument();
+        expect(screen.queryByText('当前范围没有匹配结果')).not.toBeInTheDocument();
         vi.mocked(api.listSummaries).mockResolvedValueOnce(response(rows(101,1),1));
         fireEvent.blur(input);
         await act(async () => { await vi.advanceTimersByTimeAsync(400); });

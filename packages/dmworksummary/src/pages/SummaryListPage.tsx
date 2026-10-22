@@ -1075,10 +1075,10 @@ export default class SummaryListPage extends Component<
                     </div>
                 )}
 
-                {!loading && !error && !summarySearchTooLong(keyword) && keyword.trim() && <div className="summary-search-feedback" data-testid="summary-search-count" role="status">{translate("summary.search.count", { values: { count: total } })}</div>}
+                {!this.searchComposing && !loading && !error && !summarySearchTooLong(keyword) && keyword.trim() && <div className="summary-search-feedback" data-testid="summary-search-count" role="status">{translate("summary.search.count", { values: { count: total } })}</div>}
                 {summarySearchTooLong(keyword) && <div id={this.searchLimitId} className="summary-search-feedback" role="alert">{translate("summary.search.limit", { values: { count: SUMMARY_SEARCH_MAX_CHARACTERS } })}</div>}
-                {!loading && !error && !summarySearchTooLong(keyword) && keyword.trim() && items.length === 0 && <div className="summary-list-empty">{translate("summary.search.noMatches")}</div>}
-                {!loading && !error && !keyword.trim() && items.length === 0 && (
+                {!this.searchComposing && !loading && !error && !summarySearchTooLong(keyword) && keyword.trim() && items.length === 0 && <div className="summary-list-empty">{translate("summary.search.noMatches")}</div>}
+                {!this.searchComposing && !loading && !error && !keyword.trim() && items.length === 0 && (
                     <div className="summary-list-empty">
                         {isPanel ? (
                             <>
