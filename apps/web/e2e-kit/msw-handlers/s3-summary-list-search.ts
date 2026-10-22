@@ -3,8 +3,8 @@
 import type { Page } from "@playwright/test";
 
 /** S3: Summary 列表搜索. */
-export async function registerS3SummaryListSearch(page: Page): Promise<void> {
-  await page.evaluate(() => {
+export async function registerS3SummaryListSearch(page: Page, lateTopicMatch = false): Promise<void> {
+  await page.evaluate((lateTopicMatch) => {
     type MSW = {
       worker: { use: (...h: unknown[]) => void };
       http: { get: (path: string, resolver: (info: any) => unknown) => unknown };
@@ -58,6 +58,7 @@ export async function registerS3SummaryListSearch(page: Page): Promise<void> {
         current_result_id: 10302,
       },
     ];
+    if (lateTopicMatch) items[0].topic = "前".repeat(200) + "命中" + "后".repeat(200);
     (window as unknown as { __s3State__: { listCalls: number } }).__s3State__ = { listCalls: 0 };
 
     worker.use(
@@ -65,12 +66,17 @@ export async function registerS3SummaryListSearch(page: Page): Promise<void> {
         const state = (window as unknown as { __s3State__: { listCalls: number } }).__s3State__;
         state.listCalls += 1;
         const keyword = new URL(request.url).searchParams.get("keyword") || "";
-        const filtered = keyword ? items.filter((item) => item.title.includes(keyword)) : items;
+        const filtered = keyword ? items.filter((item) => item.title.includes(keyword) || item.topic.includes(keyword)) : items;
+        if (lateTopicMatch && keyword === "命中") {
+          return env({ items: filtered.map(item => ({ ...item,
+            search_match: { title_ranges: [], topic_ranges: [[200, 202]] },
+          })), total: filtered.length });
+        }
         return env({ items: filtered, total: filtered.length });
       }),
       http.get("*/summary/api/v1/summary-templates", () =>
         env({ templates: [], custom_template_limit: 30 })
       )
     );
-  });
+  }, lateTopicMatch);
 }

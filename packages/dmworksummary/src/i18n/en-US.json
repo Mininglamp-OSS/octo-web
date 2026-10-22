@@ -805,7 +805,7 @@
     "topicMatch": "Topic: ",
     "historicalRun": "Historical run · {{date}}",
     "clear": "Clear search",
-    "limit": "Enter no more than 100 characters to search",
+    "limit": "Enter no more than {{count}} characters to search",
     "noMatches": "No matching results in the current scope",
     "searching": "Searching…"
   }

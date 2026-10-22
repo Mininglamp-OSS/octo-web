@@ -545,6 +545,75 @@ describe("SummaryListPage retained activation refresh", () => {
 describe('SummaryListPage F6 input', () => {
     beforeEach(() => { vi.resetAllMocks(); WKApp.shared.currentSpaceId = 'space-123'; });
     afterEach(() => { cleanup(); vi.useRealTimers(); });
+    it('keeps newer pagination locked when an old-query page finishes', async () => {
+        const { ref } = await mountList();
+        const oldPage = deferred<ListSummariesResponse>();
+        vi.mocked(api.listSummaries).mockReturnValueOnce(oldPage.promise);
+        let oldRequest!: Promise<void>;
+        act(() => { oldRequest = ref.current!.loadMore(); });
+        vi.useFakeTimers();
+        vi.mocked(api.listSummaries).mockResolvedValueOnce(response(rows(101,20,'new'),80));
+        act(() => { ref.current!.handleKeywordChange('new'); });
+        await act(async () => { await vi.advanceTimersByTimeAsync(400); });
+        const newPage = deferred<ListSummariesResponse>();
+        vi.mocked(api.listSummaries).mockReturnValueOnce(newPage.promise);
+        let newRequest!: Promise<void>;
+        act(() => { newRequest = ref.current!.loadMore(); });
+        await act(async () => { oldPage.resolve(response(rows(21))); await oldRequest; });
+        expect(ref.current!.state.loadingMore).toBe(true);
+        await act(async () => { await ref.current!.loadMore(); });
+        expect(api.listSummaries).toHaveBeenCalledTimes(4);
+        await act(async () => { newPage.resolve(response(rows(121,20,'new'),80)); await newRequest; });
+        expect(ref.current!.state).toMatchObject({ page: 2, loadingMore: false });
+        vi.mocked(api.listSummaries).mockResolvedValueOnce(response(rows(141,20,'new'),80));
+        await act(async () => { await ref.current!.loadMore(); });
+        expect(ref.current!.state.page).toBe(3);
+        expect(ref.current!.state.items).toHaveLength(60);
+        expect(api.listSummaries).toHaveBeenLastCalledWith(expect.objectContaining({page:3,keyword:'new'}));
+    });
+    it('retains pending activation while search is gated and consumes it on the next query', async () => {
+        const { ref, activate } = await mountList();
+        vi.useFakeTimers();
+        act(() => { ref.current!.handleKeywordChange('new'); });
+        await activate();
+        expect((ref.current as any).activationRefreshPending).toBe(true);
+        expect(api.listSummaries).toHaveBeenCalledTimes(1);
+        vi.mocked(api.listSummaries).mockResolvedValueOnce(response(rows(101,1),1));
+        await act(async () => { await vi.advanceTimersByTimeAsync(400); });
+        expect((ref.current as any).activationRefreshPending).toBe(false);
+        expect(api.listSummaries).toHaveBeenCalledTimes(2);
+    });
+    it('preserves loaded cards and scroll at composition start and recovers on blur', async () => {
+        const { ref } = await mountList();
+        const input = screen.getByTestId(summaryTestIds.listSearch);
+        const content = screen.getByTestId(summaryTestIds.listContent);
+        content.scrollTop = 450;
+        vi.useFakeTimers();
+        fireEvent.compositionStart(input);
+        expect(screen.getByTestId(summaryTestIds.listContent)).toBe(content);
+        expect(content.scrollTop).toBe(450);
+        expect(screen.getByTestId('task-1')).toBeInTheDocument();
+        expect(screen.queryByTestId('spinner')).not.toBeInTheDocument();
+        fireEvent.change(input, {target:{value:'方案'}});
+        await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+        expect(api.listSummaries).toHaveBeenCalledTimes(1);
+        expect(ref.current!.state.loading).toBe(false);
+        vi.mocked(api.listSummaries).mockResolvedValueOnce(response(rows(101,1),1));
+        fireEvent.blur(input);
+        await act(async () => { await vi.advanceTimersByTimeAsync(400); });
+        expect(api.listSummaries).toHaveBeenLastCalledWith(expect.objectContaining({keyword:'方案'}));
+        expect(ref.current!.state.loading).toBe(false);
+    });
+    it('uses separate accessible limit descriptions for simultaneous lists', async () => {
+        vi.mocked(api.listSummaries).mockResolvedValue(response([],0));
+        render(<><SummaryListPage embedded /><SummaryListPage embedded channelId="channel-1" /></>);
+        await act(async () => {});
+        const inputs = screen.getAllByTestId(summaryTestIds.listSearch);
+        for (const input of inputs) fireEvent.change(input,{target:{value:'😀'.repeat(101)}});
+        const ids = inputs.map(input => input.getAttribute('aria-describedby'));
+        expect(new Set(ids).size).toBe(2);
+        for (const id of ids) expect(document.getElementById(id!)).toHaveTextContent('100');
+    });
     it('invalidates an old response immediately during debounce and clears old cards', async () => {
         const { ref } = await mountList();
         const pending=deferred<ListSummariesResponse>();

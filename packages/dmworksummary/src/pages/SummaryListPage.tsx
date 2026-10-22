@@ -1,4 +1,4 @@
-import { summarySearchTooLong } from "../utils/summarySearch";
+import { SUMMARY_SEARCH_MAX_CHARACTERS, summarySearchTooLong } from "../utils/summarySearch";
 import React, { Component } from "react";
 import { Button, Dropdown, Spin, Toast, Banner } from "@douyinfe/semi-ui";
 import { IconSearch, IconPlus } from "@douyinfe/semi-icons";
@@ -98,6 +98,8 @@ export default class SummaryListPage extends Component<
     };
 
     private searchComposing = false;
+    private static searchId = 0;
+    private readonly searchLimitId = `summary-search-limit-${++SummaryListPage.searchId}`;
     private searchTimer: ReturnType<typeof setTimeout> | null = null;
     private batchPollTimer: ReturnType<typeof setInterval> | null = null;
     private isBatchPolling = false;
@@ -120,6 +122,7 @@ export default class SummaryListPage extends Component<
     // Kept alongside loadDataSeq — the pair covers both interleavings.
     private isLoadingData = false;
     private isLoadingMore = false;
+    private loadMoreOwner: symbol | null = null;
     private activationRefreshPending = false;
     private loadMoreRetryAt = 0;
     private paginationErrorVisible = false;
@@ -231,7 +234,8 @@ export default class SummaryListPage extends Component<
 
     private flushActivationRefresh = () => {
         if (!this.isMounted_ || !this.activationRefreshPending ||
-            this.isLoadingData || this.isLoadingMore) return;
+            this.isLoadingData || this.isLoadingMore || this.searchComposing ||
+            this.searchTimer !== null || summarySearchTooLong(this.state.keyword)) return;
         this.activationRefreshPending = false;
         void this.loadData({ silent: true, retainView: true });
     };
@@ -488,6 +492,8 @@ export default class SummaryListPage extends Component<
         const readPatches: SummaryReadPatch[] = [];
         this.pendingReadPatches.add(readPatches);
         this.isLoadingMore = true;
+        const owner = Symbol("summary-pagination");
+        this.loadMoreOwner = owner;
         this.setState({ loadingMore: true });
         try {
             const nextPage = page + 1;
@@ -547,9 +553,13 @@ export default class SummaryListPage extends Component<
             }
         } finally {
             this.pendingReadPatches.delete(readPatches);
-            this.isLoadingMore = false;
-            if (this.isMounted_) this.setState({ loadingMore: false });
-            this.flushActivationAfterCommit();
+            // A superseded query must not release a newer query's page lock.
+            if (this.loadMoreOwner === owner) {
+                this.loadMoreOwner = null;
+                this.isLoadingMore = false;
+                if (this.isMounted_) this.setState({ loadingMore: false });
+                this.flushActivationAfterCommit();
+            }
         }
     }
 
@@ -687,13 +697,26 @@ export default class SummaryListPage extends Component<
         this.setState({ statusFilter, page: 1 }, () => this.loadData());
     };
 
+    private beginSearchComposition = () => {
+        this.searchComposing = true;
+        this.loadDataSeq++;
+        this.isLoadingData = false;
+        this.isLoadingMore = false;
+        this.loadMoreOwner = null;
+        if (this.searchTimer) clearTimeout(this.searchTimer);
+        this.searchTimer = null;
+        // Starting composition alone does not change the query or discard scroll.
+        this.setState({ loading: false, loadingMore: false });
+    };
+
     handleKeywordChange = (value: string) => {
         // Invalidate immediately, including the debounce/IME/over-limit interval.
         this.loadDataSeq++;
         this.isLoadingData = false;
         this.isLoadingMore = false;
+        this.loadMoreOwner = null;
         this.setState({ keyword: value, page: 1, items: [], total: 0, hasMore: false,
-            error: null, loadingMore: false, loading: !summarySearchTooLong(value) });
+            error: null, loadingMore: false, loading: !this.searchComposing && !summarySearchTooLong(value) });
         if (this.searchTimer) clearTimeout(this.searchTimer);
         this.searchTimer = null;
         if (this.searchComposing || summarySearchTooLong(value)) return;
@@ -989,9 +1012,10 @@ export default class SummaryListPage extends Component<
                             value={keyword}
                             aria-label={translate("summary.list.searchPlaceholder")}
                             aria-invalid={summarySearchTooLong(keyword)}
-                            aria-describedby={summarySearchTooLong(keyword) ? "summary-search-limit" : undefined}
-                            onCompositionStart={() => { this.searchComposing = true; this.handleKeywordChange(this.state.keyword); }}
+                            aria-describedby={summarySearchTooLong(keyword) ? this.searchLimitId : undefined}
+                            onCompositionStart={this.beginSearchComposition}
                             onCompositionEnd={(e) => { this.searchComposing = false; this.handleKeywordChange(e.currentTarget.value); }}
+                            onBlur={(e) => { if (this.searchComposing) { this.searchComposing = false; this.handleKeywordChange(e.currentTarget.value); } }}
                             onKeyDown={(e) => { if (e.key === "Escape" && !this.searchComposing) this.handleKeywordChange(""); }}
                             onChange={(e) => this.handleKeywordChange(e.target.value)}
                         />
@@ -1052,7 +1076,7 @@ export default class SummaryListPage extends Component<
                 )}
 
                 {!loading && !error && !summarySearchTooLong(keyword) && keyword.trim() && <div className="summary-search-feedback" data-testid="summary-search-count" role="status">{translate("summary.search.count", { values: { count: total } })}</div>}
-                {summarySearchTooLong(keyword) && <div id="summary-search-limit" className="summary-search-feedback" role="alert">{translate("summary.search.limit")}</div>}
+                {summarySearchTooLong(keyword) && <div id={this.searchLimitId} className="summary-search-feedback" role="alert">{translate("summary.search.limit", { values: { count: SUMMARY_SEARCH_MAX_CHARACTERS } })}</div>}
                 {!loading && !error && !summarySearchTooLong(keyword) && keyword.trim() && items.length === 0 && <div className="summary-list-empty">{translate("summary.search.noMatches")}</div>}
                 {!loading && !error && !keyword.trim() && items.length === 0 && (
                     <div className="summary-list-empty">

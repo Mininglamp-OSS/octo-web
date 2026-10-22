@@ -90,8 +90,10 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
     // hidden` (src/index.css:476-485), so a topic of any length clamps
     // visually instead of vanishing outright at the 81st character.
     const description = task.search_match ? (task.topic || "") : (task.topic?.trim() || "");
+    const titleRanges = task.search_match?.title_ranges ?? [];
+    const topicRanges = task.search_match?.topic_ranges ?? [];
     const showDescription = task.search_match
-        ? task.search_match.topic_ranges.length > 0
+        ? topicRanges.length > 0
         : description !== "" && description !== displayTitle;
     const highlight = (text: string, ranges: [number, number][] = [], limit?: number) =>
         summarySearchSegments(text, ranges, limit).map((part, index) => part.matched
@@ -191,21 +193,23 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                                 : <FileText size={14} />}
                         </span>
                     </Tooltip>
-                    <Tooltip content={highlight(displayTitle, task.search_match?.title_ranges)} position="top">
-                        <div className="summary-card-title">{highlight(displayTitle, task.search_match?.title_ranges)}</div>
-                    </Tooltip>
+                    {task.search_match ? (
+                        <Tooltip content={highlight(displayTitle, titleRanges)} position="top">
+                            <div className="summary-card-title">{highlight(displayTitle, titleRanges)}</div>
+                        </Tooltip>
+                    ) : <div className="summary-card-title">{displayTitle}</div>}
                 </div>
                 {showDescription && (
-                    <Tooltip content={highlight(description, task.search_match?.topic_ranges)} position="top">
+                    <Tooltip content={highlight(description, topicRanges)} position="top">
                         <div className="summary-card-desc">
                             {task.search_match && <span>{t("summary.search.topicMatch")}</span>}
-                            {highlight(description, task.search_match?.topic_ranges, task.search_match ? 140 : undefined)}
+                            {highlight(description, topicRanges, task.search_match ? 140 : undefined)}
                         </div>
                     </Tooltip>
                 )}
             </div>
 
-            {task.search_match && task.is_historical_match && (
+            {task.is_historical_match && (
                 <div className="summary-search-history">{t("summary.search.historicalRun", { values: { date: formatDateOnly(task.created_at) } })}</div>
             )}
             {/* 底部：时间 + 操作菜单 */}

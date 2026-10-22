@@ -4,12 +4,15 @@ export function summarySearchTooLong(value: string): boolean {
     return Array.from(value).length > SUMMARY_SEARCH_MAX_CHARACTERS;
 }
 
-/** Use server ranges, never recompute matches with JS casing or UTF-16 offsets. */
-export function summarySearchSegments(text: string, ranges: [number, number][] = [], limit?: number) {
+/** Unlike chat's marked HTML snippets, F6 ranges map width/case-fold expansions
+ * back to original Unicode code points. JS casing cannot reproduce that contract;
+ * missing ranges degrade to plain text rather than inventing different matches. */
+export function summarySearchSegments(text: string, ranges: [number, number][] | null = [], limit?: number) {
     const chars = Array.from(text);
-    const valid = ranges.filter(([start, end]) => Number.isInteger(start) && Number.isInteger(end)
+    const valid = (ranges ?? []).filter(([start, end]) => Number.isInteger(start) && Number.isInteger(end)
         && start >= 0 && end > start && end <= chars.length).sort((a, b) => a[0] - b[0]);
-    const start = limit ? Math.max(0, (valid[0]?.[0] ?? 0) - Math.floor(limit / 3)) : 0;
+    // Keep the first hit visible after the topic label in a narrow two-line card.
+    const start = limit ? Math.max(0, (valid[0]?.[0] ?? 0) - Math.min(8, Math.floor(limit / 3))) : 0;
     const end = limit ? Math.min(chars.length, Math.max(start + limit, valid[0]?.[1] ?? 0)) : chars.length;
     const parts: { text: string; matched: boolean }[] = [];
     if (start > 0) parts.push({ text: '…', matched: false });

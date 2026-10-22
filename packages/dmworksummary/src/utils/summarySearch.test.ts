@@ -13,4 +13,13 @@ describe('summary search protocol', () => {
   expect(summarySearchTooLong('😀'.repeat(100))).toBe(false);
   expect(summarySearchTooLong('😀'.repeat(101))).toBe(true);
  });
+ it('treats null or missing range arrays as plain text', () => {
+  expect(summarySearchSegments('😀原文', null)).toEqual([{text:'😀原文',matched:false}]);
+  expect(summarySearchSegments('😀原文', undefined)).toEqual([{text:'😀原文',matched:false}]);
+ });
+ it('keeps only a short context before a late CJK topic hit', () => {
+  const parts = summarySearchSegments('前'.repeat(200)+'命中'+'后'.repeat(200), [[200,202]], 140);
+  expect(parts[0]).toEqual({text:'…'+'前'.repeat(8),matched:false});
+  expect(parts[1]).toEqual({text:'命中',matched:true});
+ });
 });

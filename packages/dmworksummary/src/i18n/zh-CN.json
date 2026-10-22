@@ -805,7 +805,7 @@
     "topicMatch": "主题：",
     "historicalRun": "历史运行 · {{date}}",
     "clear": "清空搜索",
-    "limit": "最多输入 100 个字符，请缩短后搜索",
+    "limit": "最多输入 {{count}} 个字符，请缩短后搜索",
     "noMatches": "当前范围没有匹配结果",
     "searching": "正在搜索…"
   }

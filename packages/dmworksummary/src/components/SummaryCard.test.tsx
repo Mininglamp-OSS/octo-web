@@ -568,6 +568,22 @@ describe('SummaryCard completed actions', () => {
 });
 
 describe('SummaryCard F6 search', () => {
+    it.each([
+        { title_ranges: [[0, 1]], topic_ranges: null },
+        { title_ranges: [[0, 1]] },
+        { title_ranges: null, topic_ranges: [[0, 2]] },
+    ])('accepts nullable or missing range arrays without crashing: %j', (search_match) => {
+        const { container } = render(<SummaryCard task={makeItem({ title: '标题', topic: '主题',
+            search_match } as any)} onClick={noop} onDelete={noop} />);
+        expect(container.querySelector('.summary-card-title')).toHaveTextContent('标题');
+        const expectedHit = search_match.title_ranges ? '标' : '主题';
+        expect(container.querySelector('mark')).toHaveTextContent(expectedHit);
+    });
+    it('shows the server historical signal even when match ranges are absent', () => {
+        const { container } = render(<SummaryCard task={makeItem({ is_historical_match: true })}
+            onClick={noop} onDelete={noop} />);
+        expect(container.querySelector('.summary-search-history')).toBeInTheDocument();
+    });
     it('shows original title/topic evidence and opens the matched historical task', () => {
         const onClick = vi.fn();
         const { container } = render(<SummaryCard task={makeItem({task_id: 42, schedule_id: 99,

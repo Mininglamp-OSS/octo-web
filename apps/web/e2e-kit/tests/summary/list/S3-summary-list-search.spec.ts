@@ -35,3 +35,28 @@ test.describe("@S3 @p1 @summary @list @summary-list @summary-search S3 — Summa
     await sanityCheck(authedPage, ctx);
   });
 });
+
+for (const locale of ["zh-CN", "en-US"] as const) {
+  test.describe(`@S3 @p1 @summary @summary-search narrow topic evidence ${locale}`, () => {
+    test.use({ authedLocale: locale });
+    test("keeps a late CJK hit inside the two-line card in light and dark mode", async ({ authedPage }) => {
+      await registerS3SummaryListSearch(authedPage, true);
+      await authedPage.getByRole("button", { name: locale === "zh-CN" ? "智能总结" : "AI Summary", exact: true }).click();
+      const list = authedPage.locator(".summary-list-page");
+      await list.evaluate(el => { el.style.width = "320px"; el.style.maxWidth = "320px"; });
+      await authedPage.getByTestId(T.listSearch).fill("命中");
+      const description = list.locator(".summary-card-desc").first();
+      await expect(description.locator("mark")).toHaveText("命中");
+      for (const mode of ["light", "dark"]) {
+        await authedPage.evaluate(mode => document.body.setAttribute("theme-mode", mode), mode);
+        const hitInsideClamp = await description.evaluate(el => {
+          const description = el.getBoundingClientRect();
+          const mark = el.querySelector("mark")!.getClientRects()[0];
+          return mark.top >= description.top - 1 && mark.bottom <= description.bottom + 1 &&
+            mark.left >= description.left - 1 && mark.right <= description.right + 1;
+        });
+        expect(hitInsideClamp, `${locale}/${mode}: first hit must be visible, not merely present in the DOM`).toBe(true);
+      }
+    });
+  });
+}
