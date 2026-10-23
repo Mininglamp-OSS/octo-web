@@ -5,9 +5,10 @@ import { useI18n, Dap } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import { ParticipantStatus, TaskStatus, TriggerType, type SummaryListItem } from "../types/summary";
 import { formatDateOnly, getStatusLabel, getSummaryTypeKind, getSummaryTypeLabel, isReferenceable } from "../utils/summaryHelpers";
-import { deriveSummaryDisplayContent } from "../utils/templateResolver";
+import { deriveSummaryDisplayContentWithOffset } from "../utils/templateResolver";
 import {
-    SUMMARY_SEARCH_DESC_WINDOW, SUMMARY_SEARCH_TITLE_WINDOW, SUMMARY_SEARCH_TOOLTIP_WINDOW, summarySearchSegments,
+    SUMMARY_SEARCH_DESC_WINDOW, SUMMARY_SEARCH_TITLE_WINDOW, SUMMARY_SEARCH_TOOLTIP_WINDOW,
+    codePointLength, leadingTrimCodePoints, shiftRanges, summarySearchSegments,
 } from "../utils/summarySearch";
 import { summaryTestIds } from "../utils/testIds";
 
@@ -84,25 +85,36 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
         || (isMultiParticipant && task.has_pending_submission === true)
         || isPendingInvite;
 
-    const displayTitle = task.search_match ? (task.title || task.topic || task.task_no)
-        : deriveSummaryDisplayContent(task.trigger_type === TriggerType.AGENT
-        ? task.title || task.task_no : task.topic || task.title || task.task_no);
+    // Search-card render contract — a query highlights a card, it never restyles it:
+    //  1. The title row always renders deriveSummaryDisplayContent(titleSource),
+    //     where titleSource follows the same trigger-type rule in both modes.
+    //  2. The description row renders the trimmed topic only when it adds
+    //     information, i.e. it is non-empty and differs from the title row.
+    //  3. Server ranges are code-point offsets into the RAW field, so each one is
+    //     re-based onto the derived/trimmed string it actually marks.
+    const titleSource = task.trigger_type === TriggerType.AGENT
+        ? task.title || task.task_no
+        : task.topic || task.title || task.task_no;
+    const { text: displayTitle, offset: titleOffset } = deriveSummaryDisplayContentWithOffset(titleSource);
     // Keep the description truthy so an empty topic does not render a
     // 4px-tall empty `.summary-card-desc`, and do NOT gate on length —
     // `.summary-card-desc` already uses `-webkit-line-clamp: 2; overflow:
     // hidden` (src/index.css:476-485), so a topic of any length clamps
     // visually instead of vanishing outright at the 81st character.
-    const description = task.search_match ? (task.topic || "") : (task.topic?.trim() || "");
-    const titleRanges = task.search_match?.title_ranges ?? [];
-    const topicRanges = task.search_match?.topic_ranges ?? [];
-    // An untitled summary falls back to its topic in the title row, so the topic
-    // offsets describe that row: highlight the title with them and do not repeat
-    // the same text in the description.
-    const topicAsTitle = Boolean(task.search_match) && !task.title && Boolean(task.topic);
-    const displayTitleRanges = topicAsTitle ? topicRanges : titleRanges;
-    const showDescription = task.search_match
-        ? topicRanges.length > 0 && !topicAsTitle
-        : description !== "" && description !== displayTitle;
+    const description = task.topic?.trim() || "";
+    const rawTitleRanges = task.search_match?.title_ranges ?? [];
+    const rawTopicRanges = task.search_match?.topic_ranges ?? [];
+    // Chat summaries derive the title from the topic, so there the topic ranges
+    // are what mark the title row; agent and scheduled summaries keep a real
+    // title separate from their topic, which is what the description row shows.
+    const titleUsesTopic = task.trigger_type !== TriggerType.AGENT && Boolean(task.topic);
+    const titleRanges = task.search_match
+        ? shiftRanges(titleUsesTopic ? rawTopicRanges : rawTitleRanges, titleOffset, codePointLength(displayTitle))
+        : [];
+    const topicRanges = task.search_match
+        ? shiftRanges(rawTopicRanges, leadingTrimCodePoints(task.topic ?? ""), codePointLength(description))
+        : [];
+    const showDescription = description !== "" && description !== displayTitle;
     const highlight = (text: string, ranges: [number, number][] = [], limit?: number) =>
         summarySearchSegments(text, ranges, limit).map((part, index) => part.matched
             ? <mark className="summary-search-hit" key={index}>{part.text}</mark>
@@ -201,13 +213,13 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                                 : <FileText size={14} />}
                         </span>
                     </Tooltip>
-                    {task.search_match ? (
-                        <Tooltip content={highlight(displayTitle, displayTitleRanges, SUMMARY_SEARCH_TOOLTIP_WINDOW)} position="top">
-                            <div className="summary-card-title">{highlight(displayTitle, displayTitleRanges, SUMMARY_SEARCH_TITLE_WINDOW)}</div>
+                    {titleRanges.length > 0 ? (
+                        <Tooltip content={highlight(displayTitle, titleRanges, SUMMARY_SEARCH_TOOLTIP_WINDOW)} position="top">
+                            <div className="summary-card-title">{highlight(displayTitle, titleRanges, SUMMARY_SEARCH_TITLE_WINDOW)}</div>
                         </Tooltip>
                     ) : <div className="summary-card-title">{displayTitle}</div>}
                 </div>
-                {showDescription && (task.search_match ? (
+                {showDescription && (topicRanges.length > 0 ? (
                     <Tooltip content={highlight(description, topicRanges, SUMMARY_SEARCH_TOOLTIP_WINDOW)} position="top">
                         <div className="summary-card-desc">
                             <span>{t("summary.search.topicMatch")}</span>

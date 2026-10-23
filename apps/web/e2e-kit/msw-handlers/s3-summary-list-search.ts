@@ -58,7 +58,13 @@ export async function registerS3SummaryListSearch(page: Page, lateTopicMatch = f
         current_result_id: 10302,
       },
     ];
-    if (lateTopicMatch) items[0].topic = "前".repeat(200) + "命中" + "后".repeat(200);
+    if (lateTopicMatch) {
+      // Agent-triggered summary: it keeps a title separate from its topic, so the
+      // matched topic renders in the description row. A chat summary derives its
+      // title from the topic instead, and the same hit lands in the title row.
+      items[0].trigger_type = 3;
+      items[0].topic = "前".repeat(200) + "命中" + "后".repeat(200);
+    }
     (window as unknown as { __s3State__: { listCalls: number } }).__s3State__ = { listCalls: 0 };
 
     worker.use(

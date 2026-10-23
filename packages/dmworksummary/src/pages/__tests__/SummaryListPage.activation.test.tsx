@@ -618,6 +618,21 @@ describe('SummaryListPage F6 input', () => {
         expect(api.listSummaries).toHaveBeenLastCalledWith(expect.objectContaining({keyword:'方案'}));
         expect(ref.current!.state.loading).toBe(false);
     });
+    it('keeps the spinner when a composition starts with no cards to preserve', async () => {
+        const { ref } = await mountList(response([], 0));
+        expect(ref.current!.state.items).toEqual([]);
+        const pending = deferred<ListSummariesResponse>();
+        vi.mocked(api.listSummaries).mockReturnValueOnce(pending.promise);
+        act(() => { void ref.current!.loadData(); });
+        expect(ref.current!.state.loading).toBe(true);
+        const input = screen.getByTestId(summaryTestIds.listSearch);
+        act(() => { fireEvent.compositionStart(input); });
+        // Nothing to keep on screen, so the in-flight spinner must survive: every
+        // feedback row is gated during composition, hence a blank panel otherwise.
+        expect(ref.current!.state.loading).toBe(true);
+        expect(screen.getByTestId('spinner')).toBeInTheDocument();
+        await act(async () => { pending.resolve(response([], 0)); });
+    });
     it('uses separate accessible limit descriptions for simultaneous lists', async () => {
         vi.mocked(api.listSummaries).mockResolvedValue(response([],0));
         render(<><SummaryListPage embedded /><SummaryListPage embedded channelId="channel-1" /></>);

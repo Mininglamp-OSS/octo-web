@@ -15,6 +15,24 @@ export function summarySearchTooLong(value: string): boolean {
     return Array.from(value).length > SUMMARY_SEARCH_MAX_CHARACTERS;
 }
 
+export const codePointLength = (text: string) => Array.from(text).length;
+
+/** How many code points String.trim() drops from the front of `text`. */
+export function leadingTrimCodePoints(text: string): number {
+    return codePointLength(text.slice(0, text.length - text.trimStart().length));
+}
+
+/** Re-bases server ranges onto a string derived from `raw`: the ranges are
+ * code-point offsets into the raw field and `offset` is how many leading code
+ * points the derivation sliced away. Fragments outside the string are dropped
+ * and the surviving edges clamped, so no highlight can point past the text. */
+export function shiftRanges(ranges: [number, number][], offset: number, length: number): [number, number][] {
+    return ranges
+        .map(([start, end]) => [start - offset, end - offset] as [number, number])
+        .filter(([start, end]) => end > 0 && start < length)
+        .map(([start, end]) => [Math.max(0, start), Math.min(length, end)] as [number, number]);
+}
+
 /** Coalesces overlapping and adjacent ranges so the scan below can advance a
  * single pointer instead of probing every range for every code point. The input
  * is already sorted by start. */

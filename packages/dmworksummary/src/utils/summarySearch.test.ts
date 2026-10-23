@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
- SUMMARY_SEARCH_TITLE_WINDOW, SUMMARY_SEARCH_TOOLTIP_WINDOW, summarySearchSegments, summarySearchTooLong,
+ SUMMARY_SEARCH_TITLE_WINDOW, SUMMARY_SEARCH_TOOLTIP_WINDOW,
+ codePointLength, leadingTrimCodePoints, shiftRanges, summarySearchSegments, summarySearchTooLong,
 } from './summarySearch';
 describe('summary search protocol', () => {
  it('uses Unicode code points for emoji and full-width source highlights', () => {
@@ -39,6 +40,22 @@ describe('summary search protocol', () => {
   expect(summarySearchSegments('abcdefgh', [[0,3],[2,6],[6,8]])).toEqual([{text:'abcdefgh',matched:true}]);
   expect(summarySearchSegments('abcdefgh', [[4,6],[0,2]])).toEqual([
    {text:'ab',matched:true},{text:'cd',matched:false},{text:'ef',matched:true},{text:'gh',matched:false}]);
+ });
+ it('re-bases ranges onto a derived string and clamps the edges', () => {
+  // Derived text is the raw field minus 9 leading code points.
+  expect(shiftRanges([[9,12]], 9, 20)).toEqual([[0,3]]);
+  // A range straddling the derivation cut keeps only its visible part.
+  expect(shiftRanges([[7,12]], 9, 20)).toEqual([[0,3]]);
+  // A range entirely inside the framing is dropped, not clamped to a stray mark.
+  expect(shiftRanges([[0,5]], 9, 20)).toEqual([]);
+  // A range running past the end is cut at the end.
+  expect(shiftRanges([[18,40]], 9, 20)).toEqual([[9,20]]);
+ });
+ it('counts the code points trim() removes from the front', () => {
+  expect(leadingTrimCodePoints('  前文')).toBe(2);
+  expect(leadingTrimCodePoints('😀😀前文')).toBe(0);
+  expect(leadingTrimCodePoints(' \n 😀前文')).toBe(3);
+  expect(codePointLength('😀😀')).toBe(2);
  });
  it('bounds the hover tooltip to its own window', () => {
   const parts = summarySearchSegments('a'.repeat(2000)+'needle'+'z'.repeat(2000), [[2000,2006]], SUMMARY_SEARCH_TOOLTIP_WINDOW);

@@ -710,7 +710,10 @@ export default class SummaryListPage extends Component<
         if (this.searchTimer) clearTimeout(this.searchTimer);
         this.searchTimer = null;
         // Starting composition alone does not change the query or discard scroll.
-        this.setState({ loading: false, loadingMore: false });
+        // Only a list that already has cards is worth preserving: with an empty
+        // list the feedback rows are all gated off during composition, so
+        // clearing `loading` would blank the panel instead of keeping it.
+        if (this.state.items.length > 0) this.setState({ loading: false, loadingMore: false });
     };
 
     handleKeywordChange = (value: string) => {
