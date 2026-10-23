@@ -1,5 +1,12 @@
 export const SUMMARY_SEARCH_MAX_CHARACTERS = 100;
 
+/** Code-point budgets that keep the first hit inside a two-line clamp in the
+ * narrow list panel: 140 at the 12px description size, 48 at the 14px title
+ * size. Both budgets retain at most 8 leading code points, so the hit itself is
+ * always rendered near the start of the visible text. */
+export const SUMMARY_SEARCH_DESC_WINDOW = 140;
+export const SUMMARY_SEARCH_TITLE_WINDOW = 48;
+
 export function summarySearchTooLong(value: string): boolean {
     return Array.from(value).length > SUMMARY_SEARCH_MAX_CHARACTERS;
 }
@@ -11,9 +18,16 @@ export function summarySearchSegments(text: string, ranges: [number, number][] |
     const chars = Array.from(text);
     const valid = (ranges ?? []).filter(([start, end]) => Number.isInteger(start) && Number.isInteger(end)
         && start >= 0 && end > start && end <= chars.length).sort((a, b) => a[0] - b[0]);
+    // Window only when there is a hit to keep visible: without one, plain text
+    // keeps its full value (the CSS clamp already handles overflow) and no
+    // leading/trailing ellipsis is invented.
+    const first = valid[0];
+    const windowSize = limit ?? 0;
     // Keep the first hit visible after the topic label in a narrow two-line card.
-    const start = limit ? Math.max(0, (valid[0]?.[0] ?? 0) - Math.min(8, Math.floor(limit / 3))) : 0;
-    const end = limit ? Math.min(chars.length, Math.max(start + limit, valid[0]?.[1] ?? 0)) : chars.length;
+    const start = first && windowSize > 0
+        ? Math.max(0, first[0] - Math.min(8, Math.floor(windowSize / 3))) : 0;
+    const end = first && windowSize > 0
+        ? Math.min(chars.length, Math.max(start + windowSize, first[1])) : chars.length;
     const parts: { text: string; matched: boolean }[] = [];
     if (start > 0) parts.push({ text: '…', matched: false });
     for (let i = start; i < end; i++) {

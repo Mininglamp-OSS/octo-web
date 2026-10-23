@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { summarySearchSegments, summarySearchTooLong } from './summarySearch';
+import { SUMMARY_SEARCH_TITLE_WINDOW, summarySearchSegments, summarySearchTooLong } from './summarySearch';
 describe('summary search protocol', () => {
  it('uses Unicode code points for emoji and full-width source highlights', () => {
   expect(summarySearchSegments('😀ＯＣＴＯ', [[1,5]])).toEqual([{text:'😀',matched:false},{text:'ＯＣＴＯ',matched:true}]);
@@ -21,5 +21,16 @@ describe('summary search protocol', () => {
   const parts = summarySearchSegments('前'.repeat(200)+'命中'+'后'.repeat(200), [[200,202]], 140);
   expect(parts[0]).toEqual({text:'…'+'前'.repeat(8),matched:false});
   expect(parts[1]).toEqual({text:'命中',matched:true});
+ });
+ it('leaves an unmatched long title whole instead of inventing ellipses', () => {
+  const text = '标'.repeat(80);
+  expect(summarySearchSegments(text, [], SUMMARY_SEARCH_TITLE_WINDOW)).toEqual([{text,matched:false}]);
+  expect(summarySearchSegments(text, null, SUMMARY_SEARCH_TITLE_WINDOW)).toEqual([{text,matched:false}]);
+ });
+ it('keeps a late title hit inside the two-line title window', () => {
+  const parts = summarySearchSegments('题'.repeat(60)+'命中', [[60,62]], SUMMARY_SEARCH_TITLE_WINDOW);
+  expect(parts[0]).toEqual({text:'…'+'题'.repeat(8),matched:false});
+  expect(parts[1]).toEqual({text:'命中',matched:true});
+  expect(parts.map(p=>p.text).join('').length).toBeLessThanOrEqual(SUMMARY_SEARCH_TITLE_WINDOW + 2);
  });
 });

@@ -3,7 +3,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render as rtlRender, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import SummaryCard from './SummaryCard';
-import { ParticipantStatus, TaskStatus, TriggerType } from '../types/summary';
+import { ParticipantStatus, TaskStatus, TriggerType, type SummarySearchMatch } from '../types/summary';
 
 vi.mock('@octo/base', async () => {
     const actual = await vi.importActual<Record<string, unknown>>('../__mocks__/dmworkBase');
@@ -568,16 +568,30 @@ describe('SummaryCard completed actions', () => {
 });
 
 describe('SummaryCard F6 search', () => {
-    it.each([
+    // Typed against the wire contract: a missing or null range array is legal,
+    // so the fixtures below are checked instead of cast past the declaration.
+    const nullableRangeCases: SummarySearchMatch[] = [
         { title_ranges: [[0, 1]], topic_ranges: null },
         { title_ranges: [[0, 1]] },
         { title_ranges: null, topic_ranges: [[0, 2]] },
-    ])('accepts nullable or missing range arrays without crashing: %j', (search_match) => {
+    ];
+    it.each(nullableRangeCases)('accepts nullable or missing range arrays without crashing: %j', (search_match) => {
         const { container } = render(<SummaryCard task={makeItem({ title: '标题', topic: '主题',
             search_match } as any)} onClick={noop} onDelete={noop} />);
         expect(container.querySelector('.summary-card-title')).toHaveTextContent('标题');
         const expectedHit = search_match.title_ranges ? '标' : '主题';
         expect(container.querySelector('mark')).toHaveTextContent(expectedHit);
+    });
+    it('falls back to the topic instead of the internal task number when untitled', () => {
+        const { container } = render(<SummaryCard task={makeItem({ title: '', task_no: 'S-1234',
+            topic: '方案评审', search_match: { title_ranges: null, topic_ranges: [[0, 4]] } } as any)}
+            onClick={noop} onDelete={noop} />);
+        // The matched evidence stays visible in the title row and is not repeated
+        // as a second description row.
+        expect(container.querySelector('.summary-card-title')).toHaveTextContent('方案评审');
+        expect(container.querySelector('.summary-card-title mark')).toHaveTextContent('方案评审');
+        expect(container.querySelector('.summary-card-title')).not.toHaveTextContent('S-1234');
+        expect(container.querySelector('.summary-card-desc')).toBeNull();
     });
     it('shows the server historical signal even when match ranges are absent', () => {
         const { container } = render(<SummaryCard task={makeItem({ is_historical_match: true })}

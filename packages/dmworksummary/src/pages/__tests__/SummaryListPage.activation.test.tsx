@@ -594,7 +594,15 @@ describe('SummaryListPage F6 input', () => {
         expect(content.scrollTop).toBe(450);
         expect(screen.getByTestId('task-1')).toBeInTheDocument();
         expect(screen.queryByTestId('spinner')).not.toBeInTheDocument();
+        const loadedItems = ref.current!.state.items;
+        expect(loadedItems.length).toBeGreaterThan(0);
         fireEvent.change(input, {target:{value:'方案'}});
+        // A composition change is not yet a query change: the loaded cards must
+        // survive every onChange, not just the compositionStart event.
+        expect(screen.getByTestId('task-1')).toBeInTheDocument();
+        expect(ref.current!.state.items).toBe(loadedItems);
+        expect(ref.current!.state.keyword).toBe('方案');
+        expect(content.scrollTop).toBe(450);
         await act(async () => { await vi.advanceTimersByTimeAsync(500); });
         expect(api.listSummaries).toHaveBeenCalledTimes(1);
         expect(ref.current!.state.loading).toBe(false);

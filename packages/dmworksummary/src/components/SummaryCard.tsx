@@ -6,7 +6,7 @@ import WKApp from "@octo/base/src/App";
 import { ParticipantStatus, TaskStatus, TriggerType, type SummaryListItem } from "../types/summary";
 import { formatDateOnly, getStatusLabel, getSummaryTypeKind, getSummaryTypeLabel, isReferenceable } from "../utils/summaryHelpers";
 import { deriveSummaryDisplayContent } from "../utils/templateResolver";
-import { summarySearchSegments } from "../utils/summarySearch";
+import { SUMMARY_SEARCH_DESC_WINDOW, SUMMARY_SEARCH_TITLE_WINDOW, summarySearchSegments } from "../utils/summarySearch";
 import { summaryTestIds } from "../utils/testIds";
 
 interface SummaryCardProps {
@@ -82,7 +82,8 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
         || (isMultiParticipant && task.has_pending_submission === true)
         || isPendingInvite;
 
-    const displayTitle = task.search_match ? (task.title || task.task_no) : deriveSummaryDisplayContent(task.trigger_type === TriggerType.AGENT
+    const displayTitle = task.search_match ? (task.title || task.topic || task.task_no)
+        : deriveSummaryDisplayContent(task.trigger_type === TriggerType.AGENT
         ? task.title || task.task_no : task.topic || task.title || task.task_no);
     // Keep the description truthy so an empty topic does not render a
     // 4px-tall empty `.summary-card-desc`, and do NOT gate on length —
@@ -92,8 +93,13 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
     const description = task.search_match ? (task.topic || "") : (task.topic?.trim() || "");
     const titleRanges = task.search_match?.title_ranges ?? [];
     const topicRanges = task.search_match?.topic_ranges ?? [];
+    // An untitled summary falls back to its topic in the title row, so the topic
+    // offsets describe that row: highlight the title with them and do not repeat
+    // the same text in the description.
+    const topicAsTitle = Boolean(task.search_match) && !task.title && Boolean(task.topic);
+    const displayTitleRanges = topicAsTitle ? topicRanges : titleRanges;
     const showDescription = task.search_match
-        ? topicRanges.length > 0
+        ? topicRanges.length > 0 && !topicAsTitle
         : description !== "" && description !== displayTitle;
     const highlight = (text: string, ranges: [number, number][] = [], limit?: number) =>
         summarySearchSegments(text, ranges, limit).map((part, index) => part.matched
@@ -194,19 +200,21 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                         </span>
                     </Tooltip>
                     {task.search_match ? (
-                        <Tooltip content={highlight(displayTitle, titleRanges)} position="top">
-                            <div className="summary-card-title">{highlight(displayTitle, titleRanges)}</div>
+                        <Tooltip content={highlight(displayTitle, displayTitleRanges)} position="top">
+                            <div className="summary-card-title">{highlight(displayTitle, displayTitleRanges, SUMMARY_SEARCH_TITLE_WINDOW)}</div>
                         </Tooltip>
                     ) : <div className="summary-card-title">{displayTitle}</div>}
                 </div>
-                {showDescription && (
+                {showDescription && (task.search_match ? (
                     <Tooltip content={highlight(description, topicRanges)} position="top">
                         <div className="summary-card-desc">
-                            {task.search_match && <span>{t("summary.search.topicMatch")}</span>}
-                            {highlight(description, topicRanges, task.search_match ? 140 : undefined)}
+                            <span>{t("summary.search.topicMatch")}</span>
+                            {highlight(description, topicRanges, SUMMARY_SEARCH_DESC_WINDOW)}
                         </div>
                     </Tooltip>
-                )}
+                ) : (
+                    <div className="summary-card-desc">{description}</div>
+                ))}
             </div>
 
             {task.is_historical_match && (

@@ -715,11 +715,19 @@ export default class SummaryListPage extends Component<
         this.isLoadingData = false;
         this.isLoadingMore = false;
         this.loadMoreOwner = null;
-        this.setState({ keyword: value, page: 1, items: [], total: 0, hasMore: false,
-            error: null, loadingMore: false, loading: !this.searchComposing && !summarySearchTooLong(value) });
         if (this.searchTimer) clearTimeout(this.searchTimer);
         this.searchTimer = null;
-        if (this.searchComposing || summarySearchTooLong(value)) return;
+        // While an IME composition is in flight the query is not committed yet:
+        // only track the pending value and leave items/total/hasMore/loading
+        // alone, so the cards and scroll the user is reading stay on screen.
+        // The reset runs once the composed value is committed
+        // (compositionend / blur / clear button).
+        const composing = this.searchComposing;
+        this.setState(composing
+            ? { keyword: value, error: null }
+            : { keyword: value, page: 1, items: [], total: 0, hasMore: false,
+                error: null, loadingMore: false, loading: !summarySearchTooLong(value) });
+        if (composing || summarySearchTooLong(value)) return;
         this.searchTimer = setTimeout(() => {
             this.searchTimer = null;
             // 埋点 291:去抖后「发生了一次搜索」，仅在有关键词时发，绝不采关键词值。

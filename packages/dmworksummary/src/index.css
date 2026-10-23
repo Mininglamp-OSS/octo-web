@@ -4610,7 +4610,8 @@ body[theme-mode="dark"] .chat-selector-modal {
 
 .summary-search-hit {
     color: inherit;
-    background: var(--wk-color-warning-bg);
+    /* Dedicated Figma search-highlight token, same as the channel search surface. */
+    background: var(--wk-color-search-highlight);
     font-weight: 600;
 }
 .summary-search-history, .summary-search-feedback {

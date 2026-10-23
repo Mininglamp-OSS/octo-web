@@ -178,9 +178,10 @@ export interface MemberStatus {
 
 /** 列表项 */
 export interface SummarySearchMatch {
-    /** Half-open Unicode code-point offsets into the original field. */
-    title_ranges: [number, number][];
-    topic_ranges: [number, number][];
+    /** Half-open Unicode code-point offsets into the original field. The server
+     * omits or nulls a field with no hit, so consumers must default it. */
+    title_ranges?: [number, number][] | null;
+    topic_ranges?: [number, number][] | null;
 }
 
 export interface SummaryListItem {
