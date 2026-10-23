@@ -127,6 +127,15 @@ export default class SummaryListPage extends Component<
     private isLoadingData = false;
     private isLoadingMore = false;
     private loadMoreOwner: symbol | null = null;
+    // Set synchronously when the query changes and cleared when the debounced
+    // search actually starts. Without it, a scroll event firing before React
+    // commits items:[]/hasMore:false reads the previous state, passes loadMore's
+    // entry guard and fetches another page of the *old* query — and because
+    // loadDataSeq was already bumped, its seq check would not reject it.
+    private searchInvalidated = false;
+    // Set by an explicit clear during composition: the compositionend the browser
+    // still emits for the discarded text must not restore it.
+    private ignoreCompositionEnd = false;
     private activationRefreshPending = false;
     private loadMoreRetryAt = 0;
     private paginationErrorVisible = false;
@@ -468,7 +477,9 @@ export default class SummaryListPage extends Component<
     };
 
     async loadMore() {
-        if (this.searchComposing || summarySearchTooLong(this.state.keyword)) return;
+        // searchInvalidated is synchronous, so a scroll arriving before React
+        // commits the keyword reset cannot page the query being replaced.
+        if (this.searchInvalidated || this.searchComposing || summarySearchTooLong(this.state.keyword)) return;
         // isLoadingData is a synchronous flag set at loadData entry: closes
         // the "loadData started first, scroll fires before React commits
         // loading:true" ordering that reading state.loading would miss.
@@ -703,6 +714,8 @@ export default class SummaryListPage extends Component<
 
     private beginSearchComposition = () => {
         this.searchComposing = true;
+        this.ignoreCompositionEnd = false;
+        this.searchInvalidated = true;
         this.loadDataSeq++;
         this.isLoadingData = false;
         this.isLoadingMore = false;
@@ -716,8 +729,18 @@ export default class SummaryListPage extends Component<
         if (this.state.items.length > 0) this.setState({ loading: false, loadingMore: false });
     };
 
+    /** An explicit clear wins over a composition in flight: drop the IME text and
+     * swallow the compositionend the browser still delivers for it, so the discarded
+     * query cannot come back. Escape is left to the IME instead. */
+    private clearSearchKeyword = () => {
+        this.ignoreCompositionEnd = this.searchComposing;
+        this.searchComposing = false;
+        this.handleKeywordChange("");
+    };
+
     handleKeywordChange = (value: string) => {
         // Invalidate immediately, including the debounce/IME/over-limit interval.
+        this.searchInvalidated = true;
         this.loadDataSeq++;
         this.isLoadingData = false;
         this.isLoadingMore = false;
@@ -736,6 +759,8 @@ export default class SummaryListPage extends Component<
         if (composing || summarySearchTooLong(value)) return;
         this.searchTimer = setTimeout(() => {
             this.searchTimer = null;
+            // The debounced search is about to start, so the list may page again.
+            this.searchInvalidated = false;
             // 埋点 291:去抖后「发生了一次搜索」，仅在有关键词时发，绝不采关键词值。
             // DAP-271 finding 6：has_result 需在 loadData 拿到结果后才知——移到结果返回后采集。
             //   只在本次搜索关键词非空、且 loadData 返回了有效结果总数(未被更新请求超越/未失败)时打点;
@@ -1035,12 +1060,20 @@ export default class SummaryListPage extends Component<
                             aria-invalid={summarySearchTooLong(inputKeyword)}
                             aria-describedby={summarySearchTooLong(inputKeyword) ? this.searchLimitId : undefined}
                             onCompositionStart={this.beginSearchComposition}
-                            onCompositionEnd={(e) => { this.searchComposing = false; this.handleKeywordChange(e.currentTarget.value); }}
+                            onCompositionEnd={(e) => {
+                                if (this.ignoreCompositionEnd) { this.ignoreCompositionEnd = false; return; }
+                                this.searchComposing = false; this.handleKeywordChange(e.currentTarget.value);
+                            }}
                             onBlur={(e) => { if (this.searchComposing) { this.searchComposing = false; this.handleKeywordChange(e.currentTarget.value); } }}
                             onKeyDown={(e) => { if (e.key === "Escape" && !this.searchComposing) this.handleKeywordChange(""); }}
                             onChange={(e) => this.handleKeywordChange(e.target.value)}
                         />
-                        {inputKeyword && <button type="button" className="summary-search-clear" aria-label={translate("summary.search.clear")} onClick={() => { this.searchComposing = false; this.handleKeywordChange(""); }}>×</button>}
+                        {/* Escape during composition belongs to the IME, so it is
+                            suppressed there. The clear button stays usable: an
+                            explicit clear wins over the in-flight composition, and
+                            any trailing compositionend for the discarded text is
+                            swallowed in clearSearchKeyword. */}
+                        {inputKeyword && <button type="button" className="summary-search-clear" aria-label={translate("summary.search.clear")} onClick={this.clearSearchKeyword}>×</button>}
                     </div>
                     <Dropdown
                         trigger="click"

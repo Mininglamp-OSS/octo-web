@@ -12,6 +12,10 @@ export const SUMMARY_SEARCH_TITLE_WINDOW = 48;
 export const SUMMARY_SEARCH_TOOLTIP_WINDOW = 400;
 
 export function summarySearchTooLong(value: string): boolean {
+    // Called several times per render. A string of at most MAX UTF-16 units can
+    // never hold more than MAX code points, so the array allocation stays on the
+    // rare long-input path.
+    if (value.length <= SUMMARY_SEARCH_MAX_CHARACTERS) return false;
     return Array.from(value).length > SUMMARY_SEARCH_MAX_CHARACTERS;
 }
 

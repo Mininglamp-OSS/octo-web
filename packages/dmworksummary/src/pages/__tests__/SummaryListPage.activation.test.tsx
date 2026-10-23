@@ -649,6 +649,43 @@ describe('SummaryListPage F6 input', () => {
         await act(async () => { await vi.advanceTimersByTimeAsync(500); });
         expect(api.listSummaries).toHaveBeenCalledTimes(1);
     });
+    it('does not page the previous query between a keyword change and its debounce', async () => {
+        const { ref } = await mountList();
+        vi.useFakeTimers();
+        act(() => {
+            ref.current!.handleKeywordChange('new');
+            // Same tick as the change, so React has not committed items/hasMore
+            // yet: the state-based guards alone would let page 2 of the old query
+            // through, and its seq check passes because loadDataSeq already moved.
+            void ref.current!.loadMore();
+        });
+        await act(async () => { await Promise.resolve(); });
+        expect(api.listSummaries).toHaveBeenCalledTimes(1);
+        vi.mocked(api.listSummaries).mockResolvedValueOnce(response(rows(1), 1));
+        await act(async () => { await vi.advanceTimersByTimeAsync(400); });
+        expect(api.listSummaries).toHaveBeenCalledTimes(2);
+        expect(api.listSummaries).toHaveBeenLastCalledWith(expect.objectContaining({ keyword: 'new', page: 1 }));
+    });
+    it('lets an explicit clear win over an in-flight composition', async () => {
+        const { ref } = await mountList();
+        vi.useFakeTimers();
+        const input = screen.getByTestId(summaryTestIds.listSearch);
+        act(() => { fireEvent.compositionStart(input); fireEvent.change(input, { target: { value: 'fa' } }); });
+        expect(ref.current!.state.pendingKeyword).toBe('fa');
+        act(() => { fireEvent.click(screen.getByLabelText('清空搜索')); });
+        expect(ref.current!.state.keyword).toBe('');
+        expect(ref.current!.state.pendingKeyword).toBeNull();
+        // The browser still delivers compositionend for the discarded text; it must
+        // not resurrect the query the user just cleared.
+        act(() => { fireEvent.compositionEnd(input, { data: '方案', target: { value: '方案' } }); });
+        expect(ref.current!.state.keyword).toBe('');
+        expect(ref.current!.state.pendingKeyword).toBeNull();
+        // The armed clear/search reload re-renders and paints the controlled input
+        // back to the cleared value.
+        vi.mocked(api.listSummaries).mockResolvedValueOnce(response(rows(1), 1));
+        await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+        expect(input).toHaveValue('');
+    });
     it('uses separate accessible limit descriptions for simultaneous lists', async () => {
         vi.mocked(api.listSummaries).mockResolvedValue(response([],0));
         render(<><SummaryListPage embedded /><SummaryListPage embedded channelId="channel-1" /></>);
