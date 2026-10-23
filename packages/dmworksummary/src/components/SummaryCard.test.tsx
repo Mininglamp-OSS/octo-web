@@ -644,4 +644,23 @@ describe('SummaryCard F6 search', () => {
         expect(container.querySelector('.summary-card-title mark')).toBeNull();
         expect(container.querySelector('.summary-card-desc mark')).toHaveTextContent('方案评审');
     });
+    it('surfaces a raw-title-only hit the derived title cannot carry', () => {
+        // Manual task, plain topic: the card title is the topic, so a hit that
+        // exists only in the raw title would otherwise be invisible.
+        const { container } = render(<SummaryCard task={makeItem({ title: 'Budget Review', topic: 'Project notes',
+            search_match: { title_ranges: [[0, 6]], topic_ranges: [] } }) as any} onClick={noop} onDelete={noop} />);
+        expect(container.querySelector('.summary-card-title')).toHaveTextContent('Project notes');
+        expect(container.querySelector('.summary-card-title mark')).toBeNull();
+        expect(container.querySelector('.summary-card-desc')).toBeNull();
+        const evidence = container.querySelector('.summary-card-title-evidence')!;
+        expect(evidence).toHaveTextContent('Budget Review');
+        expect(evidence.querySelector('mark')).toHaveTextContent('Budget');
+    });
+    it('adds no evidence row when the title row already carries the hit', () => {
+        const { container } = render(<SummaryCard task={makeItem({ title: 'Budget Review', topic: 'Project notes',
+            trigger_type: TriggerType.AGENT,
+            search_match: { title_ranges: [[0, 6]], topic_ranges: [] } }) as any} onClick={noop} onDelete={noop} />);
+        expect(container.querySelector('.summary-card-title mark')).toHaveTextContent('Budget');
+        expect(container.querySelector('.summary-card-title-evidence')).toBeNull();
+    });
 });

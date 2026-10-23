@@ -1030,8 +1030,10 @@ export default class SummaryListPage extends Component<
                             placeholder={translate("summary.list.searchPlaceholder")}
                             value={inputKeyword}
                             aria-label={translate("summary.list.searchPlaceholder")}
-                            aria-invalid={summarySearchTooLong(keyword)}
-                            aria-describedby={summarySearchTooLong(keyword) ? this.searchLimitId : undefined}
+                            /* Announce the limit for what the user can see, while
+                               requests stay gated on the committed query. */
+                            aria-invalid={summarySearchTooLong(inputKeyword)}
+                            aria-describedby={summarySearchTooLong(inputKeyword) ? this.searchLimitId : undefined}
                             onCompositionStart={this.beginSearchComposition}
                             onCompositionEnd={(e) => { this.searchComposing = false; this.handleKeywordChange(e.currentTarget.value); }}
                             onBlur={(e) => { if (this.searchComposing) { this.searchComposing = false; this.handleKeywordChange(e.currentTarget.value); } }}
@@ -1095,7 +1097,7 @@ export default class SummaryListPage extends Component<
                 )}
 
                 {!this.searchComposing && !loading && !error && !summarySearchTooLong(keyword) && keyword.trim() && <div className="summary-search-feedback" data-testid="summary-search-count" role="status">{translate("summary.search.count", { values: { count: total } })}</div>}
-                {summarySearchTooLong(keyword) && <div id={this.searchLimitId} className="summary-search-feedback" role="alert">{translate("summary.search.limit", { values: { count: SUMMARY_SEARCH_MAX_CHARACTERS } })}</div>}
+                {summarySearchTooLong(inputKeyword) && <div id={this.searchLimitId} className="summary-search-feedback" role="alert">{translate("summary.search.limit", { values: { count: SUMMARY_SEARCH_MAX_CHARACTERS } })}</div>}
                 {!this.searchComposing && !loading && !error && !summarySearchTooLong(keyword) && keyword.trim() && items.length === 0 && <div className="summary-list-empty">{translate("summary.search.noMatches")}</div>}
                 {!this.searchComposing && !loading && !error && !keyword.trim() && items.length === 0 && (
                     <div className="summary-list-empty">

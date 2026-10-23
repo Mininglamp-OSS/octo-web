@@ -802,6 +802,7 @@
   },
   "search": {
     "count": "找到 {{count}} 条结果",
+    "titleMatch": "标题：",
     "topicMatch": "主题：",
     "historicalRun": "历史运行 · {{date}}",
     "clear": "清空搜索",

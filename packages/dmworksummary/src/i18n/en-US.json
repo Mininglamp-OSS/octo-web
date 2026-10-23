@@ -802,6 +802,7 @@
   },
   "search": {
     "count": "{{count}} results",
+    "titleMatch": "Title: ",
     "topicMatch": "Topic: ",
     "historicalRun": "Historical run · {{date}}",
     "clear": "Clear search",

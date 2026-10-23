@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Dropdown, Modal, Tooltip } from "@douyinfe/semi-ui";
 import { MoreHorizontal, AlertTriangle, Bot, FileText, UsersRound, X } from "lucide-react";
 import { useI18n, Dap } from "@octo/base";
@@ -92,6 +92,8 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
     //     information, i.e. it is non-empty and differs from the title row.
     //  3. Server ranges are code-point offsets into the RAW field, so each one is
     //     re-based onto the derived/trimmed string it actually marks.
+    //  4. A raw-field hit the rows above cannot show still gets its own evidence
+    //     row, so "why did this match?" is always answerable on the card.
     const titleSource = task.trigger_type === TriggerType.AGENT
         ? task.title || task.task_no
         : task.topic || task.title || task.task_no;
@@ -102,23 +104,51 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
     // hidden` (src/index.css:476-485), so a topic of any length clamps
     // visually instead of vanishing outright at the 81st character.
     const description = task.topic?.trim() || "";
-    const rawTitleRanges = task.search_match?.title_ranges ?? [];
-    const rawTopicRanges = task.search_match?.topic_ranges ?? [];
     // Chat summaries derive the title from the topic, so there the topic ranges
     // are what mark the title row; agent and scheduled summaries keep a real
     // title separate from their topic, which is what the description row shows.
     const titleUsesTopic = task.trigger_type !== TriggerType.AGENT && Boolean(task.topic);
-    const titleRanges = task.search_match
-        ? shiftRanges(titleUsesTopic ? rawTopicRanges : rawTitleRanges, titleOffset, codePointLength(displayTitle))
-        : [];
-    const topicRanges = task.search_match
-        ? shiftRanges(rawTopicRanges, leadingTrimCodePoints(task.topic ?? ""), codePointLength(description))
-        : [];
     const showDescription = description !== "" && description !== displayTitle;
-    const highlight = (text: string, ranges: [number, number][] = [], limit?: number) =>
-        summarySearchSegments(text, ranges, limit).map((part, index) => part.matched
-            ? <mark className="summary-search-hit" key={index}>{part.text}</mark>
-            : <React.Fragment key={index}>{part.text}</React.Fragment>);
+    const renderParts = (parts: { text: string; matched: boolean }[]) => parts.map((part, index) => part.matched
+        ? <mark className="summary-search-hit" key={index}>{part.text}</mark>
+        : <React.Fragment key={index}>{part.text}</React.Fragment>);
+    // Segmenting walks the whole string, and a list re-renders on every keystroke
+    // and scroll, so each row's segments (card + hover budget) are memoized per
+    // card. `task.search_match` is a stable object per API item.
+    const titleView = useMemo(() => {
+        const ranges = task.search_match
+            ? shiftRanges(titleUsesTopic
+                ? (task.search_match.topic_ranges ?? [])
+                : (task.search_match.title_ranges ?? []), titleOffset, codePointLength(displayTitle))
+            : [];
+        return {
+            ranges,
+            body: summarySearchSegments(displayTitle, ranges, SUMMARY_SEARCH_TITLE_WINDOW),
+            hover: summarySearchSegments(displayTitle, ranges, SUMMARY_SEARCH_TOOLTIP_WINDOW),
+        };
+    }, [task.search_match, titleUsesTopic, displayTitle, titleOffset]);
+    const descriptionView = useMemo(() => {
+        const ranges = task.search_match
+            ? shiftRanges(task.search_match.topic_ranges ?? [],
+                leadingTrimCodePoints(task.topic ?? ""), codePointLength(description))
+            : [];
+        return {
+            ranges,
+            body: summarySearchSegments(description, ranges, SUMMARY_SEARCH_DESC_WINDOW),
+            hover: summarySearchSegments(description, ranges, SUMMARY_SEARCH_TOOLTIP_WINDOW),
+        };
+    }, [task.search_match, task.topic, description]);
+    // A raw-title hit that no row above renders — the card title came from the
+    // topic, or the derivation stripped the framing it sits in — is surfaced on its
+    // own, at its original offsets, because it is the only evidence of the match.
+    const titleEvidence = useMemo(() => {
+        const ranges = task.search_match?.title_ranges ?? [];
+        if (!task.title || ranges.length === 0 || displayTitle === task.title) return null;
+        return {
+            body: summarySearchSegments(task.title, ranges, SUMMARY_SEARCH_DESC_WINDOW),
+            hover: summarySearchSegments(task.title, ranges, SUMMARY_SEARCH_TOOLTIP_WINDOW),
+        };
+    }, [task.search_match, task.title, displayTitle]);
     const displayStatus = displaysWaiting ? TaskStatus.PENDING : task.status;
     const statusColor = getStatusColor(displayStatus);
     const statusText = getStatusLabel(displayStatus);
@@ -213,17 +243,29 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                                 : <FileText size={14} />}
                         </span>
                     </Tooltip>
-                    {titleRanges.length > 0 ? (
-                        <Tooltip content={highlight(displayTitle, titleRanges, SUMMARY_SEARCH_TOOLTIP_WINDOW)} position="top">
-                            <div className="summary-card-title">{highlight(displayTitle, titleRanges, SUMMARY_SEARCH_TITLE_WINDOW)}</div>
+                    {/* Semi's Tooltip declares `content` as PropTypes.node and renders
+                        it as a React child (lib/es/tooltip/index.js renderContentNode),
+                        and the module has no innerHTML path, so these nodes can never be
+                        reinterpreted as markup. */}
+                    {titleView.ranges.length > 0 ? (
+                        <Tooltip content={renderParts(titleView.hover)} position="top">
+                            <div className="summary-card-title">{renderParts(titleView.body)}</div>
                         </Tooltip>
                     ) : <div className="summary-card-title">{displayTitle}</div>}
                 </div>
-                {showDescription && (topicRanges.length > 0 ? (
-                    <Tooltip content={highlight(description, topicRanges, SUMMARY_SEARCH_TOOLTIP_WINDOW)} position="top">
+                {titleEvidence && (
+                    <Tooltip content={renderParts(titleEvidence.hover)} position="top">
+                        <div className="summary-card-title-evidence">
+                            <span>{t("summary.search.titleMatch")}</span>
+                            {renderParts(titleEvidence.body)}
+                        </div>
+                    </Tooltip>
+                )}
+                {showDescription && (descriptionView.ranges.length > 0 ? (
+                    <Tooltip content={renderParts(descriptionView.hover)} position="top">
                         <div className="summary-card-desc">
                             <span>{t("summary.search.topicMatch")}</span>
-                            {highlight(description, topicRanges, SUMMARY_SEARCH_DESC_WINDOW)}
+                            {renderParts(descriptionView.body)}
                         </div>
                     </Tooltip>
                 ) : (

@@ -633,6 +633,22 @@ describe('SummaryListPage F6 input', () => {
         expect(screen.getByTestId('spinner')).toBeInTheDocument();
         await act(async () => { pending.resolve(response([], 0)); });
     });
+    it('announces the limit for the composition text the user can see', async () => {
+        const { ref } = await mountList();
+        vi.useFakeTimers();
+        const input = screen.getByTestId(summaryTestIds.listSearch);
+        const tooLong = '😀'.repeat(101);
+        act(() => { fireEvent.compositionStart(input); fireEvent.change(input, { target: { value: tooLong } }); });
+        // The composed text is what is on screen, so the limit is announced now;
+        // requests stay gated on the committed query and are never armed.
+        expect(input).toHaveAttribute('aria-invalid', 'true');
+        expect(input).toHaveAttribute('aria-describedby');
+        expect(screen.getByRole('alert')).toHaveTextContent('100');
+        expect(ref.current!.state.pendingKeyword).toBe(tooLong);
+        expect(ref.current!.state.keyword).toBe('');
+        await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+        expect(api.listSummaries).toHaveBeenCalledTimes(1);
+    });
     it('uses separate accessible limit descriptions for simultaneous lists', async () => {
         vi.mocked(api.listSummaries).mockResolvedValue(response([],0));
         render(<><SummaryListPage embedded /><SummaryListPage embedded channelId="channel-1" /></>);
