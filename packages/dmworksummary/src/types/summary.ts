@@ -177,7 +177,16 @@ export interface MemberStatus {
 }
 
 /** 列表项 */
+export interface SummarySearchMatch {
+    /** Half-open Unicode code-point offsets into the original field. The server
+     * omits or nulls a field with no hit, so consumers must default it. */
+    title_ranges?: [number, number][] | null;
+    topic_ranges?: [number, number][] | null;
+}
+
 export interface SummaryListItem {
+    search_match?: SummarySearchMatch;
+    is_historical_match?: boolean;
     task_id: number;
     task_no: string;
     title: string;

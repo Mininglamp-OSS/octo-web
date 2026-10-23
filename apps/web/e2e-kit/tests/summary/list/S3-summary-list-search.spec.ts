@@ -35,3 +35,31 @@ test.describe("@S3 @p1 @summary @list @summary-list @summary-search S3 — Summa
     await sanityCheck(authedPage, ctx);
   });
 });
+
+for (const locale of ["zh-CN", "en-US"] as const) {
+  test.describe(`@S3 @p1 @summary @summary-search narrow topic evidence ${locale}`, () => {
+    test.use({ authedLocale: locale });
+    test("keeps a late CJK hit inside the two-line card in light and dark mode", async ({ authedPage }) => {
+      await registerS3SummaryListSearch(authedPage, true);
+      await authedPage.getByRole("button", { name: locale === "zh-CN" ? "智能总结" : "AI Summary", exact: true }).click();
+      const list = authedPage.locator(".summary-list-page");
+      await list.evaluate(el => { el.style.width = "320px"; el.style.maxWidth = "320px"; });
+      await authedPage.getByTestId(T.listSearch).fill("命中");
+      const description = list.locator(".summary-card-desc").first();
+      await expect(description.locator("mark")).toHaveText("命中");
+      for (const mode of ["light", "dark"]) {
+        await authedPage.evaluate(mode => document.body.setAttribute("theme-mode", mode), mode);
+        const hitInsideClamp = await description.evaluate(el => {
+          const box = el.getBoundingClientRect();
+          // A mark that wraps across lines yields one rect per line box; every
+          // fragment must sit inside the clamped box, not just the first one.
+          const rects = Array.from(el.querySelector("mark")!.getClientRects());
+          return rects.length > 0 && rects.every(rect =>
+            rect.top >= box.top - 1 && rect.bottom <= box.bottom + 1 &&
+            rect.left >= box.left - 1 && rect.right <= box.right + 1);
+        });
+        expect(hitInsideClamp, `${locale}/${mode}: first hit must be visible, not merely present in the DOM`).toBe(true);
+      }
+    });
+  });
+}

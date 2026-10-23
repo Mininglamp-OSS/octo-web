@@ -51,11 +51,32 @@ export function deriveSummaryTitle(topic: string): string {
     return (match?.[2] || source).trim();
 }
 
-export function deriveSummaryDisplayContent(topic: string): string {
+export interface DerivedDisplayContent {
+    text: string;
+    /** Code points dropped from the front, so server code-point ranges can be
+     * shifted onto `text` without re-parsing the template. */
+    offset: number;
+}
+
+const codePointLength = (text: string) => Array.from(text).length;
+
+/** `deriveSummaryDisplayContent` plus the code-point offset it sliced away.
+ * The two must stay in sync: `text` here is exactly what the plain helper
+ * returns, and `offset` is how many leading code points were dropped. */
+export function deriveSummaryDisplayContentWithOffset(topic: string): DerivedDisplayContent {
     const trimmed = topic.trim();
+    const leadingTrim = codePointLength(topic.slice(0, topic.length - topic.trimStart().length));
     const contentMatch = /(?:^|\n)(?:内容重点|总结内容|Content focus|Summary content)\s*[:：]\s*/i.exec(trimmed);
-    if (!contentMatch) return trimmed;
-    return trimmed.slice(contentMatch.index + contentMatch[0].length).trim();
+    if (!contentMatch) return { text: trimmed, offset: leadingTrim };
+    const contentStart = contentMatch.index + contentMatch[0].length;
+    const suffix = trimmed.slice(contentStart);
+    const text = suffix.trim();
+    const suffixTrim = codePointLength(suffix.slice(0, suffix.length - suffix.trimStart().length));
+    return { text, offset: leadingTrim + codePointLength(trimmed.slice(0, contentStart)) + suffixTrim };
+}
+
+export function deriveSummaryDisplayContent(topic: string): string {
+    return deriveSummaryDisplayContentWithOffset(topic).text;
 }
 
 /** Keep template framing visible while limiting only the editable summary content. */

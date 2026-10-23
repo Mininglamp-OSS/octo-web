@@ -799,5 +799,15 @@
     "previewLatestHint": "Showing the latest version of this summary (may have been updated since you referenced it)",
     "previewNotFound": "This summary was deleted or you don't have access",
     "previewLoadFailed": "Failed to load, please retry later"
+  },
+  "search": {
+    "count": "{{count}} results",
+    "titleMatch": "Title: ",
+    "topicMatch": "Topic: ",
+    "historicalRun": "Historical run · {{date}}",
+    "clear": "Clear search",
+    "limit": "Enter no more than {{count}} characters to search",
+    "noMatches": "No matching results in the current scope",
+    "searching": "Searching…"
   }
 }
