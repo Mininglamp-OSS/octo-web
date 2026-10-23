@@ -60,7 +60,10 @@ interface SummaryListPageState {
     hasMore: boolean;
     error: string | null;
     statusFilter: TaskStatusType | undefined;
+    /** The committed query: the one the items on screen were loaded for. */
     keyword: string;
+    /** In-progress IME text. Only the input shows it; the query does not use it. */
+    pendingKeyword: string | null;
     activeTaskId: number | null;
 }
 
@@ -94,6 +97,7 @@ export default class SummaryListPage extends Component<
         error: null,
         statusFilter: undefined,
         keyword: "",
+        pendingKeyword: null,
         activeTaskId: null,
     };
 
@@ -718,14 +722,13 @@ export default class SummaryListPage extends Component<
         if (this.searchTimer) clearTimeout(this.searchTimer);
         this.searchTimer = null;
         // While an IME composition is in flight the query is not committed yet:
-        // only track the pending value and leave items/total/hasMore/loading
-        // alone, so the cards and scroll the user is reading stay on screen.
-        // The reset runs once the composed value is committed
-        // (compositionend / blur / clear button).
+        // only track the pending input text and leave keyword/items/total/hasMore/
+        // loading alone, so the cards and scroll the user is reading stay on
+        // screen. The committed value is applied on compositionend / blur / clear.
         const composing = this.searchComposing;
         this.setState(composing
-            ? { keyword: value, error: null }
-            : { keyword: value, page: 1, items: [], total: 0, hasMore: false,
+            ? { pendingKeyword: value, error: null }
+            : { keyword: value, pendingKeyword: null, page: 1, items: [], total: 0, hasMore: false,
                 error: null, loadingMore: false, loading: !summarySearchTooLong(value) });
         if (composing || summarySearchTooLong(value)) return;
         this.searchTimer = setTimeout(() => {
@@ -936,7 +939,12 @@ export default class SummaryListPage extends Component<
     }
 
     private renderList(createEntryMode: SummaryCreateEntryMode) {
-        const { items, total, pageSize, loading, loadingMore, hasMore, error, statusFilter, keyword, activeTaskId } = this.state;
+        const { items, total, pageSize, loading, loadingMore, hasMore, error, statusFilter, keyword,
+            pendingKeyword, activeTaskId } = this.state;
+        // The input shows in-progress IME text; every result label keeps reading
+        // the committed `keyword` so a count is never attributed to a query the
+        // list does not hold.
+        const inputKeyword = pendingKeyword ?? keyword;
         const { channelId, onClose } = this.props;
         const { locale, t: translate } = this.context;
         const statusOptions = getStatusOptions();
@@ -1017,7 +1025,7 @@ export default class SummaryListPage extends Component<
                             data-testid={summaryTestIds.listSearch}
                             className="summary-list-search-input"
                             placeholder={translate("summary.list.searchPlaceholder")}
-                            value={keyword}
+                            value={inputKeyword}
                             aria-label={translate("summary.list.searchPlaceholder")}
                             aria-invalid={summarySearchTooLong(keyword)}
                             aria-describedby={summarySearchTooLong(keyword) ? this.searchLimitId : undefined}
@@ -1027,7 +1035,7 @@ export default class SummaryListPage extends Component<
                             onKeyDown={(e) => { if (e.key === "Escape" && !this.searchComposing) this.handleKeywordChange(""); }}
                             onChange={(e) => this.handleKeywordChange(e.target.value)}
                         />
-                        {keyword && <button type="button" className="summary-search-clear" aria-label={translate("summary.search.clear")} onClick={() => { this.searchComposing = false; this.handleKeywordChange(""); }}>×</button>}
+                        {inputKeyword && <button type="button" className="summary-search-clear" aria-label={translate("summary.search.clear")} onClick={() => { this.searchComposing = false; this.handleKeywordChange(""); }}>×</button>}
                     </div>
                     <Dropdown
                         trigger="click"

@@ -601,7 +601,11 @@ describe('SummaryListPage F6 input', () => {
         // survive every onChange, not just the compositionStart event.
         expect(screen.getByTestId('task-1')).toBeInTheDocument();
         expect(ref.current!.state.items).toBe(loadedItems);
-        expect(ref.current!.state.keyword).toBe('方案');
+        // The input shows the in-progress text, but the committed query — the one
+        // the rendered items belong to — is untouched until composition ends.
+        expect(input).toHaveValue('方案');
+        expect(ref.current!.state.pendingKeyword).toBe('方案');
+        expect(ref.current!.state.keyword).toBe('');
         expect(content.scrollTop).toBe(450);
         await act(async () => { await vi.advanceTimersByTimeAsync(500); });
         expect(api.listSummaries).toHaveBeenCalledTimes(1);

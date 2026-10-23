@@ -50,10 +50,13 @@ for (const locale of ["zh-CN", "en-US"] as const) {
       for (const mode of ["light", "dark"]) {
         await authedPage.evaluate(mode => document.body.setAttribute("theme-mode", mode), mode);
         const hitInsideClamp = await description.evaluate(el => {
-          const description = el.getBoundingClientRect();
-          const mark = el.querySelector("mark")!.getClientRects()[0];
-          return mark.top >= description.top - 1 && mark.bottom <= description.bottom + 1 &&
-            mark.left >= description.left - 1 && mark.right <= description.right + 1;
+          const box = el.getBoundingClientRect();
+          // A mark that wraps across lines yields one rect per line box; every
+          // fragment must sit inside the clamped box, not just the first one.
+          const rects = Array.from(el.querySelector("mark")!.getClientRects());
+          return rects.length > 0 && rects.every(rect =>
+            rect.top >= box.top - 1 && rect.bottom <= box.bottom + 1 &&
+            rect.left >= box.left - 1 && rect.right <= box.right + 1);
         });
         expect(hitInsideClamp, `${locale}/${mode}: first hit must be visible, not merely present in the DOM`).toBe(true);
       }

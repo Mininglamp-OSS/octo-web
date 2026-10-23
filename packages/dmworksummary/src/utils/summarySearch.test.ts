@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { SUMMARY_SEARCH_TITLE_WINDOW, summarySearchSegments, summarySearchTooLong } from './summarySearch';
+import {
+ SUMMARY_SEARCH_TITLE_WINDOW, SUMMARY_SEARCH_TOOLTIP_WINDOW, summarySearchSegments, summarySearchTooLong,
+} from './summarySearch';
 describe('summary search protocol', () => {
  it('uses Unicode code points for emoji and full-width source highlights', () => {
   expect(summarySearchSegments('😀ＯＣＴＯ', [[1,5]])).toEqual([{text:'😀',matched:false},{text:'ＯＣＴＯ',matched:true}]);
@@ -32,5 +34,15 @@ describe('summary search protocol', () => {
   expect(parts[0]).toEqual({text:'…'+'题'.repeat(8),matched:false});
   expect(parts[1]).toEqual({text:'命中',matched:true});
   expect(parts.map(p=>p.text).join('').length).toBeLessThanOrEqual(SUMMARY_SEARCH_TITLE_WINDOW + 2);
+ });
+ it('merges overlapping and adjacent ranges instead of splitting the matched run', () => {
+  expect(summarySearchSegments('abcdefgh', [[0,3],[2,6],[6,8]])).toEqual([{text:'abcdefgh',matched:true}]);
+  expect(summarySearchSegments('abcdefgh', [[4,6],[0,2]])).toEqual([
+   {text:'ab',matched:true},{text:'cd',matched:false},{text:'ef',matched:true},{text:'gh',matched:false}]);
+ });
+ it('bounds the hover tooltip to its own window', () => {
+  const parts = summarySearchSegments('a'.repeat(2000)+'needle'+'z'.repeat(2000), [[2000,2006]], SUMMARY_SEARCH_TOOLTIP_WINDOW);
+  expect(parts.filter(p=>p.matched).map(p=>p.text).join('')).toBe('needle');
+  expect(parts.map(p=>p.text).join('').length).toBeLessThanOrEqual(SUMMARY_SEARCH_TOOLTIP_WINDOW + 2);
  });
 });

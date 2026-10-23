@@ -6,7 +6,9 @@ import WKApp from "@octo/base/src/App";
 import { ParticipantStatus, TaskStatus, TriggerType, type SummaryListItem } from "../types/summary";
 import { formatDateOnly, getStatusLabel, getSummaryTypeKind, getSummaryTypeLabel, isReferenceable } from "../utils/summaryHelpers";
 import { deriveSummaryDisplayContent } from "../utils/templateResolver";
-import { SUMMARY_SEARCH_DESC_WINDOW, SUMMARY_SEARCH_TITLE_WINDOW, summarySearchSegments } from "../utils/summarySearch";
+import {
+    SUMMARY_SEARCH_DESC_WINDOW, SUMMARY_SEARCH_TITLE_WINDOW, SUMMARY_SEARCH_TOOLTIP_WINDOW, summarySearchSegments,
+} from "../utils/summarySearch";
 import { summaryTestIds } from "../utils/testIds";
 
 interface SummaryCardProps {
@@ -200,13 +202,13 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                         </span>
                     </Tooltip>
                     {task.search_match ? (
-                        <Tooltip content={highlight(displayTitle, displayTitleRanges)} position="top">
+                        <Tooltip content={highlight(displayTitle, displayTitleRanges, SUMMARY_SEARCH_TOOLTIP_WINDOW)} position="top">
                             <div className="summary-card-title">{highlight(displayTitle, displayTitleRanges, SUMMARY_SEARCH_TITLE_WINDOW)}</div>
                         </Tooltip>
                     ) : <div className="summary-card-title">{displayTitle}</div>}
                 </div>
                 {showDescription && (task.search_match ? (
-                    <Tooltip content={highlight(description, topicRanges)} position="top">
+                    <Tooltip content={highlight(description, topicRanges, SUMMARY_SEARCH_TOOLTIP_WINDOW)} position="top">
                         <div className="summary-card-desc">
                             <span>{t("summary.search.topicMatch")}</span>
                             {highlight(description, topicRanges, SUMMARY_SEARCH_DESC_WINDOW)}

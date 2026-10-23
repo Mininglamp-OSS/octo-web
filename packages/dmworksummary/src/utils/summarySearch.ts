@@ -7,8 +7,25 @@ export const SUMMARY_SEARCH_MAX_CHARACTERS = 100;
 export const SUMMARY_SEARCH_DESC_WINDOW = 140;
 export const SUMMARY_SEARCH_TITLE_WINDOW = 48;
 
+/** Hover content shows far more context than the clamped rows, but stays bounded
+ * so a pathological topic cannot build an unbounded node tree on hover. */
+export const SUMMARY_SEARCH_TOOLTIP_WINDOW = 400;
+
 export function summarySearchTooLong(value: string): boolean {
     return Array.from(value).length > SUMMARY_SEARCH_MAX_CHARACTERS;
+}
+
+/** Coalesces overlapping and adjacent ranges so the scan below can advance a
+ * single pointer instead of probing every range for every code point. The input
+ * is already sorted by start. */
+function mergeRanges(ranges: [number, number][]): [number, number][] {
+    const merged: [number, number][] = [];
+    for (const [start, end] of ranges) {
+        const last = merged[merged.length - 1];
+        if (last && start <= last[1]) last[1] = Math.max(last[1], end);
+        else merged.push([start, end]);
+    }
+    return merged;
 }
 
 /** Unlike chat's marked HTML snippets, F6 ranges map width/case-fold expansions
@@ -16,8 +33,8 @@ export function summarySearchTooLong(value: string): boolean {
  * missing ranges degrade to plain text rather than inventing different matches. */
 export function summarySearchSegments(text: string, ranges: [number, number][] | null = [], limit?: number) {
     const chars = Array.from(text);
-    const valid = (ranges ?? []).filter(([start, end]) => Number.isInteger(start) && Number.isInteger(end)
-        && start >= 0 && end > start && end <= chars.length).sort((a, b) => a[0] - b[0]);
+    const valid = mergeRanges((ranges ?? []).filter(([start, end]) => Number.isInteger(start) && Number.isInteger(end)
+        && start >= 0 && end > start && end <= chars.length).sort((a, b) => a[0] - b[0]));
     // Window only when there is a hit to keep visible: without one, plain text
     // keeps its full value (the CSS clamp already handles overflow) and no
     // leading/trailing ellipsis is invented.
@@ -30,8 +47,12 @@ export function summarySearchSegments(text: string, ranges: [number, number][] |
         ? Math.min(chars.length, Math.max(start + windowSize, first[1])) : chars.length;
     const parts: { text: string; matched: boolean }[] = [];
     if (start > 0) parts.push({ text: '…', matched: false });
+    // Ranges are disjoint and ascending after merging, so the cursor only moves
+    // forward: the loop is O(window + ranges) rather than O(window × ranges).
+    let cursor = 0;
     for (let i = start; i < end; i++) {
-        const matched = valid.some(([a, b]) => a <= i && i < b);
+        while (cursor < valid.length && valid[cursor][1] <= i) cursor++;
+        const matched = cursor < valid.length && valid[cursor][0] <= i;
         const previous = parts[parts.length - 1];
         if (previous && previous.matched === matched) previous.text += chars[i];
         else parts.push({ text: chars[i], matched });
