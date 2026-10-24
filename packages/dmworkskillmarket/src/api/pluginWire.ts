@@ -164,6 +164,7 @@ export interface PluginCategoryWire {
 export interface PluginReviewRelationWire {
   relation_id?: string;
   target_plugin_id: string;
+  target_version_id?: string;
   target_plugin_type?: PluginTypeWire;
   relation_type: string;
   sort_order: number;

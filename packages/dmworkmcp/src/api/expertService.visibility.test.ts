@@ -75,6 +75,7 @@ const SQUAD_WIRE = {
       source_plugin_id: "squad-1",
       target_plugin_id: "member-a",
       relation_type: "expert_team_expert",
+      target_version_id: "ver-a",
       sort_order: 0,
       data: { member_key: "lead", is_leader: true },
     },
@@ -166,6 +167,7 @@ describe("updateExpertVisibility — the full-replace echo", () => {
         relation_id: "rel-1",
         target_plugin_id: "member-a",
         relation_type: "expert_team_expert",
+        target_version_id: "ver-a",
         sort_order: 0,
         data: { member_key: "lead", is_leader: true },
       },
@@ -223,6 +225,7 @@ describe("loadExpertChildRelations — the review-submit snapshot", () => {
         sortOrder: 0,
         relationId: "rel-1",
         data: { member_key: "lead", is_leader: true },
+        targetVersionId: "ver-a",
       },
       {
         targetPluginId: "member-b",

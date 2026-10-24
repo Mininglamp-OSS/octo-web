@@ -984,6 +984,7 @@ function mapReviewRequest(raw: PluginReviewRequestWire): ReviewRequest {
     frozenRelations: raw.frozen_relations?.map((relation) => ({
       relationId: relation.relation_id,
       targetPluginId: relation.target_plugin_id,
+      targetVersionId: relation.target_version_id,
       targetPluginType: relation.target_plugin_type,
       relationType: relation.relation_type,
       sortOrder: relation.sort_order,
@@ -1013,6 +1014,9 @@ export interface ReviewRelationInput {
    *  wiring). Dropping it re-inserts the edge without the wiring that makes the
    *  team installable, so it must survive the round-trip verbatim. */
   data?: Record<string, unknown>;
+  /** Pinned target version; a frozen review must preserve it or approval
+   *  freezes an unpinned graph. */
+  targetVersionId?: string;
 }
 
 /**
@@ -1086,6 +1090,9 @@ export function createReviewRequest(
         ? { relation_id: relation.relationId }
         : {}),
       ...(relation.data !== undefined ? { data: relation.data } : {}),
+      ...(relation.targetVersionId !== undefined
+        ? { target_version_id: relation.targetVersionId }
+        : {}),
     }));
   }
   return request<PluginReviewRequestWire>("/plugins/review_requests", {

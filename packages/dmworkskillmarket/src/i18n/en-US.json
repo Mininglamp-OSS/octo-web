@@ -199,6 +199,8 @@
     "ariaLabel": "My publications"
   },
   "review": {
+    "versionPinned": "Pinned",
+    "versionUnpinned": "Not pinned",
     "orgTab": "Publication management",
     "policyTitle": "Automatic review",
     "policyDescription": "When enabled, new publications and updates are approved automatically. When disabled, org admins review them manually. Org owners and admins can change this setting.",

@@ -92,6 +92,7 @@ export default function ExpertSpecView({
                     key={`${skill.name}-${index}`}
                   >
                     {skill.name}
+                    {skill.versionId ? ` · ${t("mcp.expert.versionPinned")} ${skill.versionId.slice(-8)}` : ` · ${t("mcp.expert.versionUnpinned")}`}
                   </span>
                 );
               }
@@ -104,7 +105,14 @@ export default function ExpertSpecView({
                     aria-expanded={isOpen}
                     onClick={() => toggle(index)}
                   >
-                    <span>{skill.name}</span>
+                    <span>
+                      {skill.name}
+                      {skill.versionId ? (
+                        <span className="wk-mcp-expert-skill__pin" title={skill.versionId}> · {t("mcp.expert.versionPinned")} {skill.versionId.slice(-8)}</span>
+                      ) : (
+                        <span className="wk-mcp-expert-skill__pin"> · {t("mcp.expert.versionUnpinned")}</span>
+                      )}
+                    </span>
                     <ChevronDown
                       size={16}
                       aria-hidden="true"

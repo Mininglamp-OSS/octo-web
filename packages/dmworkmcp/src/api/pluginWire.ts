@@ -83,6 +83,7 @@ export interface PluginListItemWire {
   icon_url?: string;
   tool_count?: number;
   member_count?: number;
+  dependency_issues?: PluginDependencyIssueWire[];
   view_count: number;
   install_count: number;
   download_count: number;
@@ -101,6 +102,12 @@ export interface PluginListItemWire {
   updated_at: string;
 }
 
+export interface PluginDependencyIssueWire {
+  target_plugin_id: string;
+  relation_type: string;
+  reason: "delisted" | "deleted" | "version_unpublished";
+}
+
 export interface PluginDetailPluginWire extends PluginListItemWire {
   plugin_json?: PluginPackageWire;
 }
@@ -109,6 +116,8 @@ export interface PluginRelationWire {
   relation_id: string;
   source_plugin_id: string;
   target_plugin_id: string;
+  /** Pinned target version. Absent for connectors and for legacy unpinned edges. */
+  target_version_id?: string;
   relation_type: string;
   sort_order: number;
   data?: Record<string, unknown>;

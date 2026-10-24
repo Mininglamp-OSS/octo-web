@@ -463,7 +463,7 @@ async function loadSkills(
   const pluginIds: string[] = [];
   settled.forEach((res, i) => {
     if (res.status === "fulfilled") {
-      skills.push(fromSkillPlugin(res.value.plugin));
+      skills.push(fromSkillPlugin(res.value.plugin, rels[i].target_version_id));
       pluginIds.push(rels[i].target_plugin_id);
     } else if (axios.isCancel(res.reason) || !isDanglingTarget(res.reason)) {
       // Cancellation or a non-404 failure — surface it, don't drop silently.
@@ -555,6 +555,7 @@ async function loadSquadMember(
   return {
     key: memberKey,
     pluginId: rel.target_plugin_id,
+    versionId: rel.target_version_id,
     templateId: context.template_id,
     name: plugin.plugin_name ?? "",
     role: wiring.role ?? context.role ?? "",
@@ -658,6 +659,11 @@ async function updateExpertVisibilityReal(
         relation_type: rel.relation_type,
         sort_order: rel.sort_order,
         ...(rel.data !== undefined ? { data: rel.data } : {}),
+        // Full-replace echo: dropping the pin would silently unpin every edge
+        // when an owner only changes the audience.
+        ...(rel.target_version_id !== undefined
+          ? { target_version_id: rel.target_version_id }
+          : {}),
       })),
     });
   } catch (err) {
@@ -903,6 +909,9 @@ export interface ExpertChildRelation {
   /** Opaque per-edge payload — for 专家团 this carries the member's
    *  `member_key` / `is_leader` wiring that makes the team installable. */
   data?: Record<string, unknown>;
+  /** Pinned target version; the frozen snapshot must keep it or approval
+   *  freezes an unpinned graph. */
+  targetVersionId?: string;
 }
 
 /**
@@ -960,6 +969,9 @@ function mapChildRelations(
       // backend re-inserts the edge and loses what makes the team installable.
       relationId: rel.relation_id,
       ...(rel.data !== undefined ? { data: rel.data } : {}),
+      ...(rel.target_version_id !== undefined
+        ? { targetVersionId: rel.target_version_id }
+        : {}),
     }));
 }
 
