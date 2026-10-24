@@ -133,6 +133,20 @@ export default function ExpertCard({ item, onOpen, onEdit, onDelete, onAddToLoop
       </div>
 
       <div className="wk-mcp-card__slogan">{item.summary}</div>
+      {item.dependencyIssues && item.dependencyIssues.length > 0 && (
+        <div className="wk-mcp-card__dependency-warning">
+          {t("mcp.card.dependencyWarning")}
+          <span className="wk-mcp-card__dependency-warning__detail">
+            {item.dependencyIssues
+              .map((issue) =>
+                issue.reason
+                  ? `${issue.targetPluginId} · ${t(`mcp.card.dependencyIssue.${issue.reason}`)}`
+                  : issue.targetPluginId,
+              )
+              .join(", ")}
+          </span>
+        </div>
+      )}
 
       <div className="wk-mcp-card__tags">
         {visibleTags.map((tag) => (

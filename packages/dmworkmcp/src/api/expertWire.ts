@@ -13,6 +13,9 @@ import type {
   ExpertMember,
   ExpertSquad,
 } from "../mock/expertMock";
+
+export const DEPENDENCY_ISSUE_REASONS = ["delisted", "deleted", "version_unpublished"] as const;
+export type DependencyIssueReason = (typeof DEPENDENCY_ISSUE_REASONS)[number];
 import {
   jsonAttachment,
   rawAttachment,
@@ -320,6 +323,10 @@ export interface SkillRefWire {
 /** The legacy short_name never survived into the unified manifest; derive a
  *  compact logo glyph from the display name so ExpertCard's logo block keeps
  *  rendering. */
+function narrowDependencyReason(value: string | undefined): DependencyIssueReason | undefined {
+  return DEPENDENCY_ISSUE_REASONS.find((reason) => reason === value);
+}
+
 function deriveShortName(name: string): string {
   return name.trim().slice(0, 2);
 }
@@ -345,6 +352,11 @@ function commonFromPlugin(raw: PluginListItemWire, categoryName: string) {
     viewCount: raw.view_count ?? 0,
     installCount: raw.install_count ?? 0,
     version: raw.current_version ?? "",
+    dependencyIssues: raw.dependency_issues?.map((issue) => ({
+      targetPluginId: issue.target_plugin_id,
+      relationType: issue.relation_type,
+      reason: narrowDependencyReason(issue.reason),
+    })),
   };
 }
 
@@ -381,7 +393,8 @@ export function mapPluginSquadListItem(
  *  their files directly as attachments; a legacy skill/ref.json pointer is still
  *  honored for not-yet-expanded rows. */
 export function fromSkillPlugin(
-  plugin: PluginDetailPluginWire
+  plugin: PluginDetailPluginWire,
+  versionId?: string
 ): import("../mock/expertMock").ExpertSkill {
   const ref = jsonAttachment<SkillRefWire>(plugin.plugin_json, "skill/ref.json") ?? {};
   const attachments = plugin.plugin_json?.attachments ?? [];
@@ -412,5 +425,7 @@ export function fromSkillPlugin(
     fileName: isLegacy ? ref.file_name : treeFiles.length > 0 ? `${plugin.plugin_name ?? "skill"}.zip` : undefined,
     fileSize: isLegacy ? ref.file_size : treeSize,
     files: isLegacy ? ref.files : treeFiles,
+    versionId,
+
   };
 }

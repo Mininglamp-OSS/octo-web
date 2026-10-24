@@ -254,6 +254,11 @@ export default function ExpertDetailModal({ item, onClose }: ExpertDetailModalPr
                               {t("mcp.expert.leader")}
                             </span>
                           )}
+                          <span className="wk-mcp-expert-tag">
+                            {member.versionId
+                              ? `${t("mcp.expert.versionPinned")} ${member.versionId.slice(-8)}`
+                              : t("mcp.expert.versionUnpinned")}
+                          </span>
                         </strong>
                         <span>{member.role}</span>
                       </div>

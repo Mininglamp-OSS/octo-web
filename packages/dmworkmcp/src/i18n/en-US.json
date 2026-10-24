@@ -26,6 +26,8 @@
     "deletedToast": "Deleted"
   },
   "expert": {
+    "versionPinned": "Pinned version",
+    "versionUnpinned": "Not pinned",
     "typeSquad": "Squads",
     "typeAgent": "Experts",
     "navAriaLabel": "Expert type",
@@ -200,6 +202,7 @@
     "clear": "Clear"
   },
   "card": {
+    "dependencyWarning": "A dependency is unavailable",
     "officialPublisher": "Official publisher",
     "connect": "Add to Bot",
     "matchReason": {
@@ -218,7 +221,12 @@
     "edit": "Edit",
     "delete": "Delete",
     "viewCountTitle": "{{count}} views",
-    "installCountTitle": "{{count}} installs"
+    "installCountTitle": "{{count}} installs",
+    "dependencyIssue": {
+      "delisted": "delisted",
+      "deleted": "deleted",
+      "version_unpublished": "version not published"
+    }
   },
   "detail": {
     "title": "MCP Details",

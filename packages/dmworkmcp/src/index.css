@@ -915,6 +915,30 @@
   fill: #ffffff;
 }
 
+.wk-mcp-card__dependency-warning {
+  margin-top: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--wk-color-warning-bg);
+  color: var(--wk-color-warning);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.wk-mcp-card__dependency-warning__detail {
+  display: block;
+  margin-top: 2px;
+  color: inherit;
+  opacity: 0.78;
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.wk-mcp-expert-skill__pin {
+  color: var(--wk-text-secondary);
+  font-size: 12px;
+}
+
 .wk-mcp-card__slogan {
   min-height: 42px;
   margin: var(--wk-sp-3) 0 0;

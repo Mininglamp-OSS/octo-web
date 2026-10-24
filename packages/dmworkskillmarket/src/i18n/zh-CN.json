@@ -199,6 +199,8 @@
     "ariaLabel": "我的发布列表"
   },
   "review": {
+    "versionPinned": "固定",
+    "versionUnpinned": "未固定",
     "orgTab": "组织发布管理",
     "policyTitle": "自动审核",
     "policyDescription": "开启后，本组织的新发布和版本更新会自动通过；关闭后由组织管理员人工审核。组织所有者和管理员均可修改。",

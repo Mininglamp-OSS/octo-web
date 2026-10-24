@@ -99,6 +99,8 @@ export type ReviewDecisionSource = "web" | "im" | "policy";
 export interface ReviewRelation {
   relationId?: string;
   targetPluginId: string;
+  /** Pinned version of the frozen relation; absent for connectors/legacy. */
+  targetVersionId?: string;
   targetPluginType?: string;
   relationType: string;
   sortOrder: number;
