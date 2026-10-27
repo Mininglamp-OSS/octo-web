@@ -1,18 +1,6 @@
 // @vitest-environment jsdom
 
-/**
- * WS-99 client-fallback race 闭环回归。
- *
- * 兜底逻辑：收到某 assistant 的 final text 后把它最近一张「未终态」progress 卡本地标记为
- * `localFallbackApplied`（渲染层显示「未收到显式终态」banner）。本 suite 覆盖评审 blocker/P2——
- * 当权威内容编辑帧（`updateMessageByMessageExtras` 的 contentEdit，无论终态还是非终态）随后到达
- * 时，卡片内容已前进、兜底注解失真，必须撤回该本地标记（终态帧走正常终态渲染；非终态帧说明卡片
- * 又活了，撤回后可由后续 final text + 空闲判定重新触发）；而只读扩展（read receipt，无 contentEdit）
- * 不改内容，不得误撤回、也不得刷新空闲判定。
- *
- * 与 malformedMessageRender.test 一样用 REAL SDK + REAL MessageWrap + REAL
- * InteractiveCardContent，只 mock 掉 ConversationVM 构造所需的重型 App/Service 单例。
- */
+/** 普通消息不能替代执行终态；使用真实SDK/VM验证正文生成期间不提前完成。 */
 
 import { afterEach, describe, it, expect, vi } from "vitest"
 import {
@@ -185,258 +173,97 @@ function makeNonStringTextMessage(rawText: unknown): Message {
     return message
 }
 
-/** 建 VM，塞入一张卡 + 触发 final text 兜底，返回卡的 wrap（已 localFallbackApplied=true）。 */
-function primeFallback(header = "🤖 正在处理…"): { vm: any; cardWrap: MessageWrap } {
-    vi.useFakeTimers()
-    const vm: any = new ConversationVM(channel)
-    const cardWrap = makeCardWrap(header)
-    cardWrap.progressUpdatedAtSec = 0 // 远早于 now → 空闲足够
-    vm.messages.push(cardWrap)
-    vm.messagesOfOrigin.push(cardWrap)
-    vm.maybeFinalizeStuckProgressCard(makeFinalTextWrap())
-    vi.advanceTimersByTime(3000)
-    return { vm, cardWrap }
-}
-
-/** 造一条 MessageExtra（终态编辑帧 / 只读扩展）。 */
 function makeExtra(contentEdit?: InteractiveCardContent): MessageExtra {
     const extra = new MessageExtra()
     extra.messageID = "card-1"
-    if (contentEdit) {
-        extra.isEdit = true
-        extra.contentEdit = contentEdit
-    }
+    if (contentEdit) { extra.isEdit = true; extra.contentEdit = contentEdit }
     return extra
 }
 
-afterEach(() => {
-    vi.useRealTimers()
-    vi.clearAllMocks()
-})
+afterEach(() => { vi.useRealTimers(); vi.clearAllMocks() })
 
-describe("WS-99 client fallback finalize race", () => {
-    it("final text 到达并经过 grace period 后把未终态卡标记为兜底", () => {
-        const { cardWrap } = primeFallback()
-        expect(cardWrap.localFallbackApplied).toBe(true)
-    })
+describe("卡片只跟随权威终态，不从普通消息推断完成", () => {
+    for (const text of ["已提交本次响应。", "会话已经重置", "当前智能体繁忙，请稍后再试", "正在整理结果", "另一轮任务已经完成"]) {
+        it(`最终正文仍在生成时，普通消息「${text}」不会提前完成卡片`, () => {
+            vi.useFakeTimers()
+            const vm = new ConversationVM(channel)
+            vm.didMount()
+            try {
+                const card = makeCardWrap("🤖 正在整理结果")
+                card.progressUpdatedAtSec = 0
+                vm.messages.push(card)
+                vm.messagesOfOrigin.push(card)
+                const ordinary = makeFinalTextWrap().message
+                ordinary.content = new MessageText(text)
+                vm.messageListener(ordinary)
+                vi.advanceTimersByTime(30_000)
+                expect(card.localFallbackApplied).toBeFalsy()
+                expect(vm.messagesOfOrigin.some(message => message.clientMsgNo === ordinary.clientMsgNo)).toBe(true)
+                expect(card.message.remoteExtra?.isEdit).toBeFalsy()
+            } finally { vm.didUnMount() }
+        })
+    }
 
-    it("权威终态帧（✅ 已完成，agent_progress）到达后撤回兜底标记", () => {
-        const { vm, cardWrap } = primeFallback()
-        expect(cardWrap.localFallbackApplied).toBe(true)
-
-        vm.updateMessageByMessageExtras([makeExtra(makeCardContent("✅ 已完成 · 3 步"))])
-        expect(cardWrap.localFallbackApplied).toBe(false)
-    })
-
-    it("终态+回答合并帧（剥离了 layout metadata）到达后也撤回兜底标记", () => {
-        const { vm, cardWrap } = primeFallback()
-        vm.updateMessageByMessageExtras([
-            makeExtra(makeCardContent("✅ 已完成", { layout: false })),
-        ])
-        expect(cardWrap.localFallbackApplied).toBe(false)
-    })
-
-    it("只读扩展（read receipt，无 contentEdit）不撤回兜底标记", () => {
-        const { vm, cardWrap } = primeFallback()
-        const readReceipt = makeExtra() // 无 contentEdit → 有效卡仍是原未终态卡
-        readReceipt.readedCount = 3
-        vm.updateMessageByMessageExtras([readReceipt])
-        expect(cardWrap.localFallbackApplied).toBe(true)
-    })
-
-    it("非终态内容编辑帧（🤖 卡片又活了）到达后撤回兜底标记（P2-6）", () => {
-        const { vm, cardWrap } = primeFallback()
-        expect(cardWrap.localFallbackApplied).toBe(true)
-        // 兜底后卡片又收到权威的非终态编辑帧：内容已前进，兜底注解失真，必须撤回，
-        // 避免「内容在动却仍标注已兜底完成」的自相矛盾态。
-        vm.updateMessageByMessageExtras([makeExtra(makeCardContent("🤖 处理中 · 第 2 步"))])
-        expect(cardWrap.localFallbackApplied).toBe(false)
-    })
-
-    it("卡片又活了并再次卡住后，后续 final text 能重新触发兜底（P2-6 闭环）", () => {
-        const { vm, cardWrap } = primeFallback()
-        // 非终态编辑帧撤回兜底。
-        vm.updateMessageByMessageExtras([makeExtra(makeCardContent("🤖 处理中 · 第 2 步"))])
-        expect(cardWrap.localFallbackApplied).toBe(false)
-        // 再次陷入卡死（把到达时刻推回过去），新的 final text 应重新触发兜底。
-        cardWrap.progressUpdatedAtSec = 0
-        vm.maybeFinalizeStuckProgressCard(makeFinalTextWrap())
-        vi.advanceTimersByTime(3000)
-        expect(cardWrap.localFallbackApplied).toBe(true)
-    })
-
-    it("卡片在 pendingMessages（历史加载期间实时到达）时 final text 兜底仍生效", () => {
+    it("普通正文到达后仍等待显式终态，权威完成帧随后正常应用", () => {
         vi.useFakeTimers()
-        const vm: any = new ConversationVM(channel)
-        const cardWrap = makeCardWrap("🤖 正在处理…")
-        cardWrap.progressUpdatedAtSec = 0 // 远早于 now → 空闲足够
-        // 模拟 pullupHasMore 期间：卡片进缓冲区而非 messagesOfOrigin，messagesOfOrigin 为空。
-        vm.pendingMessages.push(cardWrap)
-        vm.maybeFinalizeStuckProgressCard(makeFinalTextWrap())
-        vi.advanceTimersByTime(3000)
-        expect(cardWrap.localFallbackApplied).toBe(true)
-    })
-
-    it("buffered 卡片（仅在 pendingMessages）的权威 edit frame 能被应用，到达时刻不冻结（finding E）", () => {
-        const vm: any = new ConversationVM(channel)
-        const cardWrap = makeCardWrap("🤖 正在处理…")
-        cardWrap.progressUpdatedAtSec = 0 // 初始到达（很久以前）
-        // pullup/history loading 期间卡片只在缓冲区，未进 this.messages。
-        vm.pendingMessages.push(cardWrap)
-        // 权威内容编辑帧到达：findMessageWithMessageID 现在会查 pendingMessages，能命中并刷新到达时刻。
-        vm.updateMessageByMessageExtras([makeExtra(makeCardContent("🤖 处理中 · 第 2 步"))])
-        expect(cardWrap.progressUpdatedAtSec).toBeGreaterThan(0)
-    })
-
-    it("buffered 卡片收到 edit frame 保持活跃后，紧接的 final text 不误挂兜底（finding E 端到端）", () => {
-        vi.useFakeTimers()
-        const vm: any = new ConversationVM(channel)
-        const cardWrap = makeCardWrap("🤖 正在处理…")
-        cardWrap.progressUpdatedAtSec = 0 // 初始到达很久以前；若 edit frame 丢失则会被误判为空闲
-        vm.pendingMessages.push(cardWrap)
-        // buffered window 内权威 edit frame 到达 → 应用到 pendingMessages 里的卡、刷新到达时刻。
-        vm.updateMessageByMessageExtras([makeExtra(makeCardContent("🤖 处理中 · 第 2 步"))])
-        // 紧接着 final text 到达：卡片刚更新过（idle < 3s），不应误触发兜底。修复前 edit frame 被
-        // 丢弃、到达时刻冻结在 0，会误判空闲并挂上 banner。
-        vm.maybeFinalizeStuckProgressCard(makeFinalTextWrap())
-        expect(cardWrap.localFallbackApplied).toBeFalsy()
-    })
-
-    it("final text 在 3s 空闲门槛前到达时，会在门槛到期后复检并兜底", () => {
-        vi.useFakeTimers()
-        vi.setSystemTime(new Date("2026-08-27T00:00:00.000Z"))
-        const vm: any = new ConversationVM(channel)
-        const cardWrap = makeCardWrap("🤖 正在处理…")
-        cardWrap.progressUpdatedAtSec = Date.now() / 1000
-        vm.messagesOfOrigin.push(cardWrap)
-
-        vm.maybeFinalizeStuckProgressCard(makeFinalTextWrap())
-        expect(cardWrap.localFallbackApplied).toBeFalsy()
-
-        vi.advanceTimersByTime(2999)
-        expect(cardWrap.localFallbackApplied).toBeFalsy()
-        vi.advanceTimersByTime(1)
-        expect(cardWrap.localFallbackApplied).toBe(true)
-    })
-
-    it("同步加载且未打时间戳的卡，会从 final text 到达时开始 grace 后兜底", () => {
-        vi.useFakeTimers()
-        vi.setSystemTime(new Date("2026-08-27T00:00:00.000Z"))
-        const vm: any = new ConversationVM(channel)
-        const cardWrap = makeCardWrap("🤖 正在处理…")
-        vm.messagesOfOrigin.push(cardWrap)
-        expect(cardWrap.progressUpdatedAtSec).toBeUndefined()
-
-        vm.maybeFinalizeStuckProgressCard(makeFinalTextWrap())
-        expect(cardWrap.progressUpdatedAtSec).toBe(Date.now() / 1000)
-        expect(cardWrap.localFallbackApplied).toBeFalsy()
-
-        vi.advanceTimersByTime(3000)
-        expect(cardWrap.localFallbackApplied).toBe(true)
-    })
-
-    it("健康时序中 final text 后到达终态帧，不会短暂显示兜底", () => {
-        vi.useFakeTimers()
-        vi.setSystemTime(new Date("2026-08-27T00:00:00.000Z"))
-        const vm: any = new ConversationVM(channel)
-        const cardWrap = makeCardWrap("🤖 Answering")
-        cardWrap.progressUpdatedAtSec = 0 // 模拟答案生成超过 3s，旧逻辑会在 final text 到达时立即误触发
-        vm.messagesOfOrigin.push(cardWrap)
-
-        vm.maybeFinalizeStuckProgressCard(makeFinalTextWrap())
-        expect(cardWrap.localFallbackApplied).toBeFalsy()
-        vi.advanceTimersByTime(1000)
-        vm.updateMessageByMessageExtras([makeExtra(makeCardContent("✅ 已完成 · 3 步"))])
-        vi.advanceTimersByTime(2000)
-
-        expect(cardWrap.localFallbackApplied).toBeFalsy()
-    })
-
-    it("延迟复检前收到权威新帧会取消旧复检", () => {
-        vi.useFakeTimers()
-        vi.setSystemTime(new Date("2026-08-27T00:00:00.000Z"))
-        const vm: any = new ConversationVM(channel)
-        const cardWrap = makeCardWrap("🤖 正在处理…")
-        cardWrap.progressUpdatedAtSec = Date.now() / 1000
-        vm.messagesOfOrigin.push(cardWrap)
-
-        vm.maybeFinalizeStuckProgressCard(makeFinalTextWrap())
-        vi.advanceTimersByTime(1000)
-        vm.updateMessageByMessageExtras([makeExtra(makeCardContent("🤖 处理中 · 第 2 步"))])
-        vi.advanceTimersByTime(3000)
-
-        expect(cardWrap.localFallbackApplied).toBeFalsy()
-    })
-
-    it("VM 卸载会取消尚未到期的延迟复检", () => {
-        vi.useFakeTimers()
-        vi.setSystemTime(new Date("2026-08-27T00:00:00.000Z"))
-        const vm: any = new ConversationVM(channel)
-        vm.didMount()
-        const cardWrap = makeCardWrap("🤖 正在处理…")
-        cardWrap.progressUpdatedAtSec = Date.now() / 1000
-        vm.messagesOfOrigin.push(cardWrap)
-
-        vm.maybeFinalizeStuckProgressCard(makeFinalTextWrap())
-        vm.didUnMount()
-        vi.advanceTimersByTime(3000)
-
-        expect(cardWrap.localFallbackApplied).toBeFalsy()
-    })
-
-    it("只读扩展（read receipt）不刷新 progressUpdatedAtSec（空闲判定不被重置）", () => {
-        const { vm, cardWrap } = primeFallback()
-        // 兜底后收到只读扩展；stampProgressCardArrival 不应被调用，progressUpdatedAtSec 保持原值。
-        const before = cardWrap.progressUpdatedAtSec
-        const readReceipt = makeExtra() // 无 contentEdit
-        readReceipt.readedCount = 5
-        vm.updateMessageByMessageExtras([readReceipt])
-        expect(cardWrap.progressUpdatedAtSec).toBe(before)
-    })
-
-    it("卡片内容编辑帧会刷新 progressUpdatedAtSec", () => {
-        const { vm, cardWrap } = primeFallback()
-        cardWrap.progressUpdatedAtSec = 0
-        vm.updateMessageByMessageExtras([makeExtra(makeCardContent("🤖 处理中 · 第 2 步"))])
-        expect(cardWrap.progressUpdatedAtSec).toBeGreaterThan(0)
-    })
-
-    it("非字符串 text 的 type=1 消息经真实 listener 不抛且仍能 append（P1 类型保护）", () => {
-        const vm: any = new ConversationVM(channel)
-        vm.didMount() // 装配真实 messageListener（走 stamp → maybeFinalize → append 全路径）
-        try {
-            // 塞一张未终态卡，确保 hot path 会走到 text 判定；即便卡存在也不该因 text.trim 抛错。
-            const cardWrap = makeCardWrap("🤖 正在处理…")
-            cardWrap.progressUpdatedAtSec = 0
-            vm.messages.push(cardWrap)
-            vm.messagesOfOrigin.push(cardWrap)
-
-            // number 型 text truthy 但非字符串，旧代码会在 text.trim() 抛 TypeError，
-            // 导致消息不入会话并中断后续 listener。
-            const badMsg = makeNonStringTextMessage(123)
-            expect(() => vm.messageListener(badMsg)).not.toThrow()
-            // 消息仍进入会话（append 未被中断）。
-            expect(
-                vm.messagesOfOrigin.some((m: MessageWrap) => m.clientMsgNo === "bad-text-1")
-            ).toBe(true)
-            // 畸形文本不应触发兜底（text 非法直接早退）。
-            expect(cardWrap.localFallbackApplied).toBeFalsy()
-        } finally {
-            vm.didUnMount() // 成对卸载：摘除注册到 SDK 单例上的 listener，避免跨用例泄漏。
-        }
-    })
-
-    it("object 型 text 的 type=1 消息经真实 listener 也不抛（类型保护覆盖 non-string truthy）", () => {
-        const vm: any = new ConversationVM(channel)
+        const vm = new ConversationVM(channel)
         vm.didMount()
         try {
-            const badMsg = makeNonStringTextMessage({ nested: "obj" })
-            expect(() => vm.messageListener(badMsg)).not.toThrow()
-            expect(
-                vm.messagesOfOrigin.some((m: MessageWrap) => m.clientMsgNo === "bad-text-1")
-            ).toBe(true)
-        } finally {
-            vm.didUnMount()
-        }
+            const card = makeCardWrap("🤖 正在生成最终回复")
+            vm.messages.push(card)
+            vm.messagesOfOrigin.push(card)
+            vm.messageListener(makeFinalTextWrap().message)
+            vi.advanceTimersByTime(30_000)
+            expect(card.localFallbackApplied).toBeFalsy()
+            const terminal = makeCardContent("✅ 已完成 · 3 步")
+            vm.updateMessageByMessageExtras([makeExtra(terminal)])
+            expect(card.message.remoteExtra.contentEdit).toBe(terminal)
+            expect(card.localFallbackApplied).toBeFalsy()
+        } finally { vm.didUnMount() }
     })
+
+    it("历史加载缓冲区里的卡片也只由权威内容编辑推进", () => {
+        const vm = new ConversationVM(channel)
+        const card = makeCardWrap("🤖 正在处理…")
+        vm.pendingMessages.push(card)
+        const progress = makeCardContent("🤖 正在生成最终回复")
+        vm.updateMessageByMessageExtras([makeExtra(progress)])
+        expect(card.message.remoteExtra.contentEdit).toBe(progress)
+        expect(card.localFallbackApplied).toBeFalsy()
+        const completed = makeCardContent("✅ 已完成", { layout: false })
+        vm.updateMessageByMessageExtras([makeExtra(completed)])
+        expect(card.message.remoteExtra.contentEdit).toBe(completed)
+    })
+
+    it("只读扩展不把进行中的卡片改为完成", () => {
+        const vm = new ConversationVM(channel)
+        const card = makeCardWrap("🤖 正在生成最终回复")
+        vm.messagesOfOrigin.push(card)
+        const receipt = makeExtra()
+        receipt.readedCount = 3
+        vm.updateMessageByMessageExtras([receipt])
+        expect(card.localFallbackApplied).toBeFalsy()
+        expect(card.message.remoteExtra.contentEdit).toBeUndefined()
+    })
+
+    it("权威编辑帧撤销遗留的本地完成标记", () => {
+        const vm = new ConversationVM(channel)
+        const card = makeCardWrap("🤖 正在处理…")
+        card.localFallbackApplied = true
+        vm.messagesOfOrigin.push(card)
+        vm.updateMessageByMessageExtras([makeExtra(makeCardContent("🤖 正在生成最终回复"))])
+        expect(card.localFallbackApplied).toBe(false)
+    })
+
+    for (const value of [123, { nested: "obj" }]) {
+        it(`畸形普通文本不会中断真实消息接收：${typeof value}`, () => {
+            const vm = new ConversationVM(channel)
+            vm.didMount()
+            try {
+                const message = makeNonStringTextMessage(value)
+                expect(() => vm.messageListener(message)).not.toThrow()
+                expect(vm.messagesOfOrigin.some(item => item.clientMsgNo === "bad-text-1")).toBe(true)
+            } finally { vm.didUnMount() }
+        })
+    }
 })
