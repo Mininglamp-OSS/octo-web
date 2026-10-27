@@ -6,6 +6,9 @@ import {
   getMySkills,
   getSkillTags,
   getSkill,
+  getSkillDraft,
+  getPublishedAudience,
+  changePublishedAudience,
   trackSkillView,
   getSkillMd,
   createSkill,
@@ -77,6 +80,25 @@ function pluginSkillWire(overrides: Record<string, unknown> = {}) {
 }
 
 describe("skillApiReal", () => {
+  it("uses the published pointer for audience changes and never sends content or a new label", async () => {
+    mockFetch.mockReturnValueOnce(jsonResponse({ plugin: pluginSkillWire({ listing_state: "published", current_version_id: "released-v1", visibility: "private" }), relations: [] }));
+    expect((await getPublishedAudience("skill-1")).publishedVersionId).toBe("released-v1");
+    mockFetch.mockReturnValueOnce(jsonResponse({ visibility: "private", published_version_id: "released-v1", display_status: "pending_review" }));
+    await changePublishedAudience("skill-1", "released-v1", "space");
+    expect(mockFetch.mock.calls[1][0]).toContain("/plugins/skill-1/visibility");
+    expect(mockFetch.mock.calls[1][1].method).toBe("PATCH");
+    expect(JSON.parse(mockFetch.mock.calls[1][1].body)).toEqual({ visibility: "space", expected_published_version_id: "released-v1" });
+  });
+
+  it("round-trips current draft notes, including an explicit clear", async () => {
+    mockFetch.mockReturnValueOnce(jsonResponse({ plugin: pluginSkillWire(), relations: [], draft_changelog: "current draft notes" }));
+    expect((await getSkillDraft("ci-failure-map")).draftChangelog).toBe("current draft notes");
+    mockFetch.mockReturnValueOnce(jsonResponse({ plugin: pluginSkillWire(), relations: [] }));
+    mockFetch.mockReturnValueOnce(jsonResponse({ plugin: pluginSkillWire(), relations: [] }));
+    await updateSkill("ci-failure-map", { changelog: "" });
+    expect(JSON.parse(mockFetch.mock.calls[2][1].body).changelog).toBe("");
+  });
+
   it("reads and updates the authenticated Space review policy", async () => {
     mockFetch
       .mockReturnValueOnce(jsonResponse({ is_auto_approve_enabled: true }))
@@ -307,6 +329,14 @@ describe("skillApiReal", () => {
     const result = await getMySkills({ cursor: "2", limit: 20 });
 
     expect(result).toEqual({ items: [], nextCursor: null, total: 100 });
+  });
+
+  it("getSkillDraft seeds edit forms from the current saved metadata", async () => {
+    mockFetch.mockReturnValueOnce(jsonResponse({ plugin: pluginSkillWire({ plugin_name: "Saved draft", current_version: "1.0.1" }), relations: [] }));
+    const item = await getSkillDraft("ci-failure-map");
+    expect(item.displayName).toBe("Saved draft");
+    expect(item.version).toBe("1.0.1");
+    expect(mockFetch.mock.calls[0][0]).toContain("/plugins/ci-failure-map/draft");
   });
 
   it("getSkill maps the plugin detail with package artifacts", async () => {
@@ -606,6 +636,7 @@ describe("skillApiReal", () => {
     mockFetch.mockReturnValueOnce(jsonResponse({ plugin: current, relations: [] }));
 
     await updateSkill("ci-failure-map", { displayName: "改名", tags: ["新标签"] });
+    expect(mockFetch.mock.calls[0][0]).toContain("/plugins/ci-failure-map/draft");
 
     const [url, init] = mockFetch.mock.calls[mockFetch.mock.calls.length - 1] as [string, RequestInit];
     expect(url).toBe("/market/api/v1/plugins/upsert");

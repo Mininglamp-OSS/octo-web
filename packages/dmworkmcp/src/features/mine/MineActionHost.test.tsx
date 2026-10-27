@@ -9,6 +9,7 @@ const h = vi.hoisted(() => ({
   getSkill: vi.fn(),
   fetchMcpDetail: vi.fn(),
   getExpert: vi.fn(),
+  getExpertEditMetadata: vi.fn(),
   getSquad: vi.fn(),
   loadExpertReviewSnapshot: vi.fn(),
   toastError: vi.fn(),
@@ -59,6 +60,7 @@ vi.mock("@douyinfe/semi-ui", () => ({
 vi.mock("@dmwork/skillmarket", () => ({
   getCategories: (...args: unknown[]) => h.getCategories(...args),
   getSkill: (...args: unknown[]) => h.getSkill(...args),
+  getSkillDraft: (...args: unknown[]) => h.getSkill(...args),
   SkillDetailModal: ({
     skillId,
     onEdit,
@@ -92,6 +94,7 @@ vi.mock("../../api/mcpService", () => ({
 
 vi.mock("../../api/expertService", () => ({
   getExpert: (...args: unknown[]) => h.getExpert(...args),
+  getExpertEditMetadata: (...args: unknown[]) => h.getExpertEditMetadata(...args),
   getSquad: (...args: unknown[]) => h.getSquad(...args),
   loadExpertReviewSnapshot: (...args: unknown[]) =>
     h.loadExpertReviewSnapshot(...args),
@@ -202,6 +205,7 @@ beforeEach(() => {
   h.getSkill.mockResolvedValue(skill);
   h.fetchMcpDetail.mockResolvedValue(connector);
   h.getExpert.mockResolvedValue(expert);
+  h.getExpertEditMetadata.mockResolvedValue(expert);
   h.getSquad.mockResolvedValue(squad);
 });
 
@@ -250,6 +254,9 @@ describe("MineActionHost", () => {
         .querySelector('[data-testid="expert-edit"]')
         ?.getAttribute("data-id")
     ).toBe(expert.id);
+
+    expect(h.getExpertEditMetadata).toHaveBeenCalledWith(expert.id);
+    expect(h.getExpert).not.toHaveBeenCalled();
 
     renderHost({
       requestId: 4,
@@ -353,7 +360,7 @@ describe("MineActionHost", () => {
 
   it("reports a load failure and closes the pending action", async () => {
     const onClose = vi.fn();
-    h.getExpert.mockRejectedValueOnce(new Error("load failed"));
+    h.getExpertEditMetadata.mockRejectedValueOnce(new Error("load failed"));
 
     renderHost(
       { requestId: 1, pluginId: expert.id, type: "expert", action: "edit" },

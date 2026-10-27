@@ -128,6 +128,7 @@ export interface PluginRelationWire {
 }
 
 export interface PluginDetailWire {
+  draft_changelog?: string;
   plugin: PluginDetailPluginWire;
   relations: PluginRelationWire[];
   /** Owner-only diagnostics, emitted beside `plugin` by the detail endpoint. */

@@ -6,7 +6,7 @@
 // drives ReactDOM.render + react-dom/test-utils act rather than RTL.
 import React from "react";
 import ReactDOM from "react-dom";
-import { act } from "react-dom/test-utils";
+import { Simulate, act } from "react-dom/test-utils";
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 
 // Real subscription bookkeeping rather than a bare spy: this suite has to
@@ -33,6 +33,7 @@ vi.mock("@octo/base", () => ({
       emit: emitBus,
     },
   },
+  WKInput: ({ value, onChange, ...props }: any) => <input {...props} value={value} onChange={(e) => onChange(e.target.value)} />,
   WKButton: ({
     children,
     onClick,
@@ -194,6 +195,34 @@ describe("ExpertEditModal space-switch guard", () => {
 
     expect(onSaved).toHaveBeenCalledTimes(1);
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("edits the display name and version in the existing modal", async () => {
+    updateExpertVisibility.mockResolvedValue(undefined);
+    publishPluginListing.mockResolvedValue({ displayStatus: "published" });
+    await act(async () => {
+      ReactDOM.render(<ExpertEditModal item={item} onClose={vi.fn()} onSaved={vi.fn()} onEditContent={vi.fn()} />, container);
+    });
+    const fields = container!.querySelectorAll('input:not([type="radio"])');
+    await act(async () => {
+      Simulate.change(fields[0], { target: { value: "Renamed Expert" } } as any);
+      Simulate.change(fields[1], { target: { value: "1.0.1" } } as any);
+    });
+    await act(async () => { button("skillMarket.plugin.actionPublish").click(); });
+    expect(updateExpertVisibility).toHaveBeenCalledWith("expert-old-space", "private", { name: "Renamed Expert", version: "1.0.1", changelog: "" });
+    expect(publishPluginListing).toHaveBeenCalledWith("expert-old-space", { version: "1.0.1" });
+  });
+
+  it("prefills saved draft notes and persists a note-only edit", async () => {
+    updateExpertVisibility.mockResolvedValue(undefined);
+    await act(async () => {
+      ReactDOM.render(<ExpertEditModal item={{ ...item, draftChangelog: "Saved draft note" }} onClose={vi.fn()} onSaved={vi.fn()} onEditContent={vi.fn()} />, container);
+    });
+    const fields = container!.querySelectorAll('input:not([type="radio"])');
+    expect((fields[2] as HTMLInputElement).value).toBe("Saved draft note");
+    await act(async () => { Simulate.change(fields[2], { target: { value: "Revised note" } } as any); });
+    await act(async () => { button(SAVE).click(); });
+    expect(updateExpertVisibility).toHaveBeenCalledWith(item.id, "private", expect.objectContaining({ changelog: "Revised note" }));
   });
 
   it("stops listening once unmounted", async () => {

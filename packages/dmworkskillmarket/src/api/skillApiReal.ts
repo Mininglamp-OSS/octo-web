@@ -1,3 +1,4 @@
+import { withReviewInvalidation } from "./reviewSignal";
 /**
  * Real HTTP client for the skill marketplace API.
  *
@@ -7,6 +8,7 @@
  * their legacy endpoints on the same service. Snake_case wire shapes are
  * mapped onto the unchanged camelCase frontend types.
  */
+import { pluginErrorMessage } from "./pluginErrors";
 import { resolveSkillMarketApiBaseURL } from "./constants";
 import { WKApp, t, DEFAULT_REQUEST_TIMEOUT_MS } from "@octo/base";
 import type {
@@ -106,7 +108,7 @@ function normalizeError(input: {
 }): SkillMarketApiError {
   return new SkillMarketApiError(
     input.code ?? (input.status ? `http_${input.status}` : "unknown_error"),
-    input.message || "Request failed",
+    pluginErrorMessage(input.code, input.details) || input.message || "Request failed",
     input.status,
     input.details
   );
@@ -598,6 +600,12 @@ export function getSkill(id: string): Promise<Skill> {
   ).then((detail) => mapSkillDetail(detail.plugin));
 }
 
+/** Owner edit forms must read saved drafts, rather than the released projection. */
+export function getSkillDraft(id: string): Promise<Skill> {
+  return request<PluginDetailWire>(`/plugins/${encodeURIComponent(id)}/draft`)
+    .then((detail) => ({ ...mapSkillDetail(detail.plugin), draftChangelog: detail.draft_changelog ?? "" }));
+}
+
 export async function trackSkillView(id: string): Promise<void> {
   await request<Record<string, never>>(
     "/metrics/track",
@@ -677,7 +685,7 @@ export async function updateSkill(id: string, form: UpdateSkillForm): Promise<Sk
   // Metadata-only edit: the upsert is a full replace, so merge the form onto
   // the current documents and re-embed the canonical manifest.
   const current = await request<PluginDetailWire>(
-    `/plugins/detail?plugin_id=${encodeURIComponent(id)}&include_relations=false`
+    `/plugins/${encodeURIComponent(id)}/draft`
   );
   const plugin = current.plugin;
   const manifest = plugin.manifest_json ?? {};
@@ -727,6 +735,7 @@ export async function updateSkill(id: string, form: UpdateSkillForm): Promise<Sk
         },
       },
       relations: [],
+      changelog: form.changelog,
     }),
   });
   // A save IS a version snapshot server-side (the backend appends a
@@ -1366,3 +1375,19 @@ export function updateReviewPolicy(enabled: boolean): Promise<PluginReviewPolicy
     body: JSON.stringify({ is_auto_approve_enabled: enabled }),
   }).then(mapReviewPolicy);
 }
+
+export interface PublishedAudience {
+  name: string;
+  visibility: "private" | "space";
+  publishedVersionId: string;
+}
+export async function getPublishedAudience(id: string): Promise<PublishedAudience> {
+  const detail = await request<PluginDetailWire>(`/plugins/detail?plugin_id=${encodeURIComponent(id)}&include_relations=false`);
+  if (detail.plugin.listing_state !== "published" || !detail.plugin.current_version_id || (detail.plugin.visibility !== "private" && detail.plugin.visibility !== "space")) {
+    throw new Error(t("skillMarket.visibility.unavailable"));
+  }
+  return { name: detail.plugin.plugin_name, visibility: detail.plugin.visibility, publishedVersionId: detail.plugin.current_version_id };
+}
+export const changePublishedAudience = withReviewInvalidation(async (id: string, publishedVersionId: string, visibility: "private" | "space") => request<{ visibility: string; published_version_id: string; display_status: string; review_id?: string }>(`/plugins/${encodeURIComponent(id)}/visibility`, {
+  method: "PATCH", body: JSON.stringify({ visibility, expected_published_version_id: publishedVersionId }),
+}));

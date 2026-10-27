@@ -114,6 +114,7 @@ export interface MineRow {
    *  types. */
   onPublish?: () => void;
   onUpgrade?: () => void;
+  onVisibility?: () => void;
   onCancelReview?: () => void;
   onApprove?: () => void;
   onReject?: () => void;
@@ -333,6 +334,7 @@ export default function MineTable({ rows, ariaLabel }: MineTableProps) {
                 leading={<Upload size={13} aria-hidden="true" />}
                 label={t("skillMarket.plugin.actionUpgrade")}
               />
+              <RowAction show={!!r.onVisibility} busy={r.busy} onClick={r.onVisibility} leading={<Building2 size={13} aria-hidden="true" />} label={t("skillMarket.visibility.title")} />
               <RowAction
                 show={!!r.onCancelReview}
                 busy={r.busy}

@@ -77,3 +77,5 @@ export const triggerParse = realApi.triggerParse;
 export const pollParse = realApi.pollParse;
 export const initReupload = realApi.initReupload;
 export const getSkillMd = realApi.getSkillMd;
+
+export const getSkillDraft = realApi.getSkillDraft;

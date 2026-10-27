@@ -19,6 +19,7 @@ const api = vi.hoisted(() => ({
   deleteExpert: vi.fn(),
   deleteSquad: vi.fn(),
   getExpert: vi.fn(),
+  getExpertEditMetadata: vi.fn(),
   getSquad: vi.fn(),
 }));
 const pluginReview = vi.hoisted(() => ({ cancelPluginReview: vi.fn(), publishPluginListing: vi.fn() }));
@@ -46,6 +47,7 @@ vi.mock("@douyinfe/semi-ui", () => ({
   Tooltip: () => null,
 }));
 vi.mock("@dmwork/skillmarket", async () => ({
+  VisibilityModal: () => null,
   deriveSkillReviewState: (await import("../../../dmworkskillmarket/src/utils/review")).deriveSkillReviewState,
   useReviewRequests: reviews.useReviewRequests,
   MineTable: ({ rows }: { rows: MineRow[] }) => (
@@ -73,7 +75,7 @@ vi.mock("../components/ExpertDeleteConfirmModal", () => ({
   default: () => null,
 }));
 vi.mock("../components/ExpertAddToLoopModal", () => ({ default: () => null }));
-vi.mock("../components/ExpertEditModal", () => ({ default: () => null }));
+vi.mock("../components/ExpertEditModal", () => ({ default: ({ item }: { item?: ExpertItem }) => item ? <div data-edited-notes={item.draftChangelog} /> : null }));
 vi.mock("../components/ReviewSubmitModal", () => ({ default: () => null }));
 
 import ExpertMarketListPage from "./ExpertMarketListPage";
@@ -249,6 +251,17 @@ function deferred<T>() {
 }
 
 describe("expert catalog server search and pagination", () => {
+  it("hydrates saved draft notes before opening the expert type-tab editor", async () => {
+    const item = { ...records[0], visibility: "private", listingState: "draft", displayStatus: "draft" } as ExpertItem;
+    api.listMyExperts.mockResolvedValue({ items: [item], total: 1 });
+    api.getExpertEditMetadata.mockResolvedValue({ ...item, draftChangelog: "Saved expert draft notes" });
+    await render({ variant: "mine", mineType: "agent" });
+    click(button("edit"));
+    await tick();
+    expect(api.getExpertEditMetadata).toHaveBeenCalledWith(item.id);
+    expect(root.querySelector("[data-edited-notes]")?.getAttribute("data-edited-notes")).toBe("Saved expert draft notes");
+  });
+
   it("renders 综合/最新/最热 in order and defaults public discovery to comprehensive", async () => {
     await render();
 

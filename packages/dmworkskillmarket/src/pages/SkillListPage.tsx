@@ -13,7 +13,7 @@ import { t, useI18n, WKApp, WKButton, Dap } from "@octo/base";
 import type { Skill, SkillSort } from "../types/skill";
 import { useSkills } from "../hooks/useSkills";
 import { useReviewRequests } from "../hooks/useReviewRequests";
-import { cancelReview, publishPlugin } from "../api/skillApi";
+import { cancelReview, publishPlugin, getSkillDraft } from "../api/skillApi";
 import { deriveSkillReviewState } from "../utils/review";
 import BotPublishModal from "../components/BotPublishModal";
 import CategoryChips from "../components/CategoryChips";
@@ -25,6 +25,7 @@ import SearchBar from "../components/SearchBar";
 import SkillCard from "../components/SkillCard";
 import SkillCardSkeleton from "../components/SkillCardSkeleton";
 import SkillDetailModal from "../components/SkillDetailModal";
+import VisibilityModal from "../features/visibility/VisibilityModal";
 import MineTable from "../components/MineTable";
 import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 
@@ -78,6 +79,8 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
   const [publishMenuOpen, setPublishMenuOpen] = useState(false);
   const [botPublishVisible, setBotPublishVisible] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const editGeneration = useRef(0);
+  const [visibilityId, setVisibilityId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Skill | null>(null);
   const [deleting, setDeleting] = useState<Skill | null>(null);
   const [installSkillId, setInstallSkillId] = useState<string | null>(null);
@@ -108,6 +111,8 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
 
   useEffect(() => {
     const handleSpaceChanged = () => {
+      editGeneration.current++;
+      setVisibilityId(null);
       setPublishMenuOpen(false);
       setCreateVisible(false);
       setReviewSkill(null);
@@ -121,7 +126,7 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
       reviewsRefreshRef.current();
     };
     WKApp.mittBus.on("space-changed", handleSpaceChanged);
-    return () => WKApp.mittBus.off("space-changed", handleSpaceChanged);
+    return () => { editGeneration.current++; WKApp.mittBus.off("space-changed", handleSpaceChanged); };
   }, []);
 
   useEffect(() => {
@@ -257,6 +262,16 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
     setDetailId(item.id);
   }
 
+  async function openEditor(skill: Skill) {
+    const generation = ++editGeneration.current;
+    try {
+      const draft = await getSkillDraft(skill.id);
+      if (generation === editGeneration.current) setEditing(draft);
+    } catch (err) {
+      if (generation === editGeneration.current) showToast(err instanceof Error ? err.message : t("skillMarket.common.loadFailed"));
+    }
+  }
+
   /** Edit from the detail modal — the SECOND entry point into the editor, gated
    *  with the same predicate as the row's 编辑 button so it cannot route around
    *  review (mirrors McpMarketListPage.handleEditFromDetail). Passing
@@ -279,7 +294,7 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
       openReviewSubmit(skill);
       return;
     }
-    setEditing(skill);
+    void openEditor(skill);
   }
 
   // Join this user's own review requests onto their rows by plugin id. Review
@@ -477,7 +492,8 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
                 // is editable by definition (that is how you fix and republish).
                 // While a request is pending nothing changes either, so the live
                 // version stays up until a decision lands.
-                onEdit: !listedToOrg && !pending ? () => setEditing(skill) : undefined,
+                onVisibility: skill.listingState === "published" && !pending && (skill.visibility === "private" || skill.visibility === "space") ? () => setVisibilityId(skill.id) : undefined,
+                onEdit: !listedToOrg && !pending ? () => void openEditor(skill) : undefined,
                 onDelete: () => setDeleting(skill),
                 // The shared plugin namespace, same as the connector and expert
                 // pages: one MineTable affordance must not announce itself with
@@ -552,6 +568,7 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
         visible={botPublishVisible}
         onClose={() => setBotPublishVisible(false)}
       />
+      <VisibilityModal pluginId={visibilityId} onClose={() => setVisibilityId(null)} onSaved={message => { showToast(message); list.refresh(); myReviews.refresh(); }} />
       <EditSkillModal
         skill={editing}
         categories={list.categories}

@@ -125,11 +125,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
     setIconPreview(skill.iconUrl || null);
     setIconBlob(null);
     setIconCropFile(null);
-    // Start blank: the field is editable whenever a changelog is actually asked
-    // for (a re-upload, or a 本组织 publish), and seeding it with filler text
-    // would submit that filler as the org-review changelog unless the author
-    // noticed and cleared it. A re-upload also blanks it below.
-    setChangelog("");
+    setChangelog(skill.draftChangelog ?? "");
     setError(null);
     setConfirmClose(false);
     setTimeout(() => { abortRef.current = false; }, 0);
@@ -143,6 +139,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
     JSON.stringify(tags) !== JSON.stringify(skill?.tags) ||
     Boolean(tagDraft.trim()) ||
     Boolean(uploadedFile) ||
+    changelog !== (skill?.draftChangelog ?? "") ||
     Boolean(iconBlob)
   );
 
@@ -438,7 +435,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
   async function submit(publish: boolean) {
     if (!skill) return;
     if (!name.trim() || !displayName.trim() || !categoryId || !version.trim() || (parseTaskId && !changelog.trim())) {
-      setError(t("skillMarket.form.validationRequired"));
+      setError(t(!categoryId ? "skillMarket.form.categoryRequired" : "skillMarket.form.validationRequired"));
       return;
     }
     const draftError = getTagDraftError();
@@ -460,7 +457,8 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
       }
       const updated = await updateSkill(skill.id, {
         version,
-        ...(parseTaskId ? { parseTaskId, changelog } : {}),
+        ...(parseTaskId ? { parseTaskId } : {}),
+        changelog,
         name,
         displayName,
         description,
@@ -667,7 +665,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
           <h3 className="skill-market-form__section-title">
             {t("skillMarket.plugin.columnVisibility")}
           </h3>
-          {!tenantVisibility ? (
+          {skill?.listingState === "published" && tenantVisibility ? <p className="skill-market-form__hint">{t("skillMarket.visibility.useAction")}</p> : !tenantVisibility ? (
             // Admin-managed audience. Shown, not editable: a tenant cannot mint
             // or change 全平台, and the value has to survive the save.
             <p className="skill-market-form__hint">
@@ -703,13 +701,6 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
               </label>
             ))}
           </div>
-          )}
-          {/* Saying it before the save, not after: a published plugin whose
-              audience widens stops being listed until it goes through 发布 again,
-              and an author who is not told will read that as their plugin
-              disappearing. */}
-          {skill?.listingState === "published" && visibility !== skill.visibility && (
-            <p className="skill-market-form__hint">{t("skillMarket.plugin.visibilityChangeUnlists")}</p>
           )}
 
           <h3 className="skill-market-form__section-title">{t("skillMarket.form.basicInfoSection")}</h3>

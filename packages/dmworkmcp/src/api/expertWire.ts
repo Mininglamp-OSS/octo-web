@@ -321,6 +321,9 @@ export interface SkillRefWire {
   files?: string[];
   object_key?: string;
   zip_object_key?: string;
+  object_key_hash?: string;
+  zip_object_key_hash?: string;
+  file_url_hash?: string;
 }
 
 /** The legacy short_name never survived into the unified manifest; derive a
@@ -410,7 +413,7 @@ export function mapPluginSquadListItem(
  *  their files directly as attachments; a legacy skill/ref.json pointer is still
  *  honored for not-yet-expanded rows. */
 export function fromSkillPlugin(
-  plugin: PluginDetailPluginWire,
+  plugin: Pick<PluginDetailPluginWire, "plugin_id" | "plugin_name" | "plugin_json">,
   versionId?: string
 ): import("../mock/expertMock").ExpertSkill {
   const ref = jsonAttachment<SkillRefWire>(plugin.plugin_json, "skill/ref.json") ?? {};
@@ -430,11 +433,11 @@ export function fromSkillPlugin(
   return {
     name: plugin.plugin_name ?? "",
     pluginId: plugin.plugin_id,
-    hasContent: inlineMd || !!ref.object_key,
+    hasContent: inlineMd || !!ref.object_key || !!ref.object_key_hash,
     // A tree skill is downloadable (the backend rebuilds a zip) when it carries
     // supporting files beyond SKILL.md; legacy skills need a resolvable pointer.
     canDownload: isLegacy
-      ? managedZip || !!ref.zip_object_key || !!ref.file_url
+      ? managedZip || !!ref.zip_object_key || !!ref.file_url || !!ref.zip_object_key_hash || !!ref.file_url_hash
       : treeFiles.length > 0,
     // Tree skills have no ref.json, so synthesize a download filename from the
     // plugin name (matching mapSkillDetail in the skill market); legacy skills

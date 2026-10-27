@@ -123,7 +123,8 @@ describe("SkillListPage", () => {
       { name: "协作" },
       { name: "代码" },
     ]);
-    vi.mocked(api.getSkill).mockResolvedValue(skill);
+    vi.mocked(api.getSkill).mockReset().mockResolvedValue(skill);
+    vi.mocked(api.getSkillDraft).mockResolvedValue(skill);
     vi.mocked(api.trackSkillView).mockResolvedValue(undefined);
     vi.mocked(api.getSkillMd).mockResolvedValue(skill.readmeContent);
     vi.mocked(api.updateSkill).mockResolvedValue(skill);
@@ -185,6 +186,16 @@ describe("SkillListPage", () => {
   // one-axis model could not express, such as a PUBLISHED PRIVATE plugin (no org
   // audience to protect) and a DELISTED one (editing is how you fix and
   // republish).
+  it("hydrates notes from the saved draft when editing from the Skill tab", async () => {
+    const draft = { ...skill, visibility: "private" as const, listingState: "draft" as const, draftChangelog: "Saved draft on type tab" };
+    vi.mocked(api.getMySkills).mockResolvedValue({ items: [draft], nextCursor: null, total: 1 });
+    vi.mocked(api.getSkillDraft).mockResolvedValue(draft);
+    render(<SkillListPage variant="mine" />);
+    fireEvent.click(await screen.findByRole("button", { name: editSkillName }));
+    expect(await screen.findByDisplayValue("Saved draft on type tab")).toBeInTheDocument();
+    expect(api.getSkillDraft).toHaveBeenCalledWith(skill.id);
+  });
+
   const editCases: Array<{
     label: string;
     patch: Partial<Skill>;
@@ -787,6 +798,7 @@ describe("SkillListPage", () => {
       total: 1,
     });
     vi.mocked(api.updateSkill).mockResolvedValue(updatedSkill);
+    vi.mocked(api.getSkillDraft).mockResolvedValue(draft);
     vi.mocked(api.getSkill)
       .mockResolvedValueOnce(draft)
       .mockResolvedValueOnce(updatedSkill);
@@ -799,7 +811,7 @@ describe("SkillListPage", () => {
     expect((await screen.findAllByText(skill.name)).length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getAllByRole("button", { name: editSkillName }).at(-1)!);
-    fireEvent.change(screen.getByPlaceholderText(displayNamePlaceholder), {
+    fireEvent.change(await screen.findByPlaceholderText(displayNamePlaceholder), {
       target: { value: updatedSkill.displayName },
     });
     fireEvent.click(screen.getByRole("button", { name: saveButtonName }));
@@ -822,7 +834,8 @@ describe("SkillListPage", () => {
     // The default fixture is published + space (listed to the org). Opening its
     // detail modal and clicking 编辑 must NOT reach updateSkill — it opens the
     // 升级版本 (review-submit) flow instead, so the edit becomes reviewed content.
-    vi.mocked(api.getSkill).mockResolvedValue(skill);
+    vi.mocked(api.getSkill).mockReset().mockResolvedValue(skill);
+    vi.mocked(api.getSkillDraft).mockResolvedValue(skill);
 
     render(<SkillListPage variant="mine" />);
 

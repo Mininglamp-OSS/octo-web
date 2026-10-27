@@ -6,6 +6,7 @@ import {
   DeleteConfirmModal,
   getCategories,
   getSkill,
+  getSkillDraft,
   NewSkillModal,
   SkillDetailModal,
   type Category,
@@ -23,6 +24,7 @@ import ReviewSubmitModal, {
 import { fetchMcpDetail } from "../../api/mcpService";
 import {
   getExpert,
+  getExpertEditMetadata,
   getSquad,
   loadExpertReviewSnapshot,
 } from "../../api/expertService";
@@ -108,7 +110,7 @@ export default function MineActionHost({
           return;
         }
         const [item, categories] = await Promise.all([
-          getSkill(request.pluginId),
+          request.action === "edit" ? getSkillDraft(request.pluginId) : getSkill(request.pluginId),
           getCategories(),
         ]);
         if (!active) return;
@@ -131,14 +133,18 @@ export default function MineActionHost({
         return;
       }
 
+      if (request.action === "edit") {
+        const draft = await getExpertEditMetadata(request.pluginId);
+        if (active) setExpert(draft);
+        return;
+      }
+
       const item = await (request.type === "squad"
         ? getSquad(request.pluginId)
         : getExpert(request.pluginId));
       if (!active) return;
       if (request.action === "view") {
         setExpertDetail(item);
-      } else if (request.action === "edit") {
-        setExpert(item);
       } else {
         setReviewTarget({
           pluginId: item.id,

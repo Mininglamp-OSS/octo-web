@@ -1,3 +1,4 @@
+import { pluginErrorMessage } from "@dmwork/skillmarket/src/api/pluginErrors";
 import axios, { AxiosRequestConfig } from "axios";
 import { WKApp, buildAcceptLanguage, t, DEFAULT_REQUEST_TIMEOUT_MS } from "@octo/base";
 import type {
@@ -33,6 +34,8 @@ import {
   type OffsetPaginationWire,
   type PluginCategoryWire,
   type PluginDetailWire,
+  type PluginPackageWire,
+  type PluginManifestWire,
   type PluginListItemWire,
   type PluginRelationWire,
 } from "./pluginWire";
@@ -220,11 +223,11 @@ expertAxios.interceptors.response.use(
  */
 function extractErrorMessage(err: unknown): string {
   const axiosErr = err as {
-    response?: { data?: { error?: { message?: string; code?: string } } };
+    response?: { data?: { error?: { message?: string; code?: string; details?: unknown } } };
   };
   const wire = axiosErr?.response?.data?.error;
   const code = wire?.code;
-  const localized = code ? localizedForCode(code) : "";
+  const localized = pluginErrorMessage(code, wire?.details) || (code ? localizedForCode(code) : "");
   const raw =
     localized ||
     wire?.message ||
@@ -238,7 +241,6 @@ function extractErrorMessage(err: unknown): string {
 function localizedForCode(code: string): string {
   const KNOWN: Record<string, string> = {
     DUPLICATE: "mcp.errors.nameTaken",
-    CONFLICT: "mcp.errors.nameTaken",
     VALIDATION_ERROR: "mcp.errors.invalidRequest",
     FORBIDDEN: "mcp.errors.forbidden",
     NOT_FOUND: "mcp.errors.notFound",
@@ -411,9 +413,36 @@ const listMySquadsReal = (params: ListExpertParams) => listPathReal("squad", tru
 // ─── Detail assembly (attachments + relations fan-out) ──────────────────────
 // Skill text/packages load lazily by (parent id, member key, index); remember
 // which skill Plugin each position resolved to so those reads go straight to
-// /plugins/skill_md|download without re-walking relations.
-const expertSkillIndex = new Map<string, string[]>();
-const squadSkillIndex = new Map<string, Map<string, string[]>>();
+// original version files without re-walking relations.
+interface SkillTarget { pluginId: string; versionId?: string }
+const expertSkillIndex = new Map<string, SkillTarget[]>();
+const squadSkillIndex = new Map<string, Map<string, SkillTarget[]>>();
+// Scope lazy indices to the authenticated reader, not just the resource id.
+function detailIndexKey(id: string): string {
+  return `${WKApp.loginInfo.token}:${WKApp.shared.currentSpaceId}:${id}`;
+}
+interface HistoricalPluginWire {
+  version: { plugin_id: string; version_id: string; relations: PluginRelationWire[] };
+  manifest_json: PluginManifestWire;
+  plugin_json: PluginPackageWire;
+}
+function versionPath(target: SkillTarget): string {
+  return `/plugins/${encodeURIComponent(target.pluginId)}/versions/${encodeURIComponent(target.versionId!)}`;
+}
+async function relationDetail(rel: PluginRelationWire) {
+  if (!rel.target_version_id) return pluginDetail(rel.target_plugin_id);
+  const snapshot = await get<HistoricalPluginWire>(versionPath({
+    pluginId: rel.target_plugin_id, versionId: rel.target_version_id,
+  }));
+  return {
+    plugin: {
+      plugin_id: snapshot.version.plugin_id,
+      plugin_name: snapshot.manifest_json.plugin_name ?? snapshot.manifest_json.name ?? "",
+      plugin_json: snapshot.plugin_json,
+    },
+    relations: snapshot.version.relations,
+  };
+}
 
 function liveRelations(
   relations: PluginRelationWire[] | undefined,
@@ -444,33 +473,28 @@ function isDanglingTarget(reason: unknown): boolean {
  *  returning the skills plus their plugin ids (positionally aligned). */
 async function loadSkills(
   relations: PluginRelationWire[] | undefined
-): Promise<{ skills: ExpertSkill[]; pluginIds: string[] }> {
+): Promise<{ skills: ExpertSkill[]; pluginIds: SkillTarget[] }> {
   const rels = liveRelations(relations, "expert_skill");
   // allSettled, not all: a soft-deleted / unresolvable expert_skill target must
-  // not reject the whole expert/squad detail. But only a CONFIRMED 404 is
+  // not reject legacy expert/squad detail. Only an UNPINNED confirmed 404 is
   // dropped — a 500/403/network error is rethrown so the detail surfaces the
   // failure instead of silently rendering a shortened skill list. skills[] and
   // pluginIds[] stay aligned because both are pushed together only for resolved
   // targets. Cancellation (space switch) still propagates.
   const settled = await Promise.allSettled(
-    rels.map((rel) =>
-      get<PluginDetailWire>("/plugins/detail", {
-        plugin_id: rel.target_plugin_id,
-        include_relations: false,
-      })
-    )
+    rels.map(relationDetail)
   );
   const skills: ExpertSkill[] = [];
-  const pluginIds: string[] = [];
+  const pluginIds: SkillTarget[] = [];
   settled.forEach((res, i) => {
     if (res.status === "fulfilled") {
       skills.push(fromSkillPlugin(res.value.plugin, rels[i].target_version_id));
-      pluginIds.push(rels[i].target_plugin_id);
-    } else if (axios.isCancel(res.reason) || !isDanglingTarget(res.reason)) {
-      // Cancellation or a non-404 failure — surface it, don't drop silently.
+      pluginIds.push({ pluginId: rels[i].target_plugin_id, versionId: rels[i].target_version_id });
+    } else if (rels[i].target_version_id || axios.isCancel(res.reason) || !isDanglingTarget(res.reason)) {
+      // A pinned read or non-404 failure must surface, never become a partial graph.
       throw res.reason;
     }
-    // else: confirmed 404 → dangling target, safe to drop.
+    // else: unpinned confirmed 404 → legacy dangling target, safe to drop.
   });
   return { skills, pluginIds };
 }
@@ -484,7 +508,7 @@ async function getExpertReal(id: string): Promise<ExpertAgent> {
   const categoryName =
     (plugin.category_id && maps.idToName.get(plugin.category_id)) || "";
   const { skills, pluginIds } = await loadSkills(detail.relations);
-  expertSkillIndex.set(id, pluginIds);
+  expertSkillIndex.set(detailIndexKey(id), pluginIds);
   const base = mapPluginAgentListItem(plugin, categoryName);
   return {
     ...base,
@@ -513,7 +537,7 @@ async function getSquadReal(id: string): Promise<ExpertSquad> {
     rawAttachment(plugin.plugin_json, "AGENTS.md") ?? ""
   );
   const memberRels = liveRelations(detail.relations, "expert_team_expert");
-  const skillIndex = new Map<string, string[]>();
+  const skillIndex = new Map<string, SkillTarget[]>();
   // allSettled: one unresolvable member relation must not break the whole squad
   // detail — but only a CONFIRMED 404 is dropped; a 500/403/network error is
   // rethrown so a transient failure doesn't silently shrink the member list (and
@@ -522,14 +546,14 @@ async function getSquadReal(id: string): Promise<ExpertSquad> {
     memberRels.map((rel) => loadSquadMember(rel, skillIndex))
   );
   const members: ExpertMember[] = [];
-  for (const res of settledMembers) {
+  for (const [index, res] of settledMembers.entries()) {
     if (res.status === "fulfilled") members.push(res.value);
-    else if (axios.isCancel(res.reason) || !isDanglingTarget(res.reason)) {
+    else if (memberRels[index].target_version_id || axios.isCancel(res.reason) || !isDanglingTarget(res.reason)) {
       throw res.reason;
     }
-    // else: confirmed 404 → dangling member, safe to drop.
+    // else: unpinned confirmed 404 → legacy dangling member, safe to drop.
   }
-  squadSkillIndex.set(id, skillIndex);
+  squadSkillIndex.set(detailIndexKey(id), skillIndex);
   const base = mapPluginSquadListItem(plugin, categoryName);
   return {
     ...base,
@@ -548,9 +572,9 @@ async function getSquadReal(id: string): Promise<ExpertSquad> {
 
 async function loadSquadMember(
   rel: PluginRelationWire,
-  skillIndex: Map<string, string[]>
+  skillIndex: Map<string, SkillTarget[]>
 ): Promise<ExpertMember> {
-  const detail = await pluginDetail(rel.target_plugin_id);
+  const detail = await relationDetail(rel);
   const plugin = detail.plugin;
   // relation_json is authoritative for squad wiring; the member's own
   // expert/context.json snapshot is the fallback.
@@ -587,53 +611,30 @@ async function deletePluginReal(id: string): Promise<void> {
 const deleteExpertReal = deletePluginReal;
 const deleteSquadReal = deletePluginReal;
 
-/**
- * Rewrite ONE field — the declared audience — of an existing 专家 / 专家团.
- *
- * The unified plugin API has exactly one tenant write door, `POST
- * /plugins/upsert`, and it is a FULL REPLACE: a field missing from the body is
- * written as its zero value, and a child relation missing from `relations` is
- * soft-deleted. There is no visibility-only endpoint (`/plugins/publish` decides
- * from the STORED visibility and cannot set it), so the only honest way to move
- * this one column is to read the record back and echo it unchanged except for
- * `visibility`.
- *
- * Everything below is preservation, not policy:
- *
- *   - `manifest_json` / `plugin_json` are echoed VERBATIM. These records are
- *     authored by a Bot through octo-cli, so this package has no model of their
- *     contents (the connector path can rebuild its documents from a form; there
- *     is no expert form). Anything less than a verbatim echo would destroy the
- *     parts we do not model. The backend supports precisely this round-trip —
- *     its read path strips storage object keys into a sidecar and its update
- *     path re-injects them for attachments whose path AND content hash are
- *     unchanged, so a fetch-edit-save cycle is not rejected.
- *   - `relations` are echoed WITH `relation_id` and `data`. Matching on
- *     relation_id makes the backend recognize each edge as untouched; dropping
- *     the id would soft-delete every child and re-insert it, and dropping `data`
- *     would lose the squad member wiring (`member_key` / `is_leader`) that makes
- *     a team installable. This is deliberately NOT loadExpertChildRelations,
- *     which projects a REVIEW snapshot and drops both fields on purpose.
- *   - `version` is omitted, which tells the backend to keep the current label.
- *     The write still snapshots a version server-side.
- *
- * Callers must not invoke this when the audience is unchanged — the write would
- * cost a version snapshot that records no change. `ExpertEditModal` disables its
- * save button in exactly that case.
- *
- * The backend refuses the write with 409 when the record is published to the org
- * (`listed_requires_review`) or has a review pending; the row's `canEdit` from
- * resolveReviewRowState mirrors both, so the action is not offered there.
+/** Full-replace metadata edit. Read the owner's editable head and preserve
+ * opaque content, stored icon keys, relation IDs, member wiring and exact pins.
+ * Only the display name inside the manifest changes when explicitly requested.
+ * Version labels are optional for existing visibility-only callers.
  */
+export async function getExpertEditMetadata(id: string): Promise<ExpertItem> {
+  const detail = await get<PluginDetailWire>(`/plugins/${encodeURIComponent(id)}/draft`);
+  const item = detail.plugin.plugin_type === "expert_team"
+    ? mapPluginSquadListItem(detail.plugin, "")
+    : mapPluginAgentListItem(detail.plugin, "");
+  return { ...item, draftChangelog: detail.draft_changelog ?? "" };
+}
+
 async function updateExpertVisibilityReal(
   id: string,
-  visibility: ExpertVisibility
+  visibility: ExpertVisibility,
+  metadata?: { name: string; version: string; changelog?: string }
 ): Promise<void> {
   // include_relations: the echo has to name the current child set, and this is
   // the same read the detail view already performs.
   let detail: PluginDetailWire;
   try {
-    detail = await pluginDetail(id);
+    // Metadata writes must merge onto the editable head, never an older release.
+    detail = await get<PluginDetailWire>(`/plugins/${encodeURIComponent(id)}/draft`);
   } catch (err) {
     if (axios.isCancel(err)) throw err;
     // `get()` rewraps every failure as an ExpertListError whose `message` is the
@@ -644,9 +645,11 @@ async function updateExpertVisibilityReal(
   const plugin = detail.plugin;
   try {
     await expertAxios.post(`${BASE}/plugins/upsert`, {
+      ...(metadata?.changelog !== undefined ? { changelog: metadata.changelog } : {}),
       plugin: {
         plugin_id: id,
-        plugin_name: plugin.plugin_name,
+        plugin_name: metadata?.name ?? plugin.plugin_name,
+        ...(metadata?.version ? { version: metadata.version } : {}),
         plugin_type: plugin.plugin_type,
         // Spread-guarded: an explicit `category_id: undefined` serializes away,
         // but so does an absent one, and the backend reads absent as "clear the
@@ -659,7 +662,7 @@ async function updateExpertVisibilityReal(
         // `icon_url` — echoing the latter would persist an expiring URL.
         icon: plugin.icon ?? "",
         visibility,
-        manifest_json: plugin.manifest_json,
+        manifest_json: metadata ? { ...plugin.manifest_json, plugin_name: metadata.name } : plugin.manifest_json,
         plugin_json: plugin.plugin_json,
       },
       relations: (detail.relations ?? []).map((rel) => ({
@@ -894,14 +897,15 @@ export const deleteSquad = withReviewInvalidation(function deleteSquad(
  */
 export function updateExpertVisibility(
   id: string,
-  visibility: ExpertVisibility
+  visibility: ExpertVisibility,
+  metadata?: { name: string; version: string; changelog?: string }
 ): Promise<void> {
   if (USE_MOCK) {
     return Promise.reject(
       new Error("updateExpertVisibility is not available under USE_MOCK")
     );
   }
-  return updateExpertVisibilityReal(id, visibility);
+  return updateExpertVisibilityReal(id, visibility, metadata);
 }
 
 /** One child relation of a container plugin, shaped for a review submission.
@@ -1081,11 +1085,11 @@ export function listExpertCategories(
 async function skillPluginIdForExpert(
   expertId: string,
   index: number
-): Promise<string> {
-  let ids = expertSkillIndex.get(expertId);
+): Promise<SkillTarget> {
+  let ids = expertSkillIndex.get(detailIndexKey(expertId));
   if (!ids || !ids[index]) {
     await getExpertReal(expertId);
-    ids = expertSkillIndex.get(expertId);
+    ids = expertSkillIndex.get(detailIndexKey(expertId));
   }
   const pluginId = ids?.[index];
   if (!pluginId) throw new Error(t("mcp.errors.notFound"));
@@ -1096,20 +1100,26 @@ async function skillPluginIdForSquad(
   squadId: string,
   memberKey: string,
   index: number
-): Promise<string> {
-  let byMember = squadSkillIndex.get(squadId);
+): Promise<SkillTarget> {
+  let byMember = squadSkillIndex.get(detailIndexKey(squadId));
   if (!byMember || !byMember.get(memberKey)?.[index]) {
     await getSquadReal(squadId);
-    byMember = squadSkillIndex.get(squadId);
+    byMember = squadSkillIndex.get(detailIndexKey(squadId));
   }
   const pluginId = byMember?.get(memberKey)?.[index];
   if (!pluginId) throw new Error(t("mcp.errors.notFound"));
   return pluginId;
 }
 
-function fetchSkillMarkdown(pluginId: string): Promise<string> {
+async function fetchSkillMarkdown(target: SkillTarget): Promise<string> {
+  if (target.versionId) {
+    const resp = await expertAxios.get(`${BASE}${versionPath(target)}/file`, {
+      params: { path: "SKILL.md" }, responseType: "text",
+    });
+    return resp.data;
+  }
   return get<{ content?: string }>("/plugins/skill_md", {
-    plugin_id: pluginId,
+    plugin_id: target.pluginId,
   }).then((d) => d.content ?? "");
 }
 
@@ -1200,6 +1210,25 @@ export async function fetchSkillPackage(
   }
   const resp = await fetch(target, { signal, headers });
   if (!resp.ok) throw new Error(`package fetch failed: ${resp.status}`);
+  if (url.startsWith(`${BASE}/plugins/`) && /\/versions\/[^/?]+$/.test(url)) {
+    const snapshot: { data: HistoricalPluginWire } = await resp.json();
+    const JSZip = (await import("jszip")).default;
+    const zip = new JSZip();
+    let size = 0;
+    const attachments = snapshot.data.plugin_json.attachments ?? [];
+    if (attachments.length > 1000) throw new Error("package has too many entries");
+    for (const attachment of attachments) {
+      const name = attachment.path;
+      if (!name || name.startsWith("/") || name.split("/").some(p => p === ".." || p === ".") || name.includes("\\")) {
+        throw new Error("invalid historical file path");
+      }
+      const bytes = await fetchSkillPackage(`${url}/file?path=${encodeURIComponent(name)}`, signal);
+      size += bytes.byteLength;
+      if (size > MAX_SKILL_PACKAGE_FETCH_BYTES) throw new Error("package too large");
+      zip.file(name, bytes);
+    }
+    return zip.generateAsync({ type: "arraybuffer" });
+  }
   const declared = Number(resp.headers.get("content-length") ?? "");
   if (Number.isFinite(declared) && declared > MAX_SKILL_PACKAGE_FETCH_BYTES) {
     throw new Error("package too large");
@@ -1235,16 +1264,18 @@ export async function fetchSkillPackage(
   return out.buffer as ArrayBuffer;
 }
 
+async function skillDownloadPath(target: SkillTarget): Promise<string> {
+  if (!target.versionId) return `${BASE}/plugins/download?plugin_id=${encodeURIComponent(target.pluginId)}`;
+  // Legacy archives have a stable virtual file path. Tree packages are assembled
+  // from verified version files below, never from current /plugins/download.
+  const snapshot = await get<HistoricalPluginWire>(versionPath(target));
+  const legacy = snapshot.plugin_json.attachments?.some(a => a.path === "skill/ref.json" || a.path === "skill/package.zip");
+  return `${BASE}${versionPath(target)}${legacy ? "/file?path=skill%2Fpackage.zip" : ""}`;
+}
 const getExpertSkillDownloadUrlReal = (id: string, index: number) =>
-  skillPluginIdForExpert(id, index).then(
-    (pluginId) =>
-      `${BASE}/plugins/download?plugin_id=${encodeURIComponent(pluginId)}`
-  );
+  skillPluginIdForExpert(id, index).then(skillDownloadPath);
 const getSquadSkillDownloadUrlReal = (id: string, memberKey: string, index: number) =>
-  skillPluginIdForSquad(id, memberKey, index).then(
-    (pluginId) =>
-      `${BASE}/plugins/download?plugin_id=${encodeURIComponent(pluginId)}`
-  );
+  skillPluginIdForSquad(id, memberKey, index).then(skillDownloadPath);
 
 /** Resolve the authenticated download path for the expert's skill package. Used
  *  both to fetch + unzip the package client-side (file browser) and to trigger a

@@ -4,7 +4,7 @@ import remarkGfm from "remark-gfm";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import JSZip from "jszip";
 import { FileText } from "lucide-react";
-import { t, useI18n } from "@octo/base";
+import { WKButton, t, useI18n } from "@octo/base";
 import { fetchSkillPackage } from "../api/expertService";
 import type { ExpertSkill } from "../mock/expertMock";
 
@@ -201,6 +201,7 @@ export default function ExpertSkillBrowser({
 }: ExpertSkillBrowserProps) {
   useI18n();
   const zipRef = useRef<JSZip | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [paths, setPaths] = useState<string[]>([]);
@@ -242,6 +243,10 @@ export default function ExpertSkillBrowser({
     (async () => {
       setLoading(true);
       setError(false);
+      zipRef.current = null;
+      setViews({});
+      setPaths([]);
+      setActive("");
       try {
         if (skill.canDownload && fetchPackageUrl) {
           const url = await fetchPackageUrl();
@@ -291,7 +296,7 @@ export default function ExpertSkillBrowser({
     };
     // Mounts fresh each time the skill is expanded; run once on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [attempt]);
 
   const selectFile = (path: string) => {
     setActive(path);
@@ -307,6 +312,7 @@ export default function ExpertSkillBrowser({
       ) : error ? (
         <p className="wk-mcp-expert-skill__state wk-mcp-expert-skill__state--error">
           {t("mcp.expert.loadError")}
+          <WKButton onClick={() => setAttempt(n => n + 1)}>{t("mcp.list.retry")}</WKButton>
         </p>
       ) : paths.length === 0 ? (
         <p className="wk-mcp-expert-skill__state">{t("mcp.expert.skillEmpty")}</p>

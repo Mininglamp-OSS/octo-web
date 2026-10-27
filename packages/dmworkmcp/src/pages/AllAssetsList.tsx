@@ -4,6 +4,7 @@ import { Toast } from "@douyinfe/semi-ui";
 import { t, useI18n, WKApp, WKButton, WKModal } from "@octo/base";
 import {
   MineTable,
+  VisibilityModal,
   cancelReview,
   deleteSkill,
   getMySkills,
@@ -92,6 +93,7 @@ export default function AllAssetsList({
   const [error, setError] = useState<string | null>(null);
   const [moreError, setMoreError] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [visibilityId, setVisibilityId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<Skill | null>(null);
   // Opaque cursor for the next page, null when the list is exhausted. The 全部
   // tab used to fetch a single page and stop, so any owner with more than
@@ -354,6 +356,7 @@ export default function AllAssetsList({
       onOpen: onRequestAction
         ? () => onRequestAction({ pluginId: item.id, type: rowType, action: "view" })
         : () => onOpenType(wireType),
+      onVisibility: wireType !== "connector" && item.listingState === "published" && !pending && (item.visibility === "private" || item.visibility === "space") ? () => setVisibilityId(item.id) : undefined,
       onEdit:
         onRequestAction && !listedToOrg && !pending
           ? () => onRequestAction({ pluginId: item.id, type: rowType, action: "edit" })
@@ -406,6 +409,7 @@ export default function AllAssetsList({
 
   return (
     <div className="wk-mcp-mine__all">
+      <VisibilityModal pluginId={visibilityId} onClose={() => setVisibilityId(null)} onSaved={message => { Toast.success(message); void load(); }} />
       <MineTable rows={rows} ariaLabel={t("mcp.mine.allAriaLabel")} />
       {(cursor || loadingMore || moreError) && (
         <LoadMoreSentinel

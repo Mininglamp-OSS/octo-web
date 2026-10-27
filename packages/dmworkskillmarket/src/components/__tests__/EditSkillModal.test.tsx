@@ -59,6 +59,17 @@ vi.mock("react-avatar-editor", async () => {
 });
 
 describe("EditSkillModal", () => {
+  it("prefills and saves the current draft explanation without a reupload", async () => {
+    const props = { skill: { ...skill, draftChangelog: "Saved draft note" }, categories, onClose: vi.fn(), onUpdated: vi.fn() };
+    render(<EditSkillModal {...props} />);
+    const note = screen.getByPlaceholderText(changelogPlaceholder);
+    expect(note).toHaveValue("Saved draft note");
+    fireEvent.change(note, { target: { value: "Revised note" } });
+    fireEvent.click(screen.getByRole("button", { name: /保存草稿|skillMarket.plugin.actionSaveDraft/ }));
+    await waitFor(() => expect(api.updateSkill).toHaveBeenCalledWith(skill.id, expect.objectContaining({ changelog: "Revised note" })));
+    await waitFor(() => expect(props.onUpdated).toHaveBeenCalledOnce());
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(api.updateSkill).mockResolvedValue(skill);
@@ -117,6 +128,19 @@ describe("EditSkillModal", () => {
     })));
     expect(onUpdated).toHaveBeenCalled();
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("saves a stored legacy version unchanged but rejects a newly typed invalid label", async () => {
+    render(<EditSkillModal skill={{ ...skill, visibility: "private", version: "1.0" }} categories={categories} onClose={vi.fn()} onUpdated={vi.fn()} />);
+    const version = screen.getByDisplayValue("1.0");
+    fireEvent.change(screen.getByPlaceholderText(displayNamePlaceholder), { target: { value: "Legacy display edit" } });
+    const save = screen.getByRole("button", { name: saveButton });
+    expect(save).toBeEnabled();
+    fireEvent.change(version, { target: { value: "2.0" } });
+    expect(save).toBeDisabled();
+    fireEvent.change(version, { target: { value: "1.0" } });
+    fireEvent.click(save);
+    await waitFor(() => expect(api.updateSkill).toHaveBeenCalledWith(skill.id, expect.objectContaining({ version: "1.0", displayName: "Legacy display edit" })));
   });
 
   it("opens the hidden icon file input and shows the crop dialog after selecting an image", async () => {

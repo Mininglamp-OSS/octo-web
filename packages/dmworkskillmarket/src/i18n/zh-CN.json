@@ -26,7 +26,15 @@
     "invalidDownloadUrl": "下载地址无效",
     "uploadResponseMissing": "上传失败：响应字段缺失",
     "parseFailed": "解析失败",
-    "parseTimeout": "解析超时，请重试"
+    "parseTimeout": "解析超时，请重试",
+    "nameTaken": "该名称已被占用，请修改展示名称后重新上传。",
+    "stateConflict": "资源状态已变化，请刷新后重试。",
+    "reviewPending": "资源正在审核中，请先撤回审核，再修改可见范围。",
+    "labelTaken": "该版本号已发布，请填写更高的新版本号后再发布。",
+    "relationInUse": "该资源被已发布的资源引用，暂时无法缩小可见范围或删除；请先调整引用。",
+    "dependencyVisibility": "引用的技能或专家可见范围不足。请先将依赖发布为本组织可见，再扩大当前资源的可见范围。",
+    "reviewRequired": "该资源需要通过组织审核，请提交新版本审核。",
+    "versionMigration": "该资源缺少已发布版本基线，请先完成版本历史迁移。"
   },
   "list": {
     "pageTitle": "技能",
@@ -132,7 +140,8 @@
     "validationNoUpload": "请先上传并解析技能压缩包",
     "saveFailed": "保存失败",
     "createFailed": "创建失败",
-    "nameTaken": "名称“{{name}}”已存在，请修改名称后再上传"
+    "nameTaken": "名称“{{name}}”已存在，请修改名称后再上传",
+    "categoryRequired": "请选择分类；若没有可选分类，请联系组织管理员配置技能分类。"
   },
   "upload": {
     "invalidFormat": "文件格式不正确",
@@ -276,7 +285,8 @@
     "delistReasonLabel": "下架原因",
     "delistReasonPlaceholder": "可选，将记录在审核日志中并通知作者",
     "delistFailed": "下架失败",
-    "spaceChanged": "组织已切换。请关闭此窗口，在相应组织中查看审核结果。"
+    "spaceChanged": "组织已切换。请关闭此窗口，在相应组织中查看审核结果。",
+    "kindVisibility": "修改可见范围（版本不变）"
   },
   "plugin": {
     "typeSkill": "技能",
@@ -331,5 +341,13 @@
       "release_missing": "版本未发布",
       "unknown": "不可用"
     }
+  },
+  "visibility": {
+    "title": "修改可见范围",
+    "hint": "仅调整当前已发布版本的可见范围，内容和版本号保持不变。扩大到本组织可能需要审核，审核通过前保留原可见范围；缩小范围需通过引用检查。",
+    "saved": "可见范围已更新，内容版本未改变",
+    "submitted": "可见范围申请已提交，审核通过前保留原范围",
+    "unavailable": "此资源当前无法修改可见范围，请刷新列表后重试。",
+    "useAction": "请通过“修改可见范围”管理已发布版本的受众。"
   }
 }
