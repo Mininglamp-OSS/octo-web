@@ -3,6 +3,7 @@ import {
   mapAgentDetail,
   mapAgentListItem,
   mapSquadDetail,
+  mapPluginAgentListItem,
   mapSquadListItem,
   fromSkillPlugin,
   parseTeamAgentsMarkdown,
@@ -134,3 +135,26 @@ describe("parseTeamAgentsMarkdown — config gated on 协作方式 region", () =
     expect(doc.permission).toBe("");
   });
 });
+
+
+describe("dependency issues", () => {
+  it("maps known reasons and narrows unknown ones away", () => {
+    const agent = mapPluginAgentListItem(
+      {
+        plugin_id: "e1",
+        plugin_name: "审查专家",
+        dependency_issues: [
+          { target_plugin_id: "s1", target_name: "合同清单", relation_type: "expert_skill", reason: "delisted", via: [] },
+          { target_plugin_id: "s2", relation_type: "expert_skill", reason: "release_missing" },
+          { target_plugin_id: "s3", relation_type: "expert_connector", reason: "future_reason" },
+        ],
+      } as never,
+      "",
+    );
+    expect(agent.dependencyIssues).toEqual([
+      { targetPluginId: "s1", targetName: "合同清单", relationType: "expert_skill", reason: "delisted", via: [] },
+      { targetPluginId: "s2", targetName: undefined, relationType: "expert_skill", reason: "release_missing", via: undefined },
+      { targetPluginId: "s3", targetName: undefined, relationType: "expert_connector", reason: "unknown", via: undefined },
+    ]);
+  })
+})

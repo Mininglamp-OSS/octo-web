@@ -15,6 +15,11 @@ describe("getExpertBotPublishPrompt — command surface", () => {
     expect(p).toContain(
       "octo-cli marketplace plugin-category list --scene-code default --plugin-type expert"
     );
+    expect(p).toContain("创建前先查重");
+    expect(p).toContain(
+      "marketplace plugin list --scene-code default --plugin-type expert"
+    );
+    expect(p).toContain('--q "<名称>"');
     expect(p).toContain('plugin_type: "expert"');
     expect(p).toContain("plugin upsert --data @expert-plugin.json");
     expect(p).toContain("plugin review-request create");
@@ -39,6 +44,8 @@ describe("getExpertBotPublishPrompt — command surface", () => {
     expect(p).toContain(
       "准备完整的 `manifest_json`、`plugin_json` 和完整 `relations`"
     );
+    expect(p).toContain("`expert_connector` 禁止带版本");
+    expect(p).toContain("`released_version_required` 时停止");
   });
 
   it("defers to the embedded octo-marketplace Skill's expert.md", () => {

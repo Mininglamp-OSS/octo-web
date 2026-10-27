@@ -647,6 +647,12 @@ function mapListItem(
   return {
     id: raw.plugin_id,
     name: raw.plugin_name ?? "",
+    dependencyIssues: raw.dependency_issues?.map((issue) => ({
+      targetPluginId: issue.target_plugin_id,
+      targetName: issue.target_name,
+      reason: issue.reason,
+      via: issue.via,
+    })),
     // Fall back to empty string / 0 so downstream renderers that call
     // .toLowerCase() (Highlight) or format the tool count don't crash on a
     // null field slipping in from a legacy record or partial response.
@@ -820,7 +826,17 @@ async function fetchMcpDetailReal(id: string): Promise<McpDetail> {
     }),
     getConnectorCategoryMaps(),
   ]);
-  return mapDetail(detail.plugin, maps.idToKey);
+  const mapped = mapDetail(detail.plugin, maps.idToKey);
+  return {
+    ...mapped,
+    dependencyIssues:
+      detail.dependency_issues?.map((issue) => ({
+        targetPluginId: issue.target_plugin_id,
+        targetName: issue.target_name,
+        reason: issue.reason,
+        via: issue.via,
+      })) ?? mapped.dependencyIssues,
+  };
 }
 
 /** Record one connector detail view. Metrics are deliberately best-effort:

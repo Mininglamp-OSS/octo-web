@@ -59,6 +59,13 @@ export interface McpQuickStart {
 /** Card + list representation of an MCP server. */
 export interface McpListItem {
   id: string;
+  /** Unavailable published dependencies (owner-only diagnostics). */
+  dependencyIssues?: Array<{
+    targetPluginId: string;
+    targetName?: string;
+    reason?: string;
+    via?: string[];
+  }>;
   /** Display name, e.g. "GitHub MCP". */
   name: string;
   /** Short one/two line pitch shown on the card. */

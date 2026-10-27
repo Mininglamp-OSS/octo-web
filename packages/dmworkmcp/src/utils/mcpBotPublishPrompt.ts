@@ -84,6 +84,10 @@ export function getMcpBotPublishPrompt(
 
 4. 按 \`mcp.md\` 的 Create / Publish 流程完成上架：
 
+   - 创建前先查重：运行
+     \`octo-cli marketplace plugin list --scene-code default --plugin-type connector --q "<名称>" --profile <profile> --format json\`，
+     对返回的 \`plugin_name\` 做大小写无关的精确比较。若已有同名 Connector，停止并请我改名；
+     不得自动覆盖或另建同名资源。
    - 使用 \`octo-cli marketplace plugin-category list --scene-code default --plugin-type connector --profile <profile>\`
      获取合法 \`category_id\`。
    - \`streamable-http\` / \`sse\` 传输：先把 \`transport\` / \`url\` / 可选 \`headers\` / \`env\`

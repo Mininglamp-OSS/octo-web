@@ -42,6 +42,14 @@ export interface Category {
   skillCount: number;
 }
 
+export interface SkillDependencyIssue {
+  targetPluginId: string;
+  targetName?: string;
+  relationType?: string;
+  reason?: string;
+  via?: string[];
+}
+
 export interface Skill {
   id: string;
   name: string;
@@ -78,6 +86,9 @@ export interface Skill {
    *  a 取消审核 button has something to act on without a second lookup. */
   listingState?: PluginListingState;
   displayStatus?: PluginDisplayStatus;
+  /** Unavailable published dependencies, returned on owner (`mode=mine`) rows.
+   *  The all-types Mine tab must keep these or a blocked asset looks healthy. */
+  dependencyIssues?: SkillDependencyIssue[];
   reviewId?: string;
   createdAt: string;
   updatedAt: string;
@@ -99,6 +110,8 @@ export type ReviewDecisionSource = "web" | "im" | "policy";
 export interface ReviewRelation {
   relationId?: string;
   targetPluginId: string;
+  /** Pinned version of the frozen relation; absent for connectors/legacy. */
+  targetVersionId?: string;
   targetPluginType?: string;
   relationType: string;
   sortOrder: number;

@@ -11,6 +11,7 @@ import {
   EXPERT_SQUADS,
 } from "../mock/expertMock";
 import {
+  mapDependencyIssues,
   mapPluginAgentListItem,
   mapPluginSquadListItem,
   fromSkillPlugin,
@@ -463,7 +464,7 @@ async function loadSkills(
   const pluginIds: string[] = [];
   settled.forEach((res, i) => {
     if (res.status === "fulfilled") {
-      skills.push(fromSkillPlugin(res.value.plugin));
+      skills.push(fromSkillPlugin(res.value.plugin, rels[i].target_version_id));
       pluginIds.push(rels[i].target_plugin_id);
     } else if (axios.isCancel(res.reason) || !isDanglingTarget(res.reason)) {
       // Cancellation or a non-404 failure — surface it, don't drop silently.
@@ -484,8 +485,13 @@ async function getExpertReal(id: string): Promise<ExpertAgent> {
     (plugin.category_id && maps.idToName.get(plugin.category_id)) || "";
   const { skills, pluginIds } = await loadSkills(detail.relations);
   expertSkillIndex.set(id, pluginIds);
+  const base = mapPluginAgentListItem(plugin, categoryName);
   return {
-    ...mapPluginAgentListItem(plugin, categoryName),
+    ...base,
+    // The detail endpoint carries diagnostics beside the plugin envelope;
+    // keep the envelope fallback when the top-level field is absent.
+    dependencyIssues:
+      mapDependencyIssues(detail.dependency_issues) ?? base.dependencyIssues,
     instruction: rawAttachment(plugin.plugin_json, "AGENTS.md") ?? "",
     mcpConfig: rawAttachment(plugin.plugin_json, "mcp.json") ?? "",
     skills,
@@ -524,8 +530,11 @@ async function getSquadReal(id: string): Promise<ExpertSquad> {
     // else: confirmed 404 → dangling member, safe to drop.
   }
   squadSkillIndex.set(id, skillIndex);
+  const base = mapPluginSquadListItem(plugin, categoryName);
   return {
-    ...mapPluginSquadListItem(plugin, categoryName),
+    ...base,
+    dependencyIssues:
+      mapDependencyIssues(detail.dependency_issues) ?? base.dependencyIssues,
     members,
     memberCount: members.length,
     instruction: rawAttachment(plugin.plugin_json, "AGENTS.md") ?? "",
@@ -555,6 +564,7 @@ async function loadSquadMember(
   return {
     key: memberKey,
     pluginId: rel.target_plugin_id,
+    versionId: rel.target_version_id,
     templateId: context.template_id,
     name: plugin.plugin_name ?? "",
     role: wiring.role ?? context.role ?? "",
@@ -658,6 +668,11 @@ async function updateExpertVisibilityReal(
         relation_type: rel.relation_type,
         sort_order: rel.sort_order,
         ...(rel.data !== undefined ? { data: rel.data } : {}),
+        // Full-replace echo: dropping the pin would silently unpin every edge
+        // when an owner only changes the audience.
+        ...(rel.target_version_id !== undefined
+          ? { target_version_id: rel.target_version_id }
+          : {}),
       })),
     });
   } catch (err) {
@@ -903,6 +918,9 @@ export interface ExpertChildRelation {
   /** Opaque per-edge payload — for 专家团 this carries the member's
    *  `member_key` / `is_leader` wiring that makes the team installable. */
   data?: Record<string, unknown>;
+  /** Pinned target version; the frozen snapshot must keep it or approval
+   *  freezes an unpinned graph. */
+  targetVersionId?: string;
 }
 
 /**
@@ -960,6 +978,9 @@ function mapChildRelations(
       // backend re-inserts the edge and loses what makes the team installable.
       relationId: rel.relation_id,
       ...(rel.data !== undefined ? { data: rel.data } : {}),
+      ...(rel.target_version_id !== undefined
+        ? { targetVersionId: rel.target_version_id }
+        : {}),
     }));
 }
 

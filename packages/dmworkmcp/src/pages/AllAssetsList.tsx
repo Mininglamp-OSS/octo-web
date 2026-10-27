@@ -344,6 +344,11 @@ export default function AllAssetsList({
       // like their owning tabs do.
       downloads: rowType === "skill" ? item.downloadCount : item.installCount,
       status,
+      dependencyIssues: item.dependencyIssues?.map((issue) => ({
+        targetPluginId: issue.targetPluginId,
+        targetName: issue.targetName,
+        reason: issue.reason,
+      })),
       ariaLabel: item.name,
       busy: busyId === item.id,
       onOpen: onRequestAction

@@ -467,6 +467,7 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
                 downloads: skill.downloadCount,
                 status,
                 rejectReason: reviewState?.rejected?.reason,
+                dependencyIssues: skill.dependencyIssues,
                 ariaLabel: skill.name,
                 onOpen: () => openDetail(skill),
                 // 编辑 is withheld only from a plugin LISTED TO THE ORG: a direct

@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "re
 import { AlertCircle, FileArchive, ImagePlus, Loader2, UploadCloud, XCircle } from "lucide-react";
 import { t, useI18n, WKButton, WKInput, WKModal } from "@octo/base";
 import type { Category, NewSkillForm, Skill } from "../types/skill";
-import { createSkill, updateSkill, createReviewRequest, getSkillTags, initReupload, initUpload, publishPlugin, uploadFile, uploadIcon, triggerParse, pollParse } from "../api/skillApi";
+import { createSkill, updateSkill, createReviewRequest, getSkillTags, getSkills, initReupload, initUpload, publishPlugin, uploadFile, uploadIcon, triggerParse, pollParse } from "../api/skillApi";
 import { MAX_SKILL_TAGS, validateSkillTag, validateSkillTags } from "../utils/format";
 import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 import IconCropModal from "./IconCropModal";
@@ -626,6 +626,32 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
       // created instead.
       let pluginId = createdPluginId;
       if (!pluginId) {
+        // Create-only duplicate-name guard. Editing/upgrading an existing skill
+        // must not flag itself; a retry after a successful create must update
+        // that row instead of creating a second one.
+        // Advisory create-only guard. The author can only edit the display
+        // name here; the package machine name is not a form field, so matching
+        // it would make the error unactionable. A failed lookup falls through
+        // to createSkill, which remains the authoritative write.
+        try {
+          const wantedDisplay = displayName.trim().toLocaleLowerCase();
+          const existing = await getSkills({ q: displayName.trim(), limit: 50 });
+          const clash = existing.items.some(
+            (item) =>
+              (item.displayName || item.name).trim().toLocaleLowerCase() ===
+              wantedDisplay
+          );
+          if (clash) {
+            setError(
+              t("skillMarket.form.nameTaken", { values: { name: displayName.trim() } })
+            );
+            setSaving(false);
+            setPublishing(false);
+            return;
+          }
+        } catch {
+          // Advisory pre-check: a list failure must not block a valid create.
+        }
         const created = await createSkill(form);
         pluginId = created.id;
         setCreatedPluginId(pluginId);

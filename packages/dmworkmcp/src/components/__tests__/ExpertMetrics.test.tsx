@@ -20,6 +20,9 @@ vi.mock("../../api/expertService", () => ({
   },
 }));
 vi.mock("../ExpertSpecView", () => ({ default: () => null }));
+vi.mock("@douyinfe/semi-ui", () => ({
+  Toast: { success: vi.fn(), error: vi.fn() },
+}));
 vi.mock("@octo/base", () => ({
   t: (key: string, opts?: { values?: { count?: number } }) =>
     opts?.values?.count !== undefined ? `${key}:${opts.values.count}` : key,
@@ -90,6 +93,12 @@ const squad: ExpertSquad = {
 };
 
 describe("expert metric counts", () => {
+  it("renders the immutable expert id with a copy action", () => {
+    const root = render(<ExpertDetailModal item={agent} onClose={vi.fn()} />);
+    expect(root.textContent).toContain("expert-1");
+    expect(root.querySelector(".wk-mcp-expert-detail__copy-id")).not.toBeNull();
+  });
+
   it("tracks one view per opened detail, keyed by resource kind", () => {
     render(<ExpertDetailModal item={agent} onClose={vi.fn()} />);
     expect(trackExpertView).toHaveBeenCalledTimes(1);

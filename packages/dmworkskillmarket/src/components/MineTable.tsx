@@ -13,6 +13,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { t } from "@octo/base";
+import { dependencyIssueReasonKey } from "./dependencyIssueReason";
 import type { PluginDisplayStatus } from "../types/skill";
 import {
   displayStatusLabel,
@@ -84,6 +85,13 @@ export interface MineRow {
   statusTone?: string;
   /** Rejection reason, surfaced under the name and as the status tooltip. */
   rejectReason?: string;
+  /** Unavailable published dependencies; surfaced under the name so an owner
+   *  sees why the market hides this asset. */
+  dependencyIssues?: Array<{
+    targetPluginId: string;
+    targetName?: string;
+    reason?: string;
+  }>;
   /** Secondary line under the name — 组织审核 puts 申请人 · 提交时间 here. */
   meta?: React.ReactNode;
   ariaLabel?: string;
@@ -194,7 +202,23 @@ export default function MineTable({ rows, ariaLabel }: MineTableProps) {
                   {r.icon}
                 </span>
                 <span className="wk-mine-table__namecol">
-                  <span className="wk-mine-table__namerow" title={r.name}>
+                  {r.dependencyIssues?.length ? (
+                  <span className="wk-mine-table__dependency-warning">
+                    {t("skillMarket.plugin.dependencyWarning")}
+                    {": "}
+                    {r.dependencyIssues
+                      .map((issue) => {
+                        const target = issue.targetName || issue.targetPluginId;
+                        const reason = issue.reason
+                          ? t(`skillMarket.plugin.dependencyIssue.${dependencyIssueReasonKey(issue.reason)}`)
+                          : "";
+                        return reason ? `${target} · ${reason}` : target;
+                      })
+                      .filter(Boolean)
+                      .join(", ")}
+                  </span>
+                ) : null}
+                <span className="wk-mine-table__namerow" title={r.name}>
                     <span className="wk-mine-table__name">{r.name}</span>
                     {/* The type is spelled out, not only shown as the avatar
                         marker: the 全部 tab mixes all four kinds in one table and

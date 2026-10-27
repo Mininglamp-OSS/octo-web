@@ -558,6 +558,11 @@ export default function ExpertMarketListPage({
       downloads: item.installCount,
       status: review.status,
       rejectReason: review.rejectReason,
+      dependencyIssues: item.dependencyIssues?.map((issue) => ({
+        targetPluginId: issue.targetPluginId,
+        targetName: issue.targetName,
+        reason: issue.reason,
+      })),
       ariaLabel: item.name,
       onOpen: () => openDetail(item),
       // 编辑 is withheld once the record is listed to the org: a direct edit takes

@@ -57,11 +57,11 @@ export function getExpertBotPublishPrompt(
     : "";
 
   const ask = isSquad
-    ? "请提供要上架的专家团信息（名称、简介、分类、各成员及其角色 / 是否 Leader、调度规则 strategies、依赖 dependencies、权限 permission），或提供 Agent 当前运行环境可访问的 squad.json / squad.yaml 路径。"
-    : "请提供要上架的专家信息（名称、简介、分类、角色说明 instruction，可选 mcp_config、skills 包），或提供 Agent 当前运行环境可访问的 expert.json / expert.yaml 路径。";
+    ? "请提供要上架的专家团信息（名称、简介、分类、各成员及其已发布版本、角色 / 是否 Leader、调度规则 strategies、依赖 dependencies、权限 permission），或提供 Agent 当前运行环境可访问的 squad.json / squad.yaml 路径。"
+    : "请提供要上架的专家信息（名称、简介、分类、角色说明 instruction，以及依赖的已发布技能 / 连接器 ID 和版本），或提供 Agent 当前运行环境可访问的 expert.json / expert.yaml 路径。";
   const askUpdate = isSquad
-    ? "请提供要更新的专家团字段（名称、简介、分类、成员 / 角色 / Leader、调度规则、依赖、权限中的任意项；只覆盖本次明确要求修改的内容），或提供 Agent 当前运行环境可访问的 squad.json / squad.yaml 路径。"
-    : "请提供要更新的专家字段（名称、简介、分类、instruction、mcp_config、skills 包中的任意项；只覆盖本次明确要求修改的内容），或提供 Agent 当前运行环境可访问的 expert.json / expert.yaml 路径。";
+    ? "请提供要更新的专家团字段（名称、简介、分类、成员 / 已发布版本 / 角色 / Leader、调度规则、依赖、权限中的任意项；只覆盖本次明确要求修改的内容），或提供 Agent 当前运行环境可访问的 squad.json / squad.yaml 路径。"
+    : "请提供要更新的专家字段（名称、简介、分类、instruction、依赖的技能 / 连接器 ID 和已发布版本中的任意项；只覆盖本次明确要求修改的内容），或提供 Agent 当前运行环境可访问的 expert.json / expert.yaml 路径。";
 
   const intro = isUpdate
     ? `使用 octo-cli 内置的 \`octo-marketplace\` Skill，更新 OCTO Marketplace 上已上架的${entity}。`
@@ -113,6 +113,10 @@ export function getExpertBotPublishPrompt(
 
 ${step4Title}
 
+   - 创建前先查重（更新模式跳过当前 \`plugin_id\`）：运行
+     \`octo-cli marketplace plugin list --scene-code default --plugin-type ${pluginType} --q "<名称>" --profile <profile> --format json\`，
+     对返回的 \`plugin_name\` 做大小写无关的精确比较。若已有同名${entity}，停止并请我改名；
+     不得自动覆盖或另建同名资源。
    - 使用 \`octo-cli marketplace plugin-category list --scene-code default --plugin-type ${pluginType} --profile <profile>\`
      获取合法 \`category_id\`；body 里填 \`category_id\`，不是分类名称。
    - ${
@@ -121,6 +125,9 @@ ${step4Title}
        : `按 \`expert.md\` 编写 \`${pluginJsonFile}\`。`
    }
      使用 \`plugin_type: "${pluginType}"\`，准备完整的 \`manifest_json\`、\`plugin_json\` 和完整 \`relations\`。
+     引用模式开启时，关系必须带 \`target_version_id\`：\`expert_skill\` / \`expert_team_expert\` 只能是已发布的 target_version_id，
+     \`expert_connector\` 禁止带版本。服务端返回 \`released_version_required\` 时停止，向我确认目标版本，
+     不要自动改用当前最新版本。
      ${
        isUpdate
          ? `更新 payload 必须按全量替换语义准备：body 缺失字段会写成零值，\`relations\` 缺失关系会被软删。未修改的 \`plugin_name\` / \`publisher\` / \`icon\` / \`tags\` / \`visibility\` / \`category_id\` 必须原样回填；每条未删除的 relation 也必须原样保留 \`relation_id\` 和 \`data\`，只覆盖用户本次明确要求修改的字段或关系。回填图标时使用写入字段 \`icon\` 本身，不要把展示用的 \`icon_url\` 写回；\`version\` 保持省略，由后端保留当前版本标签。`

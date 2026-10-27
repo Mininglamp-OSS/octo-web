@@ -26,6 +26,8 @@
     "deletedToast": "已删除"
   },
   "expert": {
+    "versionPinned": "固定版本",
+    "versionUnpinned": "未固定",
     "typeSquad": "专家团",
     "typeAgent": "专家",
     "navAriaLabel": "专家类型",
@@ -117,7 +119,10 @@
     "mcpUnavailable": "MCP 配置无法安全展示",
     "skillsTitle": "Skills",
     "selfCreator": "我",
-    "sortHottest": "最热"
+    "sortHottest": "最热",
+    "expertIdLabel": "专家 ID",
+    "teamIdLabel": "专家团 ID",
+    "copyId": "复制 ID"
   },
   "common": {
     "loadFailed": "加载失败"
@@ -200,6 +205,7 @@
     "clear": "清空"
   },
   "card": {
+    "dependencyWarning": "依赖不可用",
     "officialPublisher": "官方发布",
     "connect": "添加到 Bot",
     "matchReason": {
@@ -218,7 +224,13 @@
     "edit": "编辑",
     "delete": "删除",
     "viewCountTitle": "浏览 {{count}} 次",
-    "installCountTitle": "安装 {{count}} 次"
+    "installCountTitle": "安装 {{count}} 次",
+    "dependencyIssue": {
+      "delisted": "已下架",
+      "deleted": "已删除",
+      "release_missing": "版本未发布",
+      "unknown": "其他不可用原因"
+    }
   },
   "detail": {
     "title": "连接器详情",
@@ -396,7 +408,8 @@
     },
     "submit": "提交",
     "success": "创建成功",
-    "failed": "创建失败"
+    "failed": "创建失败",
+    "nameTaken": "名称“{{name}}”已存在，请修改名称后再创建"
   },
   "time": {
     "justNow": "刚刚",
