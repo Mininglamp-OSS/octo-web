@@ -140,6 +140,7 @@ export interface PluginDetailPluginWire extends PluginListItemWire {
 
 export interface PluginRelationWire {
   relation_id: string;
+  target_version_id?: string;
   source_plugin_id: string;
   target_plugin_id: string;
   relation_type: string;

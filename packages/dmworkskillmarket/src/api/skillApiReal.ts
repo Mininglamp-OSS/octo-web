@@ -734,7 +734,16 @@ export async function updateSkill(id: string, form: UpdateSkillForm): Promise<Sk
           attachments,
         },
       },
-      relations: [],
+      // Upsert replaces the whole graph; metadata changes must round-trip pins,
+      // stable relation IDs and opaque edge data from the editable draft.
+      relations: (current.relations ?? []).map((relation) => ({
+        relation_id: relation.relation_id,
+        target_plugin_id: relation.target_plugin_id,
+        target_version_id: relation.target_version_id,
+        relation_type: relation.relation_type,
+        sort_order: relation.sort_order,
+        data: relation.data,
+      })),
       changelog: form.changelog,
     }),
   });

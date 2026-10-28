@@ -186,6 +186,22 @@ describe("SkillListPage", () => {
   // one-axis model could not express, such as a PUBLISHED PRIVATE plugin (no org
   // audience to protect) and a DELISTED one (editing is how you fix and
   // republish).
+  it("row publish for a Space draft opens the changelog-aware saved draft editor", async () => {
+    const draft = { ...skill, listingState: "draft" as const, displayStatus: "draft" as const, draftChangelog: "Saved review rationale" };
+    vi.mocked(api.getMySkills).mockResolvedValue({ items: [draft], nextCursor: null, total: 1 });
+    vi.mocked(api.getSkillDraft).mockResolvedValue(draft);
+    render(<SkillListPage variant="mine" />);
+    fireEvent.click(await screen.findByRole("button", { name: /skillMarket.plugin.ariaPublish|发布「meeting-note-cleaner」/ }));
+    expect(await screen.findByDisplayValue("Saved review rationale")).toBeInTheDocument();
+    expect(screen.getByDisplayValue(draft.version)).toBeInTheDocument();
+    expect(api.publishPlugin).not.toHaveBeenCalled();
+    vi.mocked(api.updateSkill).mockResolvedValue(draft);
+    vi.mocked(api.publishPlugin).mockResolvedValue({ pluginId: draft.id, listingState: "draft", displayStatus: "pending_review", reviewId: "review-1" });
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: /^(发布|skillMarket.plugin.actionPublish)$/ }));
+    await waitFor(() => expect(api.publishPlugin).toHaveBeenCalledWith({ pluginId: draft.id, version: draft.version, changelog: "Saved review rationale" }));
+  });
+
   it("hydrates notes from the saved draft when editing from the Skill tab", async () => {
     const draft = { ...skill, visibility: "private" as const, listingState: "draft" as const, draftChangelog: "Saved draft on type tab" };
     vi.mocked(api.getMySkills).mockResolvedValue({ items: [draft], nextCursor: null, total: 1 });

@@ -233,6 +233,12 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
    * toast is chosen from the response rather than guessed at here.
    */
   async function handlePublish(skill: Skill) {
+    // Space publication needs review notes. Reuse the draft editor so its
+    // existing version and saved changelog are hydrated before publishing.
+    if (skill.visibility === "space") {
+      await openEditor(skill);
+      return;
+    }
     try {
       const outcome = await publishPlugin({ pluginId: skill.id, version: skill.version });
       showToast(

@@ -703,6 +703,16 @@ describe("skillApiReal", () => {
     expect(body.icon).toBe("icons/new.png");
   });
 
+  it("metadata edits preserve draft dependency IDs, pins, order and opaque data", async () => {
+    const plugin = pluginSkillWire();
+    const relations = [{ relation_id: "edge-1", source_plugin_id: "ci-failure-map", target_plugin_id: "dependency", target_version_id: "release-v1", relation_type: "skill_dependency", sort_order: 7, data: { custom: { retain: true } } }];
+    mockFetch.mockReturnValueOnce(jsonResponse({ plugin, relations }));
+    mockFetch.mockReturnValueOnce(jsonResponse({ plugin, relations }));
+    await updateSkill("ci-failure-map", { displayName: "Renamed" });
+    const body = JSON.parse((mockFetch.mock.calls[1][1] as RequestInit).body as string);
+    expect(body.relations).toEqual([{ relation_id: "edge-1", target_plugin_id: "dependency", target_version_id: "release-v1", relation_type: "skill_dependency", sort_order: 7, data: { custom: { retain: true } } }]);
+  });
+
   it("metadata edit strips unsafe attachment paths from the resubmitted upsert", async () => {
     const current = pluginSkillWire({
       plugin_json: {
