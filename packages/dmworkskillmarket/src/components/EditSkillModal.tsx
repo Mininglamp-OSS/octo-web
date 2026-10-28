@@ -456,6 +456,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
         iconUrl = await uploadIcon(iconBlob);
       }
       const updated = await updateSkill(skill.id, {
+        draftRevision: skill.draftRevision,
         version,
         ...(parseTaskId ? { parseTaskId } : {}),
         changelog,

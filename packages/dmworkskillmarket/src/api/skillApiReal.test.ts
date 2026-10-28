@@ -45,7 +45,11 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+const draftRevision = "a".repeat(64);
 function jsonResponse(data: unknown, status = 200, pagination?: unknown) {
+  if (data && typeof data === "object" && "plugin" in data) {
+    data = { draft_revision: draftRevision, ...data };
+  }
   return Promise.resolve({
     status,
     json: () =>
@@ -1649,5 +1653,55 @@ describe("skillApiReal", () => {
         status: 403,
       });
     });
+  });
+});
+
+describe("metadata concurrency and cancellation", () => {
+  it("sends the revision of the echoed draft and surfaces a concurrent conflict", async () => {
+    mockFetch.mockReturnValueOnce(jsonResponse({ plugin: pluginSkillWire(), relations: [] }));
+    mockFetch.mockResolvedValueOnce({ status: 409, json: async () => ({ error: { code: "CONFLICT" } }) });
+    await expect(updateSkill("ci-failure-map", { displayName: "Stale name", draftRevision })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(JSON.parse(mockFetch.mock.calls[1][1].body).expected_draft_revision).toBe(draftRevision);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+  it("rejects a form opened before a newer save without posting", async () => {
+    mockFetch.mockReturnValueOnce(jsonResponse({ plugin: pluginSkillWire(), relations: [], draft_revision: "b".repeat(64) }));
+    await expect(updateSkill("ci-failure-map", { draftRevision, displayName: "Old tab" })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+  it("fails closed if the backend does not support guarded drafts", async () => {
+    mockFetch.mockReturnValueOnce(jsonResponse({ plugin: pluginSkillWire(), relations: [], draft_revision: undefined }));
+    await expect(updateSkill("ci-failure-map", { displayName: "Old server" })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+  it.each(["timeout", "caller"])("keeps %s cancellation active until the response body finishes", async source => {
+    const timeout = new AbortController();
+    const caller = new AbortController();
+    vi.spyOn(AbortSignal, "timeout").mockReturnValue(timeout.signal);
+    let readingBody!: () => void;
+    const bodyStarted = new Promise<void>(resolve => { readingBody = resolve; });
+    mockFetch.mockImplementation((_url, init) => Promise.resolve({ status: 200, json: () => new Promise((_resolve, reject) => {
+      init.signal.addEventListener("abort", () => reject(init.signal.reason), { once: true });
+      readingBody();
+    }) }));
+    const pending = getMySkills({}, { signal: caller.signal });
+    const result = expect(pending).rejects.toThrow("cancelled body");
+    await bodyStarted;
+    (source === "timeout" ? timeout : caller).abort(new DOMException("cancelled body", "AbortError"));
+    await result;
+  });
+  it.each(["timeout", "caller"])("preserves %s cancellation without AbortSignal.any", async source => {
+    const timeout = new AbortController();
+    const caller = new AbortController();
+    vi.spyOn(AbortSignal, "timeout").mockReturnValue(timeout.signal);
+    const anyDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, "any")!;
+    Object.defineProperty(AbortSignal, "any", { value: undefined, configurable: true });
+    mockFetch.mockImplementation((_url, init) => new Promise((_resolve, reject) => {
+      init.signal.addEventListener("abort", () => reject(init.signal.reason), { once: true });
+    }));
+    const pending = getMySkills({}, { signal: caller.signal });
+    const result = expect(pending).rejects.toThrow();
+    (source === "timeout" ? timeout : caller).abort(new DOMException("cancelled", "AbortError"));
+    try { await result; } finally { Object.defineProperty(AbortSignal, "any", anyDescriptor); }
   });
 });

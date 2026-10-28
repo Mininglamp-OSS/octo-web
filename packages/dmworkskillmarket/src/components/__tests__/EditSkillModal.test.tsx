@@ -106,6 +106,22 @@ describe("EditSkillModal", () => {
     vi.restoreAllMocks();
   });
 
+  it("retains edited fields and the open modal when a conditional save conflicts", async () => {
+    const onClose = vi.fn();
+    const onUpdated = vi.fn();
+    const draftRevision = "a".repeat(64);
+    vi.mocked(api.updateSkill).mockRejectedValue(new Error("Draft changed; reload before saving"));
+    render(<EditSkillModal skill={{ ...skill, draftRevision }} categories={categories} onClose={onClose} onUpdated={onUpdated} />);
+    fireEvent.change(screen.getByPlaceholderText(displayNamePlaceholder), { target: { value: "My unsaved title" } });
+    fireEvent.click(screen.getByRole("button", { name: saveButton }));
+    await waitFor(() => expect(screen.getByText("Draft changed; reload before saving")).toBeInTheDocument());
+    expect(api.updateSkill).toHaveBeenCalledWith(skill.id, expect.objectContaining({ draftRevision, displayName: "My unsaved title" }));
+    expect(screen.getByPlaceholderText(displayNamePlaceholder)).toHaveValue("My unsaved title");
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onUpdated).not.toHaveBeenCalled();
+    expect(api.updateSkill).toHaveBeenCalledTimes(1);
+  });
+
   it("prefills current skill fields and saves updates", async () => {
     const onUpdated = vi.fn();
     const onClose = vi.fn();

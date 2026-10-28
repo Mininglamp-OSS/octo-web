@@ -58,6 +58,7 @@ export interface ExpertMember {
 }
 
 interface ExpertBase {
+  draftRevision?: string;
   draftChangelog?: string;
   id: string;
   /** Short label rendered inside the square logo tile (e.g. 研发). */

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), interceptors: { request: { use: vi.fn() }, response: { use: vi.fn() } } }));
 vi.mock("axios", () => ({ default: { create: () => mock, isCancel: () => false } }));
 vi.mock("@octo/base", () => ({ WKApp: { apiClient: { config: {} }, loginInfo: { token: "tok" }, shared: { currentSpaceId: "sp" } }, t: (k: string) => k, buildAcceptLanguage: () => "en-US", DEFAULT_REQUEST_TIMEOUT_MS: 20000 }));
-import { getExpert, getSquad, getExpertSkillContent, getSquadSkillContent, getExpertSkillDownloadUrl, fetchSkillPackage } from "./expertService";
+import { getExpert, getSquad, getExpertSkillContent, getSquadSkillContent, getExpertSkillDownloadUrl, getSquadSkillDownloadUrl, fetchSkillPackage } from "./expertService";
 const relation = (id: string, version: string, kind = "expert_skill") => ({ target_plugin_id: id, target_version_id: version, relation_type: kind, data: { member_key: "member" } });
 const pkg = (path: string, text: string) => ({ attachments: [{ path, content_type: "raw", raw_content: text }] });
 const snapshot = (id: string, relations: unknown[], path: string, text: string) => ({ version: { plugin_id: id, version_id: "old", relations }, manifest_json: { plugin_name: `old-${id}` }, plugin_json: pkg(path, text) });
@@ -58,5 +58,58 @@ describe("exact pinned content", () => {
       expect(await (await JSZip.loadAsync(bytes)).file("SKILL.md")!.async("string")).toBe("Skill V1");
       expect(calls).toEqual(["/market/api/v1/plugins/skill/versions/s1", "/market/api/v1/plugins/skill/versions/s1/file?path=SKILL.md"]);
     } finally { vi.unstubAllGlobals(); }
+  });
+});
+
+describe("concurrent detail snapshots", () => {
+  it.each(["expert", "team"])("rejects an older %s response after a newer fan-out completes", async kind => {
+    let finishOld!: (value: unknown) => void;
+    const oldSkill = new Promise(resolve => { finishOld = resolve; });
+    let reads = 0;
+    mock.get.mockImplementation((url: string) => {
+      const response = (data: unknown) => Promise.resolve({ data: { data } });
+      if (url.endsWith("/plugin_categories")) return response([]);
+      if (url.endsWith("/plugins/detail")) {
+        const version = ++reads;
+        return response({ plugin: { plugin_id: kind, plugin_type: kind === "expert" ? "expert" : "expert_team", manifest_json: {} }, relations: [kind === "expert" ? relation("skill", `s${version}`) : relation("member", `e${version}`, "expert_team_expert")] });
+      }
+      if (url.endsWith("/member/versions/e1")) return response(snapshot("member", [relation("skill", "s1")], "AGENTS.md", "old member"));
+      if (url.endsWith("/member/versions/e2")) return response(snapshot("member", [relation("skill", "s2")], "AGENTS.md", "new member"));
+      if (url.endsWith("/skill/versions/s1")) return oldSkill;
+      if (url.endsWith("/skill/versions/s2")) return response(snapshot("skill", [], "SKILL.md", "new body"));
+      if (url.endsWith("/skill/versions/s2/file")) return Promise.resolve({ data: "new body" });
+      throw new Error(`unexpected ${url}`);
+    });
+    const load = kind === "expert" ? getExpert : getSquad;
+    const older = load(kind);
+    const rejected = expect(older).rejects.toMatchObject({ __CANCEL__: true });
+    await vi.waitFor(() => expect(mock.get.mock.calls.some(([url]) => url.endsWith("/skill/versions/s1"))).toBe(true));
+    await load(kind);
+    finishOld({ data: { data: snapshot("skill", [], "SKILL.md", "old body") } });
+    await rejected;
+    const body = kind === "expert" ? await getExpertSkillContent(kind, 0) : await getSquadSkillContent(kind, "member", 0);
+    expect(body).toBe("new body");
+    const path = kind === "expert" ? await getExpertSkillDownloadUrl(kind, 0) : await getSquadSkillDownloadUrl(kind, "member", 0);
+    expect(path).toContain("/skill/versions/s2");
+  });
+
+  it.each(["expert", "team"])("keeps a displayed %s pin after another view refreshes its positional index", async kind => {
+    const displayed = { name: "Old displayed skill", pluginId: "skill", versionId: "s1" };
+    const original = mock.get.getMockImplementation()!;
+    mock.get.mockImplementation((url, ...rest) => {
+      if (url.endsWith("/skill/versions/s2")) return Promise.resolve({ data: { data: snapshot("skill", [], "SKILL.md", "new body") } });
+      if (url.endsWith("/plugins/detail") && kind === "expert") return Promise.resolve({ data: { data: { plugin: { plugin_id: "expert", plugin_type: "expert", manifest_json: {} }, relations: [relation("skill", "s2")] } } });
+      if (url.endsWith("/member/versions/e1") && kind === "team") return Promise.resolve({ data: { data: snapshot("member", [relation("skill", "s2")], "AGENTS.md", "new member") } });
+      return original(url, ...rest);
+    });
+    if (kind === "expert") {
+      await getExpert(kind);
+      expect(await getExpertSkillContent(kind, 0, displayed)).toBe("Skill V1");
+      expect(await getExpertSkillDownloadUrl(kind, 0, displayed)).toContain("/versions/s1");
+    } else {
+      await getSquad(kind);
+      expect(await getSquadSkillContent(kind, "member", 0, displayed)).toBe("Skill V1");
+      expect(await getSquadSkillDownloadUrl(kind, "member", 0, displayed)).toContain("/versions/s1");
+    }
   });
 });

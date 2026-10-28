@@ -149,6 +149,7 @@ export interface PluginRelationWire {
 }
 
 export interface PluginDetailWire {
+  draft_revision?: string;
   draft_changelog?: string;
   plugin: PluginDetailPluginWire;
   relations: PluginRelationWire[];

@@ -51,6 +51,7 @@ export interface SkillDependencyIssue {
 }
 
 export interface Skill {
+  draftRevision?: string;
   draftChangelog?: string;
   id: string;
   name: string;
@@ -211,6 +212,7 @@ export interface NewSkillForm {
 }
 
 export interface UpdateSkillForm {
+  draftRevision?: string;
   parseTaskId?: string;
   name?: string;
   displayName?: string;

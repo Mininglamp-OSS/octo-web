@@ -417,6 +417,19 @@ const listMySquadsReal = (params: ListExpertParams) => listPathReal("squad", tru
 interface SkillTarget { pluginId: string; versionId?: string }
 const expertSkillIndex = new Map<string, SkillTarget[]>();
 const squadSkillIndex = new Map<string, Map<string, SkillTarget[]>>();
+const detailGenerations = new Map<string, number>();
+function beginDetail(kind: "expert" | "squad", id: string) {
+  const key = detailIndexKey(id);
+  const generationKey = `${kind}:${key}`;
+  const generation = (detailGenerations.get(generationKey) ?? 0) + 1;
+  detailGenerations.set(generationKey, generation);
+  return { key, assertCurrent() {
+    if (detailIndexKey(id) !== key || detailGenerations.get(generationKey) !== generation) {
+      // Axios cancellation semantics: callers discard superseded detail reads.
+      throw Object.assign(new Error("Superseded detail request"), { __CANCEL__: true });
+    }
+  } };
+}
 // Scope lazy indices to the authenticated reader, not just the resource id.
 function detailIndexKey(id: string): string {
   return `${WKApp.loginInfo.token}:${WKApp.shared.currentSpaceId}:${id}`;
@@ -500,6 +513,7 @@ async function loadSkills(
 }
 
 async function getExpertReal(id: string): Promise<ExpertAgent> {
+  const request = beginDetail("expert", id);
   const [detail, maps] = await Promise.all([
     pluginDetail(id),
     getExpertCategoryMaps("expert"),
@@ -508,7 +522,8 @@ async function getExpertReal(id: string): Promise<ExpertAgent> {
   const categoryName =
     (plugin.category_id && maps.idToName.get(plugin.category_id)) || "";
   const { skills, pluginIds } = await loadSkills(detail.relations);
-  expertSkillIndex.set(detailIndexKey(id), pluginIds);
+  request.assertCurrent();
+  expertSkillIndex.set(request.key, pluginIds);
   const base = mapPluginAgentListItem(plugin, categoryName);
   return {
     ...base,
@@ -523,6 +538,7 @@ async function getExpertReal(id: string): Promise<ExpertAgent> {
 }
 
 async function getSquadReal(id: string): Promise<ExpertSquad> {
+  const request = beginDetail("squad", id);
   const [detail, maps] = await Promise.all([
     pluginDetail(id),
     getExpertCategoryMaps("expert_team"),
@@ -553,7 +569,8 @@ async function getSquadReal(id: string): Promise<ExpertSquad> {
     }
     // else: unpinned confirmed 404 → legacy dangling member, safe to drop.
   }
-  squadSkillIndex.set(detailIndexKey(id), skillIndex);
+  request.assertCurrent();
+  squadSkillIndex.set(request.key, skillIndex);
   const base = mapPluginSquadListItem(plugin, categoryName);
   return {
     ...base,
@@ -617,17 +634,23 @@ const deleteSquadReal = deletePluginReal;
  * Version labels are optional for existing visibility-only callers.
  */
 export async function getExpertEditMetadata(id: string): Promise<ExpertItem> {
-  const detail = await get<PluginDetailWire>(`/plugins/${encodeURIComponent(id)}/draft`);
+  let detail: PluginDetailWire;
+  try {
+    detail = await get<PluginDetailWire>(`/plugins/${encodeURIComponent(id)}/draft`);
+  } catch (err) {
+    if (axios.isCancel(err)) throw err;
+    throw new Error(t(expertListErrorI18nKey(err)));
+  }
   const item = detail.plugin.plugin_type === "expert_team"
     ? mapPluginSquadListItem(detail.plugin, "")
     : mapPluginAgentListItem(detail.plugin, "");
-  return { ...item, draftChangelog: detail.draft_changelog ?? "" };
+  return { ...item, draftRevision: detail.draft_revision, draftChangelog: detail.draft_changelog ?? "" };
 }
 
 async function updateExpertVisibilityReal(
   id: string,
   visibility: ExpertVisibility,
-  metadata?: { name: string; version: string; changelog?: string }
+  metadata?: { name: string; version: string; changelog?: string; draftRevision?: string }
 ): Promise<void> {
   // include_relations: the echo has to name the current child set, and this is
   // the same read the detail view already performs.
@@ -642,9 +665,11 @@ async function updateExpertVisibilityReal(
     // the caller can render `err.message` without knowing that.
     throw new Error(t(expertListErrorI18nKey(err)));
   }
+  if (!detail.draft_revision || (metadata?.draftRevision && metadata.draftRevision !== detail.draft_revision)) throw new Error(t("skillMarket.errors.stateConflict"));
   const plugin = detail.plugin;
   try {
     await expertAxios.post(`${BASE}/plugins/upsert`, {
+      expected_draft_revision: detail.draft_revision,
       ...(metadata?.changelog !== undefined ? { changelog: metadata.changelog } : {}),
       plugin: {
         plugin_id: id,
@@ -898,7 +923,7 @@ export const deleteSquad = withReviewInvalidation(function deleteSquad(
 export function updateExpertVisibility(
   id: string,
   visibility: ExpertVisibility,
-  metadata?: { name: string; version: string; changelog?: string }
+  metadata?: { name: string; version: string; changelog?: string; draftRevision?: string }
 ): Promise<void> {
   if (USE_MOCK) {
     return Promise.reject(
@@ -1134,22 +1159,28 @@ const getSquadSkillContentReal = (
 /** GET /experts/{id}/skill_md?i= — stored SKILL.md text for one expert skill. */
 export function getExpertSkillContent(
   expertId: string,
-  index: number
+  index: number,
+  displayedSkill?: ExpertSkill
 ): Promise<string> {
   return USE_MOCK
     ? delay(`(sample) skill #${index} content placeholder`)
-    : getExpertSkillContentReal(expertId, index);
+    : displayedSkill
+      ? fetchSkillMarkdown(displayedSkillTarget(displayedSkill))
+      : getExpertSkillContentReal(expertId, index);
 }
 
 /** GET /squads/{id}/skill_md?member=&i= — a squad member's skill content. */
 export function getSquadSkillContent(
   squadId: string,
   memberKey: string,
-  index: number
+  index: number,
+  displayedSkill?: ExpertSkill
 ): Promise<string> {
   return USE_MOCK
     ? delay(`(sample) member skill #${index} content placeholder`)
-    : getSquadSkillContentReal(squadId, memberKey, index);
+    : displayedSkill
+      ? fetchSkillMarkdown(displayedSkillTarget(displayedSkill))
+      : getSquadSkillContentReal(squadId, memberKey, index);
 }
 
 // ─── Skill package retrieval (whole .zip/.skill) ─────────────────────────────
@@ -1264,6 +1295,12 @@ export async function fetchSkillPackage(
   return out.buffer as ArrayBuffer;
 }
 
+// Bind modal reads to the actual rendered snapshot, even if another view has
+// since refreshed this parent and populated a different positional index.
+function displayedSkillTarget(skill: ExpertSkill): SkillTarget {
+  if (!skill.pluginId) throw new Error(t("mcp.errors.notFound"));
+  return { pluginId: skill.pluginId, versionId: skill.versionId };
+}
 async function skillDownloadPath(target: SkillTarget): Promise<string> {
   if (!target.versionId) return `${BASE}/plugins/download?plugin_id=${encodeURIComponent(target.pluginId)}`;
   // Legacy archives have a stable virtual file path. Tree packages are assembled
@@ -1280,17 +1317,18 @@ const getSquadSkillDownloadUrlReal = (id: string, memberKey: string, index: numb
 /** Resolve the authenticated download path for the expert's skill package. Used
  *  both to fetch + unzip the package client-side (file browser) and to trigger a
  *  download; consume it through fetchSkillPackage so auth headers attach. */
-export function getExpertSkillDownloadUrl(id: string, index: number): Promise<string> {
-  return getExpertSkillDownloadUrlReal(id, index);
+export function getExpertSkillDownloadUrl(id: string, index: number, displayedSkill?: ExpertSkill): Promise<string> {
+  return displayedSkill ? skillDownloadPath(displayedSkillTarget(displayedSkill)) : getExpertSkillDownloadUrlReal(id, index);
 }
 
 /** Resolve the authenticated download path for a squad member's skill package. */
 export function getSquadSkillDownloadUrl(
   id: string,
   memberKey: string,
-  index: number
+  index: number,
+  displayedSkill?: ExpertSkill
 ): Promise<string> {
-  return getSquadSkillDownloadUrlReal(id, memberKey, index);
+  return displayedSkill ? skillDownloadPath(displayedSkillTarget(displayedSkill)) : getSquadSkillDownloadUrlReal(id, memberKey, index);
 }
 
 // ─── Add-to-Loop: install an expert into a Loop workspace ───────────────────

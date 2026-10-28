@@ -45,6 +45,7 @@ import {
  * and two member edges whose `data` carries the install-time wiring.
  */
 const SQUAD_WIRE = {
+  draft_revision: "a".repeat(64),
   plugin: {
     plugin_id: "squad-1",
     plugin_name: "S1",
@@ -338,3 +339,28 @@ describe("loadExpertReviewSnapshot — one revision, one read", () => {
    await updateExpertVisibility("squad-1", "private", { name: "S1", version: "2.4.0", changelog: "" });
    expect(mock.instance.post).toHaveBeenLastCalledWith(expect.stringContaining("/plugins/upsert"), expect.objectContaining({ changelog: "" }));
  });
+
+describe("guarded expert metadata edits", () => {
+  beforeEach(() => { mock.instance.get.mockReset(); mock.instance.post.mockReset(); });
+  it("sends the echoed revision and leaves a server conflict visible", async () => {
+    wire();
+    mock.instance.post.mockRejectedValueOnce({ response: { status: 409, data: { error: { code: "CONFLICT" } } } });
+    await expect(updateExpertVisibility("squad-1", "private", { name: "Renamed", version: "2.4.0" })).rejects.toThrow("skillMarket.errors.stateConflict");
+    expect(mock.instance.post.mock.calls[0][1].expected_draft_revision).toBe(SQUAD_WIRE.draft_revision);
+    expect(mock.instance.post).toHaveBeenCalledTimes(1);
+  });
+  it("rejects a stale editor before posting a refreshed full-replace payload", async () => {
+    wire();
+    await expect(updateExpertVisibility("squad-1", "private", { name: "Old tab", version: "2.4.0", draftRevision: "b".repeat(64) })).rejects.toThrow("skillMarket.errors.stateConflict");
+    expect(mock.instance.post).not.toHaveBeenCalled();
+  });
+  it("does not silently save against a backend without a revision", async () => {
+    mock.instance.get.mockResolvedValue({ data: { data: { ...SQUAD_WIRE, draft_revision: undefined } } });
+    await expect(updateExpertVisibility("squad-1", "private")).rejects.toThrow("skillMarket.errors.stateConflict");
+    expect(mock.instance.post).not.toHaveBeenCalled();
+  });
+  it.each([[403, "forbidden"], [404, "notfound"], [500, "server"]])("localizes draft read %s", async (status, kind) => {
+    mock.instance.get.mockRejectedValue({ response: { status } });
+    await expect(getExpertEditMetadata("squad-1")).rejects.toThrow(`mcp.list.error.${kind}`);
+  });
+});

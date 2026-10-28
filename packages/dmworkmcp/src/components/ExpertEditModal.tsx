@@ -110,7 +110,7 @@ export default function ExpertEditModal({
     setError(null);
     try {
       if (dirty) {
-        await updateExpertVisibility(item.id, visibility, { name: name.trim(), version: version.trim(), changelog });
+        await updateExpertVisibility(item.id, visibility, { name: name.trim(), version: version.trim(), changelog, draftRevision: item.draftRevision });
         if (!isCurrentSpace()) return;
       }
       if (publish) {

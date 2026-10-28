@@ -225,6 +225,26 @@ describe("ExpertEditModal space-switch guard", () => {
     expect(updateExpertVisibility).toHaveBeenCalledWith(item.id, "private", expect.objectContaining({ changelog: "Revised note" }));
   });
 
+  it("retains edited fields and does not publish or close after a conditional save conflicts", async () => {
+    const onClose = vi.fn();
+    const onSaved = vi.fn();
+    const draftRevision = "a".repeat(64);
+    updateExpertVisibility.mockRejectedValue(new Error("Draft changed; reload before saving"));
+    await act(async () => {
+      ReactDOM.render(<ExpertEditModal item={{ ...item, draftRevision }} onClose={onClose} onSaved={onSaved} onEditContent={vi.fn()} />, container);
+    });
+    const name = container!.querySelector('input:not([type="radio"])') as HTMLInputElement;
+    await act(async () => { Simulate.change(name, { target: { value: "My unsaved expert" } } as any); });
+    await act(async () => { button(SAVE).click(); });
+    expect(updateExpertVisibility).toHaveBeenCalledWith(item.id, "private", expect.objectContaining({ draftRevision, name: "My unsaved expert" }));
+    expect(container!.textContent).toContain("Draft changed; reload before saving");
+    expect(name.value).toBe("My unsaved expert");
+    expect(publishPluginListing).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(updateExpertVisibility).toHaveBeenCalledTimes(1);
+  });
+
   it("stops listening once unmounted", async () => {
     await act(async () => {
       ReactDOM.render(
