@@ -59,6 +59,42 @@ vi.mock("react-avatar-editor", async () => {
 });
 
 describe("EditSkillModal", () => {
+  it("can publish a saved private draft after closing and reopening a listed Skill", async () => {
+    const published = { ...skill, visibility: "private" as const, listingState: "published" as const, draftRevision: "a".repeat(64) };
+    let draft = published;
+    let released = published;
+    vi.mocked(api.updateSkill).mockImplementation(async (_id, form) => {
+      draft = { ...draft, displayName: form.displayName!, version: form.version!, draftRevision: "b".repeat(64) };
+      return draft;
+    });
+    vi.mocked(api.publishPlugin).mockImplementation(async () => {
+      released = draft;
+      return { displayStatus: "published" } as any;
+    });
+    const props = { categories, onClose: vi.fn(), onUpdated: vi.fn(), onPublished: vi.fn() };
+    const view = render(<EditSkillModal {...props} skill={published} />);
+    fireEvent.change(screen.getByPlaceholderText(displayNamePlaceholder), { target: { value: "新版会议纪要" } });
+    fireEvent.change(screen.getByDisplayValue("1.1.3"), { target: { value: "1.1.4" } });
+    fireEvent.click(screen.getByRole("button", { name: /保存草稿|skillMarket.plugin.actionSaveDraft/ }));
+    await waitFor(() => expect(props.onClose).toHaveBeenCalledOnce());
+    expect(api.publishPlugin).not.toHaveBeenCalled();
+    expect(released.displayName).toBe(skill.displayName);
+    expect(draft.displayName).toBe("新版会议纪要");
+    view.rerender(<EditSkillModal {...props} skill={null} />);
+    view.rerender(<EditSkillModal {...props} skill={draft} />);
+    expect(screen.getByPlaceholderText(displayNamePlaceholder)).toHaveValue("新版会议纪要");
+    fireEvent.click(screen.getByRole("button", { name: /发布|skillMarket.plugin.actionPublish/ }));
+    await waitFor(() => expect(props.onPublished).toHaveBeenCalledOnce());
+    expect(api.publishPlugin).toHaveBeenCalledWith({ pluginId: skill.id, version: "1.1.4" });
+    expect(released.displayName).toBe("新版会议纪要");
+    expect(released.version).toBe("1.1.4");
+  });
+
+  it("keeps direct publication hidden for a listed organization Skill", () => {
+    render(<EditSkillModal skill={{ ...skill, visibility: "space", listingState: "published" }} categories={categories} onClose={vi.fn()} onUpdated={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /发布|skillMarket.plugin.actionPublish/ })).not.toBeInTheDocument();
+  });
+
   it("prefills and saves the current draft explanation without a reupload", async () => {
     const props = { skill: { ...skill, draftChangelog: "Saved draft note" }, categories, onClose: vi.fn(), onUpdated: vi.fn() };
     render(<EditSkillModal {...props} />);

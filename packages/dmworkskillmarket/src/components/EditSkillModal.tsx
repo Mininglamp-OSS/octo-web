@@ -183,16 +183,15 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
     !tagSubmitError,
   );
 
-  // Whether this save leaves the plugin unlisted — either it already is, or
-  // widening the audience is about to un-list it server-side. That is exactly
-  // when 保存草稿 is the honest label and 发布 has something to do; on a published
-  // plugin whose audience is unchanged there is nothing to publish, so the
-  // primary action is not rendered rather than sitting there disabled.
+  // Saving a private Skill advances its draft, even while an older release
+  // stays listed. Keep the release action available after saving and reopening;
+  // local dirty state cannot tell whether the server has an unreleased draft.
   // Only private/space are selectable here; anything else is admin-managed.
   const tenantVisibility = visibility === "private" || visibility === "space";
   const willBeUnlisted =
     skill?.listingState !== "published" ||
     (skill?.visibility !== undefined && visibility !== skill.visibility);
+  const showDraftActions = willBeUnlisted || skill?.visibility === "private";
   // 发布 does NOT inherit the grandfathering. On 本组织 it routes through
   // `Service.Publish` → `SubmitReview`, which gates on `validVersion` with no
   // stored-label exemption, so a legacy label that saves fine would 400 on
@@ -570,11 +569,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
           ) : (
           <>
             <WKButton variant="secondary" onClick={requestClose} disabled={saving}>{t("skillMarket.common.cancel")}</WKButton>
-            {/* Same shape as the create modal. The secondary action is only called
-                保存草稿 when the save actually leaves a draft behind — on a
-                published plugin whose audience is unchanged it is a plain 保存,
-                and there is nothing to publish, so 发布 is not offered at all
-                rather than sitting there permanently disabled. */}
+            {/* Saving a private draft does not replace its published snapshot. */}
             <WKButton
               variant="secondary"
               onClick={() => void submit(false)}
@@ -582,12 +577,12 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
               disabled={!canSave || (saving && publishing)}
             >
               {t(
-                willBeUnlisted
+                showDraftActions
                   ? "skillMarket.plugin.actionSaveDraft"
                   : "skillMarket.common.save"
               )}
             </WKButton>
-            {willBeUnlisted && (
+            {showDraftActions && (
               <WKButton
                 variant="primary"
                 onClick={() => void submit(true)}
