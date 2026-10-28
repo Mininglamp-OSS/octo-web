@@ -39,3 +39,19 @@ The response remains `{ "data": { "agent_id": "..." } }` for an expert or
 The Service uses a 150-second timeout to cover Marketplace's bounded two-minute
 Fleet operation. Stable retry keys are retained for the mounted dialog lifetime;
 page reloads do not restore an uncertain operation automatically.
+
+## CI bootstrap isolation follow-up
+
+The first CI run passed all 209 main, 9 HTML-preview and 120 desktop cases, but
+failed the no-proxy-leak gate on one chat categories bootstrap request during
+RB1's document navigation. The categories MSW handler already exists; the gap
+was that the fixture's page routes/events cannot see a retiring document's
+Service Worker-owned network fallback.
+
+The test fixture now observes context requests and registers worker-only context
+fallbacks for the same two bootstrap GET endpoints, using the existing readiness
+and start-time checks. The strict monitor exempts only exact request objects
+successfully fulfilled by this fallback; later unhandled requests, unrelated
+requests, error responses and network failures still fail. A forwarding worker on
+an isolated local test origin verifies both ownership/readiness boundaries without
+contacting Vite's dead backend. Production code and CI pass/fail rules are unchanged.
