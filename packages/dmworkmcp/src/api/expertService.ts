@@ -1397,20 +1397,44 @@ export function prefetchLoopTargets(): void {
     .catch(() => {});
 }
 
-/** POST /plugins/install — create the agent (+ its skills) in the
- *  chosen workspace/runtime. The marketplace backend orchestrates the fleet
- *  calls server-side (create agent → create skills → bind) and rolls back on
- *  partial failure, returning the new agent's id. */
+export interface LoopInstallationOptions {
+  workspaceId: string;
+  runtimeId: string;
+  /** Reuse this key for retries of the same user operation. */
+  idempotencyKey: string;
+}
+
+/** getRandomValues also works on HTTP deployments without randomUUID support. */
+export function createLoopInstallationKey(): string {
+  return Array.from(
+    globalThis.crypto.getRandomValues(new Uint32Array(4)),
+    (part) => part.toString(16).padStart(8, "0")
+  ).join("-");
+}
+
+const CAPABILITY_INSTALL_TIMEOUT_MS = 150_000;
+
+function installLoopPlugin(pluginId: string, opts: LoopInstallationOptions) {
+  return expertAxios.post(
+    `${BASE}/plugins/${encodeURIComponent(pluginId)}/installations`,
+    { runtime_id: opts.runtimeId },
+    {
+      headers: {
+        "X-Workspace-ID": opts.workspaceId,
+        "Idempotency-Key": opts.idempotencyKey,
+      },
+      timeout: CAPABILITY_INSTALL_TIMEOUT_MS,
+    }
+  );
+}
+
+/** Install an expert through Fleet's atomic capability installer. */
 export async function installExpertToLoop(
   expertId: string,
-  opts: { workspaceId: string; runtimeId: string }
+  opts: LoopInstallationOptions
 ): Promise<{ agentId: string }> {
   try {
-    const resp = await expertAxios.post(`${BASE}/plugins/install`, {
-      plugin_id: expertId,
-      workspace_id: opts.workspaceId,
-      runtime_id: opts.runtimeId,
-    });
+    const resp = await installLoopPlugin(expertId, opts);
     const data = (resp?.data?.data ?? null) as { agent_id?: string } | null;
     const agentId = data?.agent_id ?? "";
     // The agent id is the whole point of this call. A 2xx without it means the
@@ -1425,21 +1449,13 @@ export async function installExpertToLoop(
   }
 }
 
-/** POST /plugins/install (expert_team) — provision the squad into the
- *  chosen workspace/runtime. The marketplace backend installs each member as a
- *  Loop agent (create agent → skills → bind), then forms the squad (create it
- *  led by the leader member, attach the rest), rolling back on partial failure.
- *  Returns the new fleet squad's id. */
+/** Install a team and its members in one Fleet capability transaction. */
 export async function installSquadToLoop(
   squadId: string,
-  opts: { workspaceId: string; runtimeId: string }
+  opts: LoopInstallationOptions
 ): Promise<{ squadId: string }> {
   try {
-    const resp = await expertAxios.post(`${BASE}/plugins/install`, {
-      plugin_id: squadId,
-      workspace_id: opts.workspaceId,
-      runtime_id: opts.runtimeId,
-    });
+    const resp = await installLoopPlugin(squadId, opts);
     const data = (resp?.data?.data ?? null) as { squad_id?: string } | null;
     const newSquadId = data?.squad_id ?? "";
     // The squad id is the whole point of this call — a 2xx without it means the
@@ -1448,20 +1464,29 @@ export async function installSquadToLoop(
     return { squadId: newSquadId };
   } catch (err) {
     if (axios.isCancel(err)) throw err;
-    throw new Error(installErrorMessage(err, "mcp.expert.installConflictSquad"));
+    throw new Error(
+      installErrorMessage(err, "mcp.expert.installConflictSquad")
+    );
   }
 }
 
-/** Install-specific error copy. The install path is fleet-backed, so its most
- *  likely failures — a duplicate name (CONFLICT), missing workspace permission
- *  (FORBIDDEN; squad create needs owner/admin), and an unconfigured/unavailable
- *  Loop service (UPSTREAM_UNAVAILABLE) — get dedicated expert-context copy
- *  rather than the shared connector strings (which read wrong here). Everything
- *  else falls back to the shared map. */
+/** Installation conflicts include missing releases and expired retry receipts;
+ * uncertain upstream outcomes carry same-key retry instructions in the hint. */
 function installErrorMessage(err: unknown, conflictKey: string): string {
-  const code = (
-    err as { response?: { data?: { error?: { code?: string } } } }
-  )?.response?.data?.error?.code;
+  const wire = (
+    err as {
+      response?: {
+        data?: { error?: { code?: string; message?: string; hint?: string } };
+      };
+    }
+  )?.response?.data?.error;
+  const code = wire?.code;
+  if (code === "CONFLICT" || code === "UPSTREAM_UNAVAILABLE") {
+    const guidance = [wire?.message, wire?.hint].filter(
+      (part): part is string => typeof part === "string" && part.length > 0
+    );
+    if (guidance.length > 0) return guidance.join(" ");
+  }
   const INSTALL_COPY: Record<string, string> = {
     CONFLICT: conflictKey,
     FORBIDDEN: "mcp.expert.installForbidden",

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { WKModal, WKButton, t, useI18n } from "@octo/base";
 import { Select, Toast } from "@douyinfe/semi-ui";
 import type { ExpertItem } from "../mock/expertMock";
@@ -7,6 +7,7 @@ import {
   installSquadToLoop,
   getLoopRuntimes,
   getLoopWorkspaces,
+  createLoopInstallationKey,
 } from "../api/expertService";
 import type { LoopRuntime, LoopWorkspace } from "../api/expertService";
 
@@ -47,6 +48,10 @@ export default function ExpertAddToLoopModal({
   const [loadingWorkspaces, setLoadingWorkspaces] = useState(false);
   const [loadingRuntimes, setLoadingRuntimes] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const inFlight = useRef(false);
+  const operationKeys = useRef(new Map<string, string>());
+  const activeItem = useRef(item);
+  activeItem.current = item;
 
   const visible = Boolean(item);
 
@@ -72,7 +77,9 @@ export default function ExpertAddToLoopModal({
       .catch((err) => {
         if (cancelled) return;
         setWorkspaces([]);
-        Toast.error(err instanceof Error ? err.message : t("mcp.expert.installFailed"));
+        Toast.error(
+          err instanceof Error ? err.message : t("mcp.expert.installFailed")
+        );
       })
       .finally(() => {
         if (!cancelled) setLoadingWorkspaces(false);
@@ -108,7 +115,9 @@ export default function ExpertAddToLoopModal({
       .catch((err) => {
         if (cancelled) return;
         setRuntimes([]);
-        Toast.error(err instanceof Error ? err.message : t("mcp.expert.installFailed"));
+        Toast.error(
+          err instanceof Error ? err.message : t("mcp.expert.installFailed")
+        );
       })
       .finally(() => {
         if (!cancelled) setLoadingRuntimes(false);
@@ -119,36 +128,55 @@ export default function ExpertAddToLoopModal({
   }, [item, workspaceId]);
 
   const handleClose = () => {
-    if (submitting) return;
+    if (inFlight.current) return;
     onClose();
   };
 
   const handleConfirm = async () => {
-    if (!item || !workspaceId || !runtimeId || submitting) return;
+    if (!item || !workspaceId || !runtimeId || inFlight.current) return;
+    inFlight.current = true;
     setSubmitting(true);
     try {
-      // Squads install each member then form the team; experts install one
-      // agent. Both take the same workspace/runtime selection and throw if the
-      // backend 2xx carries no id (so we never falsely report success).
-      if (item.kind === "squad") {
-        await installSquadToLoop(item.id, { workspaceId, runtimeId });
-      } else {
-        await installExpertToLoop(item.id, { workspaceId, runtimeId });
+      const operation = JSON.stringify([
+        item.kind,
+        item.id,
+        workspaceId,
+        runtimeId,
+      ]);
+      let idempotencyKey = operationKeys.current.get(operation);
+      if (!idempotencyKey) {
+        idempotencyKey = createLoopInstallationKey();
+        operationKeys.current.set(operation, idempotencyKey);
       }
+      const options = { workspaceId, runtimeId, idempotencyKey };
+      // Failed/uncertain outcomes retain the original key. Do not retry through
+      // another route or create a fresh key on each click.
+      if (item.kind === "squad") {
+        await installSquadToLoop(item.id, options);
+      } else {
+        await installExpertToLoop(item.id, options);
+      }
+      operationKeys.current.delete(operation);
+      if (activeItem.current !== item) return;
       Toast.success(t("mcp.expert.installSuccess"));
       onClose();
     } catch (err) {
+      if (activeItem.current !== item) return;
       Toast.error(
         err instanceof Error ? err.message : t("mcp.expert.installFailed")
       );
     } finally {
+      inFlight.current = false;
       setSubmitting(false);
     }
   };
 
   if (!item) return null;
 
-  const workspaceOptions = workspaces.map((w) => ({ label: w.name, value: w.id }));
+  const workspaceOptions = workspaces.map((w) => ({
+    label: w.name,
+    value: w.id,
+  }));
   const runtimeOptions = runtimes.map((rt) => ({
     // Surface a non-ready status so the user isn't silently defaulted onto (or
     // left picking) a runtime that can't run the agent. The status value itself
@@ -171,11 +199,21 @@ export default function ExpertAddToLoopModal({
       title={t("mcp.expert.addToLoopTitle")}
       footer={
         <div className="wk-mcp-form-footer__right">
-          <WKButton variant="secondary" onClick={handleClose} disabled={submitting}>
+          <WKButton
+            variant="secondary"
+            onClick={handleClose}
+            disabled={submitting}
+          >
             {t("mcp.expert.cancel")}
           </WKButton>
-          <WKButton variant="primary" onClick={handleConfirm} disabled={!canSubmit}>
-            {submitting ? t("mcp.expert.installing") : t("mcp.expert.confirmInstall")}
+          <WKButton
+            variant="primary"
+            onClick={handleConfirm}
+            disabled={!canSubmit}
+          >
+            {submitting
+              ? t("mcp.expert.installing")
+              : t("mcp.expert.confirmInstall")}
           </WKButton>
         </div>
       }
