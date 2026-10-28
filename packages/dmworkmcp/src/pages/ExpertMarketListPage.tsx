@@ -944,7 +944,6 @@ export default function ExpertMarketListPage({
         onConfirm={handleConfirmDelete}
       />
       <ExpertAddToLoopModal
-        key={addToLoopTarget?.id ?? "none"}
         item={addToLoopTarget}
         onClose={() => setAddToLoopTarget(null)}
       />

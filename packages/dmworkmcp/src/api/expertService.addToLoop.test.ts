@@ -48,6 +48,7 @@ vi.mock("@octo/base", () => ({
 
 import {
   clearLoopCache,
+  createLoopInstallationKey,
   getLoopRuntimes,
   getLoopWorkspaces,
   installExpertToLoop,
@@ -134,7 +135,7 @@ describe("expertService add-to-loop wire contract", () => {
     expect(res).toEqual([{ id: "rt1", name: "Runtime One", status: "online" }]);
   });
 
-  it("installExpertToLoop POSTs /plugins/install with the plugin id and returns agentId", async () => {
+  it("installs an expert through the capability endpoint with workspace/key headers", async () => {
     mock.instance.post.mockResolvedValue({
       data: { data: { agent_id: "agent-123" } },
     });
@@ -142,11 +143,19 @@ describe("expertService add-to-loop wire contract", () => {
     const res = await installExpertToLoop("expert-1", {
       workspaceId: "w1",
       runtimeId: "rt1",
+      idempotencyKey: "expert-operation",
     });
 
     expect(mock.instance.post).toHaveBeenCalledWith(
-      "/market/api/v1/plugins/install",
-      { plugin_id: "expert-1", workspace_id: "w1", runtime_id: "rt1" }
+      "/market/api/v1/plugins/expert-1/installations",
+      { runtime_id: "rt1" },
+      {
+        headers: {
+          "X-Workspace-ID": "w1",
+          "Idempotency-Key": "expert-operation",
+        },
+        timeout: 150_000,
+      }
     );
     expect(res).toEqual({ agentId: "agent-123" });
   });
@@ -155,11 +164,15 @@ describe("expertService add-to-loop wire contract", () => {
     mock.instance.post.mockResolvedValue({ data: { data: {} } });
 
     await expect(
-      installExpertToLoop("e1", { workspaceId: "w", runtimeId: "r" })
+      installExpertToLoop("e1", {
+        workspaceId: "w",
+        runtimeId: "r",
+        idempotencyKey: "key",
+      })
     ).rejects.toThrow();
   });
 
-  it("installSquadToLoop POSTs /plugins/install with the plugin id and returns squadId", async () => {
+  it("installs a team through the capability endpoint and returns squadId", async () => {
     mock.instance.post.mockResolvedValue({
       data: { data: { squad_id: "squad-123" } },
     });
@@ -167,11 +180,19 @@ describe("expertService add-to-loop wire contract", () => {
     const res = await installSquadToLoop("squad-1", {
       workspaceId: "w1",
       runtimeId: "rt1",
+      idempotencyKey: "team-operation",
     });
 
     expect(mock.instance.post).toHaveBeenCalledWith(
-      "/market/api/v1/plugins/install",
-      { plugin_id: "squad-1", workspace_id: "w1", runtime_id: "rt1" }
+      "/market/api/v1/plugins/squad-1/installations",
+      { runtime_id: "rt1" },
+      {
+        headers: {
+          "X-Workspace-ID": "w1",
+          "Idempotency-Key": "team-operation",
+        },
+        timeout: 150_000,
+      }
     );
     expect(res).toEqual({ squadId: "squad-123" });
   });
@@ -180,14 +201,78 @@ describe("expertService add-to-loop wire contract", () => {
     mock.instance.post.mockResolvedValue({ data: { data: {} } });
 
     await expect(
-      installSquadToLoop("a/b c", { workspaceId: "w", runtimeId: "r" })
+      installSquadToLoop("a/b c", {
+        workspaceId: "w",
+        runtimeId: "r",
+        idempotencyKey: "key",
+      })
     ).rejects.toThrow();
 
     expect(mock.instance.post).toHaveBeenCalledWith(
-      "/market/api/v1/plugins/install",
-      { plugin_id: "a/b c", workspace_id: "w", runtime_id: "r" }
+      "/market/api/v1/plugins/a%2Fb%20c/installations",
+      { runtime_id: "r" },
+      {
+        headers: { "X-Workspace-ID": "w", "Idempotency-Key": "key" },
+        timeout: 150_000,
+      }
     );
   });
+
+  it("keeps the caller's key when retrying an uncertain outcome and never falls back", async () => {
+    mock.instance.post.mockRejectedValueOnce(new Error("timeout"));
+    mock.instance.post.mockResolvedValueOnce({
+      data: { data: { agent_id: "agent-1" } },
+    });
+    const options = {
+      workspaceId: "workspace",
+      runtimeId: "runtime",
+      idempotencyKey: "stable-key",
+    };
+    await expect(installExpertToLoop("expert", options)).rejects.toThrow();
+    await expect(installExpertToLoop("expert", options)).resolves.toEqual({
+      agentId: "agent-1",
+    });
+    expect(mock.instance.post).toHaveBeenCalledTimes(2);
+    expect(mock.instance.post.mock.calls[0]).toEqual(
+      mock.instance.post.mock.calls[1]
+    );
+    expect(mock.instance.post.mock.calls[0][0]).toBe(
+      "/market/api/v1/plugins/expert/installations"
+    );
+  });
+
+  it("creates distinct printable operation keys without requiring randomUUID", () => {
+    const keys = new Set(Array.from({ length: 10 }, createLoopInstallationKey));
+    expect(keys.size).toBe(10);
+    for (const key of keys)
+      expect(key).toMatch(/^[a-f0-9]{8}(?:-[a-f0-9]{8}){3}$/);
+  });
+
+  it.each(["CONFLICT", "UPSTREAM_UNAVAILABLE"])(
+    "preserves %s installation recovery guidance",
+    async (code) => {
+      mock.instance.post.mockRejectedValue({
+        response: {
+          data: {
+            error: {
+              code,
+              message: "Installation outcome needs reconciliation.",
+              hint: "Retry with the original key within 24 hours.",
+            },
+          },
+        },
+      });
+      await expect(
+        installExpertToLoop("expert", {
+          workspaceId: "workspace",
+          runtimeId: "runtime",
+          idempotencyKey: "key",
+        })
+      ).rejects.toThrow(
+        "Installation outcome needs reconciliation. Retry with the original key within 24 hours."
+      );
+    }
+  );
 
   it("getLoopWorkspaces caches within a Space and refetches after clearLoopCache", async () => {
     mock.instance.get.mockResolvedValue({ data: [{ id: "w1", name: "W1" }] });
@@ -228,7 +313,9 @@ describe("expertService add-to-loop wire contract", () => {
     await getLoopRuntimes("w1");
 
     const calls = mock.instance.get.mock.calls.map((c: unknown[]) => c[0]);
-    expect(calls.filter((u) => u === "/fleet/api/v1/workspaces")).toHaveLength(1);
+    expect(calls.filter((u) => u === "/fleet/api/v1/workspaces")).toHaveLength(
+      1
+    );
     expect(calls.filter((u) => u === "/fleet/api/v1/runtimes")).toHaveLength(1);
   });
 

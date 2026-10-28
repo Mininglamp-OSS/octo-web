@@ -1,6 +1,6 @@
 /* eslint-disable no-undef -- e2e code runs in Node, process is available */
 /* eslint-disable react-hooks/rules-of-hooks -- `use` here is Playwright fixture callback */
-import { test as base, expect, type Page, type Request } from "@playwright/test";
+import { test as base, expect, type Page, type Request, type Route } from "@playwright/test";
 import { MOCK_IM_SEED_STORAGE_KEY } from "./_kit/mock-im-runtime";
 import { waitForMswReady } from "./_lib/e2eReady";
 import { monitorMockNetwork } from "./mock-network-monitor";
@@ -35,6 +35,7 @@ const LOCALE_STORAGE_KEY = "octo:locale";
 const ONBOARDING_STORAGE_KEY = "octo:onboarding:seen";
 const MOCK_SPACE_ID = "e2e-space-001";
 const MOCK_LOCALE = "zh-CN";
+const fulfilledBootstrapRequests = new WeakSet<Request>();
 
 async function isPreMswReadyRequest(page: Page, requestStartedAt: number | undefined): Promise<boolean> {
   const readiness = await page.evaluate(() => {
@@ -56,9 +57,25 @@ async function isPreMswReadyRequest(page: Page, requestStartedAt: number | undef
 
 async function installGlobalMockFallbackRoutes(page: Page): Promise<void> {
   const requestStartedAt = new WeakMap<Request, number>();
-  page.on("request", (request) => {
+  const context = page.context();
+  context.on("request", (request) => {
     requestStartedAt.set(request, Date.now());
   });
+
+  async function registerFallback(pattern: string, handler: (route: Route) => Promise<void>) {
+    await page.route(pattern, handler);
+    // A retiring document can lose its MSW client while a fetch is in flight.
+    // MSW then issues a worker-owned network request: page routes/events cannot
+    // see it. Keep this context fallback limited to those requests and reuse the
+    // same readiness gate, so a missing handler after readiness still fails CI.
+    await context.route(pattern, async (route) => {
+      if (!route.request().serviceWorker()) {
+        await route.fallback();
+        return;
+      }
+      await handler(route);
+    });
+  }
 
   // Playwright routes only see these requests when the MSW service worker did
   // not intercept them. Fulfill only requests that started before MSW became
@@ -66,7 +83,7 @@ async function installGlobalMockFallbackRoutes(page: Page): Promise<void> {
   // request escaped the worker but before this route callback checks the flag.
   // Requests that start after readiness fall through so missing MSW handlers
   // remain visible to the proxy-error merge gate.
-  await page.route("**/summary/api/v1/summaries/attention*", async (route) => {
+  await registerFallback("**/summary/api/v1/summaries/attention*", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
       return;
@@ -90,9 +107,10 @@ async function installGlobalMockFallbackRoutes(page: Page): Promise<void> {
         },
       }),
     });
+    fulfilledBootstrapRequests.add(route.request());
   });
 
-  await page.route("**/api/v1/spaces/*/categories*", async (route) => {
+  await registerFallback("**/api/v1/spaces/*/categories*", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
       return;
@@ -123,6 +141,7 @@ async function installGlobalMockFallbackRoutes(page: Page): Promise<void> {
           : [],
       ),
     });
+    fulfilledBootstrapRequests.add(route.request());
   });
 }
 
@@ -151,7 +170,7 @@ export const test = base.extend<Fixtures>({
       await use();
       return;
     }
-    const monitor = monitorMockNetwork(context);
+    const monitor = monitorMockNetwork(context, (request) => fulfilledBootstrapRequests.has(request));
     try {
       await use();
     } finally {
