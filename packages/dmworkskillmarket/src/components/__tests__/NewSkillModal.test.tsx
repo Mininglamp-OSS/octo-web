@@ -206,6 +206,31 @@ describe("NewSkillModal", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it.each([saveDraftButton, publishButton])("uses the server name verdict and allows a renamed retry (%s)", async (action) => {
+    vi.mocked(api.getSkills).mockResolvedValue({ items: [reviewSkillFixture()], total: 1, nextCursor: null });
+    const message = "Name reserved by another plugin";
+    vi.mocked(api.createSkill).mockRejectedValueOnce(new Error(message));
+    const onClose = vi.fn();
+    render(<NewSkillModal visible categories={categories} onClose={onClose} onCreated={vi.fn()} />);
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(selectZipLabel), { target: { files: [zipFile()] } });
+    });
+    await waitFor(() => expect(screen.getByText("skill-pack.zip")).toBeInTheDocument());
+    fireEvent.change(screen.getByPlaceholderText(displayNamePlaceholder), { target: { value: "技能包" } });
+    fireEvent.change(screen.getByLabelText(categoryLabel), { target: { value: "office" } });
+    fireEvent.click(screen.getByRole("button", { name: action }));
+    await waitFor(() => expect(screen.getByText(message)).toBeInTheDocument());
+    expect(api.getSkills).not.toHaveBeenCalled();
+    expect(api.publishPlugin).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByPlaceholderText(displayNamePlaceholder)).toHaveValue("技能包");
+    fireEvent.change(screen.getByPlaceholderText(displayNamePlaceholder), { target: { value: "新名称" } });
+    fireEvent.click(screen.getByRole("button", { name: action }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(api.createSkill).toHaveBeenLastCalledWith(expect.objectContaining({ displayName: "新名称" }));
+    expect(api.getSkills).not.toHaveBeenCalled();
+  });
+
   // The declared visibility now SURVIVES the create — the old form always sent
   // `private` and let a scope radio decide what happened next, so the author's
   // choice was thrown away. It is also the value the backend reads to decide
