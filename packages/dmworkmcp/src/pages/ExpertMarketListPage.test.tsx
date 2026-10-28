@@ -24,10 +24,14 @@ const api = vi.hoisted(() => ({
 const pluginReview = vi.hoisted(() => ({ cancelPluginReview: vi.fn(), publishPluginListing: vi.fn() }));
 vi.mock("../api/pluginReview", () => pluginReview);
 const bus = vi.hoisted(() => ({ on: vi.fn(), off: vi.fn() }));
+const recruitment = vi.hoisted(() => ({
+  mounted: vi.fn(),
+  config: { dmloopOn: false, requestSuccess: true, addConfigChangeListener: () => () => {} },
+}));
 const reviews = vi.hoisted(() => ({ useReviewRequests: vi.fn(), refresh: vi.fn() }));
 vi.mock("../api/expertService", () => api);
 vi.mock("@octo/base", () => ({
-  WKApp: { mittBus: bus },
+  WKApp: { mittBus: bus, remoteConfig: recruitment.config },
   useI18n: () => undefined,
   t: (key: string, options?: { values?: Record<string, unknown> }) =>
     options?.values ? `${key}:${JSON.stringify(options.values)}` : key,
@@ -63,8 +67,8 @@ vi.mock("@dmwork/skillmarket", async () => ({
   ),
 }));
 vi.mock("../components/ExpertCard", () => ({
-  default: ({ item }: { item: ExpertItem }) => (
-    <div data-item={item.id}>{item.name}</div>
+  default: ({ item, onAddToLoop }: { item: ExpertItem; onAddToLoop?: (item: ExpertItem) => void }) => (
+    <div data-item={item.id}>{item.name}{onAddToLoop && <button onClick={() => onAddToLoop(item)}>recruit</button>}</div>
   ),
 }));
 vi.mock("../components/ExpertDetailModal", () => ({ default: () => null }));
@@ -72,7 +76,12 @@ vi.mock("../components/ExpertBotPublishModal", () => ({ default: () => null }));
 vi.mock("../components/ExpertDeleteConfirmModal", () => ({
   default: () => null,
 }));
-vi.mock("../components/ExpertAddToLoopModal", () => ({ default: () => null }));
+vi.mock("../components/ExpertAddToLoopModal", () => ({
+  default: ({ item, onClose }: { item: ExpertItem | null; onClose: () => void }) => {
+    React.useEffect(() => { recruitment.mounted(); }, []);
+    return item ? <button onClick={onClose}>close recruitment</button> : null;
+  },
+}));
 vi.mock("../components/ExpertEditModal", () => ({ default: () => null }));
 vi.mock("../components/ReviewSubmitModal", () => ({ default: () => null }));
 
@@ -165,6 +174,7 @@ function scrollLoadMore(parent: ParentNode = root) {
 }
 
 beforeEach(() => {
+  recruitment.config.dmloopOn = false;
   observers.length = 0;
   vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
   vi.useFakeTimers();
@@ -201,6 +211,15 @@ async function tick(ms = 0) {
     await vi.advanceTimersByTimeAsync(ms);
   });
 }
+
+it("keeps the recruitment dialog mounted across real card open/close cycles", async () => {
+  recruitment.config.dmloopOn = true;
+  await render();
+  click(button("recruit"));
+  click(button("close recruitment"));
+  click(button("recruit"));
+  expect(recruitment.mounted).toHaveBeenCalledTimes(1);
+});
 async function render(
   props: React.ComponentProps<typeof ExpertMarketListPage> = {}
 ) {

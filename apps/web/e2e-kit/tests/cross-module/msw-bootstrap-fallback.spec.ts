@@ -1,5 +1,7 @@
 /* eslint-disable no-undef -- e2e code runs in Node */
 import { test, expect } from "../../fixtures-authed";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 
 test.use({ serviceWorkers: "block" });
 
@@ -96,4 +98,76 @@ test("@p1 @cross-module @infra startup fallback leaves requests begun after MSW 
 
   expect(response).toEqual({ status: 418, body: "fell through" });
   expect(fellThrough).toEqual([new URL(categoriesUrl, pagePlain.url()).href]);
+});
+
+test.describe("worker-owned bootstrap requests", () => {
+  test.use({ serviceWorkers: "allow" });
+
+  for (const ready of [false, true]) {
+    test.describe(`MSW ready=${ready}`, () => {
+      // The allowed boot fallback must also pass the fixture's strict monitor.
+      // The ready case intentionally reaches the isolated origin's 418 sentinel.
+      test.use({ mockApiGuard: !ready });
+      test(`@p1 @cross-module @infra worker-owned fallback respects MSW readiness (${ready})`, async ({ pagePlain: page }) => {
+      // A tiny isolated origin makes the ownership boundary deterministic. Its
+      // forwarding worker reproduces MSW's network fallback when the originating
+      // document has lost its client; an unhandled request returns 418 locally
+      // rather than touching the dead Vite backend or weakening its CI guard.
+      const unhandled: string[] = [];
+      const server = createServer((request, response) => {
+        if (request.url === "/bootstrap-worker.js") {
+          response.writeHead(200, { "content-type": "application/javascript" });
+          response.end(`
+            self.addEventListener('install', event => event.waitUntil(self.skipWaiting()));
+            self.addEventListener('activate', event => event.waitUntil(self.clients.claim()));
+            self.addEventListener('fetch', event => {
+              if (new URL(event.request.url).pathname.endsWith('/categories')) {
+                event.respondWith(fetch(event.request));
+              }
+            });
+          `);
+        } else if (request.url === categoriesUrl) {
+          unhandled.push(request.url);
+          response.writeHead(418, { "content-type": "text/plain" });
+          response.end("fell through");
+        } else {
+          response.writeHead(200, { "content-type": "text/html" });
+          response.end("<!doctype html><title>Worker bootstrap boundary</title>");
+        }
+      });
+      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+      const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+      const workerRequests: string[] = [];
+      page.context().on("request", (request) => {
+        if (request.serviceWorker() && new URL(request.url()).pathname === categoriesUrl) {
+          workerRequests.push(request.url());
+        }
+      });
+      try {
+        await page.goto(origin);
+        await page.evaluate(async () => {
+          await navigator.serviceWorker.register("/bootstrap-worker.js");
+          await navigator.serviceWorker.ready;
+        });
+        await page.waitForFunction(() => !!navigator.serviceWorker.controller);
+        const readyAt = await page.evaluate((isReady) => {
+          const state = globalThis as unknown as { __MSW_READY__?: boolean; __MSW_READY_AT__?: number };
+          state.__MSW_READY__ = isReady;
+          state.__MSW_READY_AT__ = Date.now();
+          return state.__MSW_READY_AT__;
+        }, ready);
+        await expect.poll(() => Date.now()).toBeGreaterThan(readyAt);
+        const result = await page.evaluate(async (path) => {
+          const response = await fetch(path);
+          return { status: response.status, body: await response.text() };
+        }, categoriesUrl);
+        expect(workerRequests).toEqual([`${origin}${categoriesUrl}`]);
+        expect(result).toEqual(ready ? { status: 418, body: "fell through" } : { status: 200, body: "[]" });
+        expect(unhandled).toEqual(ready ? [categoriesUrl] : []);
+      } finally {
+        await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+      }
+      });
+    });
+  }
 });

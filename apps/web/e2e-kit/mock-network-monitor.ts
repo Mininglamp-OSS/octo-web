@@ -9,14 +9,17 @@ const DEAD_BACKEND_HOSTS = new Set(["127.0.0.1:9", "mock.e2e.local"]);
  * Context events include SW-owned passthrough requests that page events miss
  * when the originating document has already unloaded. Observe, never fulfill.
  */
-export function monitorMockNetwork(context: BrowserContext) {
-  const issues: string[] = [];
+export function monitorMockNetwork(
+  context: BrowserContext,
+  isFulfilledBootstrapRequest: (request: Request) => boolean = () => false,
+) {
+  const issues: { message: string; bootstrapRequest?: Request }[] = [];
   const onRequest = (request: Request) => {
     const url = new URL(request.url());
     if (DEAD_BACKEND_HOSTS.has(url.host)) {
-      issues.push(`Real backend request: ${request.method()} ${request.url()}`);
+      issues.push({ message: `Real backend request: ${request.method()} ${request.url()}` });
     } else if (API_PATH.test(url.pathname) && request.serviceWorker()) {
-      issues.push(`Service Worker API passthrough: ${request.method()} ${request.url()}`);
+      issues.push({ message: `Service Worker API passthrough: ${request.method()} ${request.url()}`, bootstrapRequest: request });
     }
   };
   const onResponse = (response: Response) => {
@@ -26,7 +29,7 @@ export function monitorMockNetwork(context: BrowserContext) {
     // The shared boot mock intentionally returns 400 for unknown user devices.
     // Summary happy paths, however, must not receive any 4xx or 5xx response.
     if (status >= 500 || status === 401 || (SUMMARY_API_PATH.test(path) && status >= 400)) {
-      issues.push(`API ${status}: ${response.request().method()} ${response.url()}`);
+      issues.push({ message: `API ${status}: ${response.request().method()} ${response.url()}` });
     }
   };
   const onRequestFailed = (request: Request) => {
@@ -35,7 +38,7 @@ export function monitorMockNetwork(context: BrowserContext) {
     // Page navigations may cancel in-flight requests normally. SW passthrough
     // is already recorded on request, even if that outgoing request is aborted.
     if (error !== "net::ERR_ABORTED") {
-      issues.push(`API network failure: ${request.method()} ${request.url()} (${error})`);
+      issues.push({ message: `API network failure: ${request.method()} ${request.url()} (${error})` });
     }
   };
 
@@ -43,7 +46,14 @@ export function monitorMockNetwork(context: BrowserContext) {
   context.on("response", onResponse);
   context.on("requestfailed", onRequestFailed);
   return {
-    issues,
+    // Only the exact request successfully fulfilled by the readiness-gated boot
+    // fallback is exempt. Matching URLs, failed responses and network failures
+    // remain errors. Evaluate at teardown because routing follows request events.
+    get issues() {
+      return issues
+        .filter((issue) => !issue.bootstrapRequest || !isFulfilledBootstrapRequest(issue.bootstrapRequest))
+        .map((issue) => issue.message);
+    },
     stop() {
       context.off("request", onRequest);
       context.off("response", onResponse);

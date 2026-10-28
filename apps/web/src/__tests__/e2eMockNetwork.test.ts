@@ -13,9 +13,9 @@ function makeRequest(path: string, workerOwned = false, error = "net::ERR_CONNEC
   };
 }
 
-function setup() {
+function setup(isFulfilledBootstrapRequest?: Parameters<typeof monitorMockNetwork>[1]) {
   const context = new EventEmitter();
-  const monitor = monitorMockNetwork(context as unknown as BrowserContext);
+  const monitor = monitorMockNetwork(context as unknown as BrowserContext, isFulfilledBootstrapRequest);
   const respond = (path: string, status: number) => {
     const request = makeRequest(path);
     context.emit("response", { url: request.url, status: () => status, request: () => request });
@@ -102,5 +102,23 @@ describe("mock network guard", () => {
     expect(context.listenerCount("request")).toBe(0);
     expect(context.listenerCount("requestfailed")).toBe(0);
     expect(context.listeners("response")).toEqual([unrelated]);
+  });
+
+  it("exempts only the fulfilled bootstrap request object, without hiding failures", () => {
+    const fulfilled = new WeakSet<object>();
+    const { context, monitor } = setup((request) => fulfilled.has(request));
+    const path = "/api/v1/spaces/e2e-space-001/categories";
+    const request = makeRequest(path, true);
+    context.emit("request", request);
+    expect(monitor.issues).toHaveLength(1);
+    fulfilled.add(request);
+    expect(monitor.issues).toEqual([]);
+    context.emit("request", makeRequest(path, true));
+    expect(monitor.issues).toHaveLength(1);
+    context.emit("response", { url: request.url, status: () => 502, request: () => request });
+    context.emit("requestfailed", request);
+    expect(monitor.issues).toHaveLength(3);
+    expect(monitor.issues).toContain(`API 502: GET ${request.url()}`);
+    expect(monitor.issues.some((issue) => issue.startsWith("API network failure:"))).toBe(true);
   });
 });
