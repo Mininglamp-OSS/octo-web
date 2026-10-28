@@ -3,13 +3,14 @@ import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
-import { Bot, Pencil, RefreshCw, ShieldCheck, Trash2, UserRound } from "lucide-react";
+import { Bot, Check, Copy, Pencil, RefreshCw, ShieldCheck, Trash2, UserRound } from "lucide-react";
 import { t, useI18n, WKApp, WKButton, WKModal } from "@octo/base";
 import type { Category, Skill, SkillVersion } from "../types/skill";
 import { getSkill, getSkillMd, listVersions, trackSkillView } from "../api/skillApi";
 import { formatFullDateTime, formatRecentOrDate } from "../utils/format";
 import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 import { isPlatformPublishedSkill } from "../utils/publisher";
+import { dependencyIssueReasonKey } from "./dependencyIssueReason";
 
 interface SkillDetailModalProps {
   skillId: string | null;
@@ -81,7 +82,7 @@ function parseFrontmatter(raw: string): { rows: Array<[string, string]>; body: s
   const keys = [
     ...FRONTMATTER_FIELD_ORDER.filter((key) => values.has(key)),
     ...Array.from(values.keys()).filter((key) => !FRONTMATTER_FIELD_ORDER.includes(key)),
-  ];
+  ].filter((key) => key !== "id");
 
   return {
     rows: keys.map((key) => [key, values.get(key) ?? ""]),
@@ -111,6 +112,7 @@ export default function SkillDetailModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [iconError, setIconError] = useState(false);
+  const [copiedId, setCopiedId] = useState(false);
   const [activeTab, setActiveTab] = useState<DetailTab>("intro");
   const [versions, setVersions] = useState<SkillVersion[]>([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
@@ -244,6 +246,18 @@ export default function SkillDetailModal({
   const updatedTimeLabel = skill ? formatRecentOrDate(skill.updatedAt) : "";
   const updatedTimeTitle = skill ? formatFullDateTime(skill.updatedAt) : "";
 
+  async function copySkillId() {
+    if (!skill) return;
+    try {
+      await navigator.clipboard.writeText(skill.id);
+      setCopiedId(true);
+      window.setTimeout(() => setCopiedId(false), 1500);
+    } catch {
+      // Clipboard can be unavailable (permissions/insecure context); leave the
+      // id selectable and visible rather than surfacing a raw browser error.
+    }
+  }
+
   function showTagTooltip(event: React.MouseEvent<HTMLSpanElement> | React.FocusEvent<HTMLSpanElement>, tag: string) {
     const rect = event.currentTarget.getBoundingClientRect();
     const viewportPadding = 12;
@@ -304,6 +318,21 @@ export default function SkillDetailModal({
               </div>
             </div>
             {skill && (
+              <div className="skill-market-detail-header__id">
+                <span>{t("skillMarket.detail.skillId")}</span>
+                <code>{skill.id}</code>
+                <button
+                  type="button"
+                  className="skill-market-detail-header__copy-id"
+                  onClick={() => void copySkillId()}
+                  aria-label={t("skillMarket.detail.copyId")}
+                  title={t("skillMarket.detail.copyId")}
+                >
+                  {copiedId ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
+                </button>
+              </div>
+            )}
+            {skill && (
               <div className="skill-market-detail-header__meta">
                 <span className="skill-market-detail-header__name" title={skill.name}>{skill.name}</span>
                 {showOwner && (
@@ -342,6 +371,24 @@ export default function SkillDetailModal({
                 <span className="skill-market-detail-header__separator">·</span>
                 <span className="skill-market-detail-header__updated" title={updatedTimeTitle}>
                   {t("skillMarket.detail.updatedAt", { values: { time: updatedTimeLabel } })}
+                </span>
+              </div>
+            )}
+            {skill?.dependencyIssues && skill.dependencyIssues.length > 0 && (
+              <div className="skill-market-detail__dependency-warning">
+                {t("skillMarket.plugin.dependencyWarning")}
+                <span className="skill-market-detail__dependency-detail">
+                  {skill.dependencyIssues
+                    .map((issue) => {
+                      const reason = issue.reason
+                        ? t(
+                            `skillMarket.plugin.dependencyIssue.${dependencyIssueReasonKey(issue.reason)}`
+                          )
+                        : "";
+                      const target = issue.targetName || issue.targetPluginId;
+                      return reason ? `${target} · ${reason}` : target;
+                    })
+                    .join(", ")}
                 </span>
               </div>
             )}

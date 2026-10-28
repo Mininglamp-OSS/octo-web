@@ -26,6 +26,8 @@
     "deletedToast": "Deleted"
   },
   "expert": {
+    "versionPinned": "Pinned version",
+    "versionUnpinned": "Not pinned",
     "typeSquad": "Squads",
     "typeAgent": "Experts",
     "navAriaLabel": "Expert type",
@@ -117,7 +119,10 @@
     "mcpUnavailable": "MCP configuration cannot be shown safely",
     "skillsTitle": "Skills",
     "selfCreator": "Me",
-    "sortHottest": "Hottest"
+    "sortHottest": "Hottest",
+    "expertIdLabel": "Expert ID",
+    "teamIdLabel": "Team ID",
+    "copyId": "Copy ID"
   },
   "common": {
     "loadFailed": "Failed to load"
@@ -200,6 +205,7 @@
     "clear": "Clear"
   },
   "card": {
+    "dependencyWarning": "A dependency is unavailable",
     "officialPublisher": "Official publisher",
     "connect": "Add to Bot",
     "matchReason": {
@@ -218,7 +224,13 @@
     "edit": "Edit",
     "delete": "Delete",
     "viewCountTitle": "{{count}} views",
-    "installCountTitle": "{{count}} installs"
+    "installCountTitle": "{{count}} installs",
+    "dependencyIssue": {
+      "delisted": "delisted",
+      "deleted": "deleted",
+      "release_missing": "release missing",
+      "unknown": "unavailable"
+    }
   },
   "detail": {
     "title": "MCP Details",
@@ -396,7 +408,8 @@
     },
     "submit": "Submit",
     "success": "Created",
-    "failed": "Create failed"
+    "failed": "Create failed",
+    "nameTaken": "The name \"{{name}}\" already exists; rename it before creating"
   },
   "time": {
     "justNow": "just now",

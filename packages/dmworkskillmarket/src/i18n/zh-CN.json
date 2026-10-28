@@ -98,7 +98,9 @@
     "latest": "最新",
     "noVersions": "暂无历史版本",
     "retry": "重试",
-    "noDetail": "暂无详情"
+    "noDetail": "暂无详情",
+    "skillId": "技能 ID",
+    "copyId": "复制 ID"
   },
   "form": {
     "editTitle": "编辑 {{name}}",
@@ -129,7 +131,8 @@
     "validationRequired": "请填写版本号、更新说明、展示名称和分类",
     "validationNoUpload": "请先上传并解析技能压缩包",
     "saveFailed": "保存失败",
-    "createFailed": "创建失败"
+    "createFailed": "创建失败",
+    "nameTaken": "名称“{{name}}”已存在，请修改名称后再上传"
   },
   "upload": {
     "invalidFormat": "文件格式不正确",
@@ -199,6 +202,8 @@
     "ariaLabel": "我的发布列表"
   },
   "review": {
+    "versionPinned": "固定",
+    "versionUnpinned": "未固定",
     "orgTab": "组织发布管理",
     "policyTitle": "自动审核",
     "policyDescription": "开启后，本组织的新发布和版本更新会自动通过；关闭后由组织管理员人工审核。组织所有者和管理员均可修改。",
@@ -318,6 +323,13 @@
     "visibilityAdminManaged": "仅平台管理员可修改",
     "versionFormatInvalid": "版本号格式为 1.0.1（三段数字）",
     "versionMustNotDecrease": "版本号只能保持不变或递增",
-    "versionLegacyBlocksPublish": "发布到本组织需要 1.0.1 格式的版本号；当前的历史版本号可以保存，但无法提交审核"
+    "versionLegacyBlocksPublish": "发布到本组织需要 1.0.1 格式的版本号；当前的历史版本号可以保存，但无法提交审核",
+    "dependencyWarning": "依赖已下架，请修改",
+    "dependencyIssue": {
+      "deleted": "已删除",
+      "delisted": "已下架",
+      "release_missing": "版本未发布",
+      "unknown": "不可用"
+    }
   }
 }

@@ -82,6 +82,11 @@ describe("getMcpBotPublishPrompt — shell-safe interpolation", () => {
     expect(p).toContain(
       "octo-cli marketplace plugin-category list --scene-code default --plugin-type connector"
     );
+    expect(p).toContain("创建前先查重");
+    expect(p).toContain(
+      "marketplace plugin list --scene-code default --plugin-type connector"
+    );
+    expect(p).toContain('--q "<名称>"');
     expect(p).toContain('plugin_type: "connector"');
     expect(p).toContain(
       "octo-cli marketplace mcp probe --data @connection.json"

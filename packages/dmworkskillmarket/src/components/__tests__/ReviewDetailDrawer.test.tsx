@@ -27,6 +27,7 @@ function detail(id = "review-1", pluginName = "Planning Team"): ReviewRequest {
       targetPluginId: "expert-child-1",
       targetPluginType: "expert",
       relationType: "team_member",
+      targetVersionId: "ver-123456789",
       sortOrder: 1,
       data: { is_leader: true, role: "planner", member_key: "lead" },
     }],
@@ -55,6 +56,10 @@ describe("ReviewDetailDrawer frozen relations", () => {
     expect(screen.getByText(/"is_leader": true/)).toBeInTheDocument();
     expect(screen.getByText(/"role": "planner"/)).toBeInTheDocument();
     expect(screen.getByText(/"member_key": "lead"/)).toBeInTheDocument();
+    // The namespace prefix is required: the resource is registered as
+    // skillMarket, so a bare "review.versionPinned" renders the literal key.
+    expect(screen.getByText(/固定 23456789/)).toBeInTheDocument();
+    expect(screen.queryByText(/^review\.versionPinned/)).not.toBeInTheDocument();
   });
 
   it("does not reopen a reject dialog when the drawer switches reviews", async () => {

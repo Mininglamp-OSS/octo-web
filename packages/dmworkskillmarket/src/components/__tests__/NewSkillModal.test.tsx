@@ -104,6 +104,7 @@ describe("NewSkillModal", () => {
     vi.clearAllMocks();
     // A real id, because the publish step now needs the created plugin's id and
     // the retry path asserts the SAME id is reused.
+    vi.mocked(api.getSkills).mockResolvedValue({ items: [], total: 0, nextCursor: null });
     vi.mocked(api.createSkill).mockResolvedValue({ id: "created-1" } as never);
     // 发布 no longer picks an endpoint — it calls publishPlugin and the BACKEND
     // decides from the stored visibility whether that lists immediately or opens

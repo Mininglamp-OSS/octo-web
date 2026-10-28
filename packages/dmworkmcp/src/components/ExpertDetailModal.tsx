@@ -1,19 +1,23 @@
 import React, { useEffect, useState } from "react";
 import {
   Bot,
+  Check,
   ChevronLeft,
+  Copy,
   Route,
   ShieldCheck,
   UserRound,
   Users,
 } from "lucide-react";
 import { t, useI18n, WKModal } from "@octo/base";
+import { Toast } from "@douyinfe/semi-ui";
 import type { ExpertItem, ExpertMember } from "../mock/expertMock";
 import { getExpertSkillContent, getSquadSkillContent, getExpertSkillDownloadUrl, getSquadSkillDownloadUrl, trackExpertView } from "../api/expertService";
 import { getMcpAvatarColor } from "../utils/mcpAvatar";
 import { resolveExpertOwner } from "../utils/expertOwner";
 import { isOfficialExpert } from "../utils/publisher";
 import ExpertSpecView from "./ExpertSpecView";
+import { dependencyIssueReasonKey } from "../api/expertWire";
 
 interface ExpertDetailModalProps {
   item: ExpertItem | null;
@@ -51,6 +55,7 @@ export default function ExpertDetailModal({ item, onClose }: ExpertDetailModalPr
   useI18n();
   // A drilled-into squad member; null shows the squad overview.
   const [drillMember, setDrillMember] = useState<ExpertMember | null>(null);
+  const [copiedId, setCopiedId] = useState(false);
 
   // Per opened item (keyed by id + kind, so a list-item -> hydrated-detail
   // swap of the same record re-triggers neither, while a cross-kind swap at an
@@ -82,6 +87,18 @@ export default function ExpertDetailModal({ item, onClose }: ExpertDetailModalPr
     : [];
   const owner = resolveExpertOwner(item);
 
+  async function copyExpertId() {
+    if (!item) return;
+    try {
+      await navigator.clipboard.writeText(item.id);
+      setCopiedId(true);
+      Toast.success(t("mcp.detail.copied"));
+      window.setTimeout(() => setCopiedId(false), 1500);
+    } catch {
+      Toast.error(t("mcp.detail.copyFailed"));
+    }
+  }
+
   const header = (
     <div className="wk-mcp-expert-detail__header">
       <span
@@ -97,6 +114,19 @@ export default function ExpertDetailModal({ item, onClose }: ExpertDetailModalPr
           <span className="wk-mcp-expert-detail__category" title={item.category}>
             {item.category}
           </span>
+        </div>
+        <div className="wk-mcp-expert-detail__id">
+          <span>{isSquad ? t("mcp.expert.teamIdLabel") : t("mcp.expert.expertIdLabel")}</span>
+          <code title={item.id}>{item.id}</code>
+          <button
+            type="button"
+            className="wk-mcp-expert-detail__copy-id"
+            onClick={() => void copyExpertId()}
+            aria-label={t("mcp.expert.copyId")}
+            title={t("mcp.expert.copyId")}
+          >
+            {copiedId ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
+          </button>
         </div>
         <div className="wk-mcp-expert-detail__tags">
           {item.tags.map((tag) => (
@@ -154,6 +184,22 @@ export default function ExpertDetailModal({ item, onClose }: ExpertDetailModalPr
     >
       <div className="wk-mcp-expert-detail__layout wk-mcp-expert-detail__layout--agent">
         <div className="wk-mcp-expert-detail__overview">
+            {item.dependencyIssues?.length ? (
+              <div className="wk-mcp-card__dependency-warning" role="status">
+                {t("mcp.card.dependencyWarning")}
+                <span className="wk-mcp-card__dependency-warning__detail">
+                  {item.dependencyIssues
+                    .map((issue) => {
+                      const reason = issue.reason
+                        ? t(`mcp.card.dependencyIssue.${dependencyIssueReasonKey(issue.reason)}`)
+                        : "";
+                      const target = issue.targetName || issue.targetPluginId;
+                      return reason ? `${target} · ${reason}` : target;
+                    })
+                    .join(", ")}
+                </span>
+              </div>
+            ) : null}
             {isSquad && drillMember && (
               <>
                 <button
@@ -254,6 +300,11 @@ export default function ExpertDetailModal({ item, onClose }: ExpertDetailModalPr
                               {t("mcp.expert.leader")}
                             </span>
                           )}
+                          <span className="wk-mcp-expert-tag">
+                            {member.versionId
+                              ? `${t("mcp.expert.versionPinned")} ${member.versionId.slice(-8)}`
+                              : t("mcp.expert.versionUnpinned")}
+                          </span>
                         </strong>
                         <span>{member.role}</span>
                       </div>

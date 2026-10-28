@@ -753,6 +753,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
             <label>
               <span>{t("skillMarket.form.category")}<i className="skill-market-required">*</i></span>
               <select aria-label={t("skillMarket.form.category")} value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
+                <option value="">{t("skillMarket.form.categoryPlaceholder")}</option>
                 {selectableCategories.map((category) => (
                   <option key={category.id} value={category.id}>{category.name}</option>
                 ))}

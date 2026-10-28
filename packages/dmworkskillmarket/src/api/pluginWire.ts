@@ -82,6 +82,14 @@ export interface PluginPackageWire {
   attachments?: PluginAttachmentWire[];
 }
 
+export interface PluginDependencyIssueWire {
+  target_plugin_id: string;
+  target_name?: string;
+  relation_type: string;
+  reason: string;
+  via?: string[];
+}
+
 export interface PluginListItemWire {
   plugin_id: string;
   plugin_name: string;
@@ -115,6 +123,8 @@ export interface PluginListItemWire {
    *  default would paint every catalog card as a draft. */
   listing_state?: PluginListingStateWire;
   display_status?: PluginDisplayStatusWire;
+  /** Owner-only diagnostics for blocked published dependencies (#127). */
+  dependency_issues?: PluginDependencyIssueWire[];
   /** Set only while a review request is relevant to the row (pending, or the
    *  rejection being reported). Its presence is what makes 撤回/查看理由
    *  actionable without a second round-trip to the review list. */
@@ -164,6 +174,7 @@ export interface PluginCategoryWire {
 export interface PluginReviewRelationWire {
   relation_id?: string;
   target_plugin_id: string;
+  target_version_id?: string;
   target_plugin_type?: PluginTypeWire;
   relation_type: string;
   sort_order: number;

@@ -98,7 +98,9 @@
     "latest": "Latest",
     "noVersions": "No version history",
     "retry": "Retry",
-    "noDetail": "No details available"
+    "noDetail": "No details available",
+    "skillId": "Skill ID",
+    "copyId": "Copy ID"
   },
   "form": {
     "editTitle": "Edit {{name}}",
@@ -129,7 +131,8 @@
     "validationRequired": "Please fill in the version, changelog, display name, and category",
     "validationNoUpload": "Please upload and parse a Skill package first",
     "saveFailed": "Failed to save",
-    "createFailed": "Failed to create"
+    "createFailed": "Failed to create",
+    "nameTaken": "The name \"{{name}}\" already exists; rename it before uploading"
   },
   "upload": {
     "invalidFormat": "Invalid file format",
@@ -199,6 +202,8 @@
     "ariaLabel": "My publications"
   },
   "review": {
+    "versionPinned": "Pinned",
+    "versionUnpinned": "Not pinned",
     "orgTab": "Publication management",
     "policyTitle": "Automatic review",
     "policyDescription": "When enabled, new publications and updates are approved automatically. When disabled, org admins review them manually. Org owners and admins can change this setting.",
@@ -318,6 +323,13 @@
     "visibilityAdminManaged": "Only a platform admin can change this",
     "versionFormatInvalid": "Version must look like 1.0.1 (three numbers)",
     "versionMustNotDecrease": "Version can only stay the same or go up",
-    "versionLegacyBlocksPublish": "Publishing to the organization needs a 1.0.1-style version; this older label can be saved but not submitted for review"
+    "versionLegacyBlocksPublish": "Publishing to the organization needs a 1.0.1-style version; this older label can be saved but not submitted for review",
+    "dependencyWarning": "A dependency is unavailable, please update",
+    "dependencyIssue": {
+      "deleted": "deleted",
+      "delisted": "delisted",
+      "release_missing": "release missing",
+      "unknown": "unavailable"
+    }
   }
 }
