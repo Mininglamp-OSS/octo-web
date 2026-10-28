@@ -4,7 +4,7 @@ import {
   getPublishedAudience,
   changePublishedAudience,
   type PublishedAudience,
-} from "../../api/skillApiReal";
+} from "../../api/skillApi";
 
 interface Props {
   pluginId: string | null;

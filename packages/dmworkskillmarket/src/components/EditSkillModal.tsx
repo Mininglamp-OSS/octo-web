@@ -104,6 +104,8 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
   useEffect(() => {
     formGeneration.current += 1;
     savedDraft.current = null;
+    setSaving(false);
+    setPublishing(false);
     if (!skill) {
       abortRef.current = true;
       return;

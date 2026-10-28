@@ -142,6 +142,39 @@ describe("EditSkillModal", () => {
     if (editAgain) expect(api.updateSkill).toHaveBeenLastCalledWith(skill.id, expect.objectContaining({ draftRevision: r2, displayName: "Edited again" }));
   });
 
+  it.each(["save", "publish"])("resets a pending %s session without letting its completion unlock the next save", async phase => {
+    let finishOld!: (value: any) => void;
+    let finishNew!: (value: Skill) => void;
+    const oldRequest = new Promise<any>(resolve => { finishOld = resolve; });
+    const nextRequest = new Promise<Skill>(resolve => { finishNew = resolve; });
+    if (phase === "save") vi.mocked(api.updateSkill).mockReturnValueOnce(oldRequest);
+    else vi.mocked(api.publishPlugin).mockReturnValueOnce(oldRequest);
+    const props = { categories, onClose: vi.fn(), onUpdated: vi.fn() };
+    const target = { ...skill, listingState: "draft" as const };
+    const view = render(<EditSkillModal {...props} skill={target} />);
+    fireEvent.change(screen.getByPlaceholderText(displayNamePlaceholder), { target: { value: "Old session" } });
+    fireEvent.change(screen.getByPlaceholderText(changelogPlaceholder), { target: { value: "Session regression" } });
+    fireEvent.click(screen.getByRole("button", { name: phase === "save" ? saveButton : /发布|skillMarket.plugin.actionPublish/ }));
+    await waitFor(() => expect(phase === "save" ? api.updateSkill : api.publishPlugin).toHaveBeenCalledOnce());
+    // Both parent close and Space invalidation clear the target without
+    // unmounting this component. Reopen while the previous request is pending.
+    view.rerender(<EditSkillModal {...props} skill={null} />);
+    view.rerender(<EditSkillModal {...props} skill={target} />);
+    vi.mocked(api.updateSkill).mockReturnValueOnce(nextRequest);
+    fireEvent.change(screen.getByPlaceholderText(displayNamePlaceholder), { target: { value: "New session" } });
+    const save = screen.getByRole("button", { name: saveButton });
+    expect(save).toBeEnabled();
+    fireEvent.click(save);
+    await waitFor(() => expect(api.updateSkill).toHaveBeenCalledTimes(2));
+    await act(async () => { finishOld(phase === "save" ? skill : { displayStatus: "published" }); await oldRequest; });
+    expect(props.onUpdated).not.toHaveBeenCalled();
+    expect(props.onClose).not.toHaveBeenCalled();
+    expect(save).toBeDisabled();
+    await act(async () => { finishNew(skill); await nextRequest; });
+    await waitFor(() => expect(props.onUpdated).toHaveBeenCalledOnce());
+    expect(props.onClose).toHaveBeenCalledOnce();
+  });
+
   it("prefills current skill fields and saves updates", async () => {
     const onUpdated = vi.fn();
     const onClose = vi.fn();

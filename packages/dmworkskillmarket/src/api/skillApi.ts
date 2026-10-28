@@ -13,6 +13,7 @@ export type {
   ReviewListParams,
   ReviewRelationInput,
   PluginReviewPolicy,
+  PublishedAudience,
 } from "./skillApiReal";
 // Error readers, not endpoints: they only inspect a rejected promise, so there
 // is nothing for the mock module to substitute — the mock throws the same
@@ -78,4 +79,6 @@ export const pollParse = realApi.pollParse;
 export const initReupload = realApi.initReupload;
 export const getSkillMd = realApi.getSkillMd;
 
-export const getSkillDraft = realApi.getSkillDraft;
+export const getSkillDraft = api.getSkillDraft;
+export const getPublishedAudience = api.getPublishedAudience;
+export const changePublishedAudience = api.changePublishedAudience;

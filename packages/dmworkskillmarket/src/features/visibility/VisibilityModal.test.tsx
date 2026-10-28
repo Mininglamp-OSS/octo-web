@@ -6,8 +6,8 @@ import VisibilityModal from "./VisibilityModal";
 import {
   getPublishedAudience,
   changePublishedAudience,
-} from "../../api/skillApiReal";
-vi.mock("../../api/skillApiReal", () => ({
+} from "../../api/skillApi";
+vi.mock("../../api/skillApi", () => ({
   getPublishedAudience: vi.fn(),
   changePublishedAudience: vi.fn(),
 }));
