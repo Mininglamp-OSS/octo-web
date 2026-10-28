@@ -126,6 +126,7 @@ describe("EditSkillModal", () => {
     const r1 = "a".repeat(64), r2 = "b".repeat(64);
     const onClose = vi.fn(), onUpdated = vi.fn();
     vi.mocked(api.updateSkill).mockResolvedValue({ ...skill, draftRevision: r2 });
+    vi.mocked(api.getSkillDraft).mockResolvedValue({ ...skill, draftRevision: r2 });
     vi.mocked(api.publishPlugin).mockRejectedValueOnce(new Error("Temporary publication failure")).mockResolvedValue({ displayStatus: "published" } as any);
     render(<EditSkillModal skill={{ ...skill, draftRevision: r1, listingState: "draft" }} categories={categories} onClose={onClose} onUpdated={onUpdated} />);
     fireEvent.change(screen.getByPlaceholderText(displayNamePlaceholder), { target: { value: "Saved title" } });
@@ -140,6 +141,28 @@ describe("EditSkillModal", () => {
     expect(api.publishPlugin).toHaveBeenCalledTimes(2);
     expect(api.updateSkill).toHaveBeenCalledTimes(editAgain ? 2 : 1);
     if (editAgain) expect(api.updateSkill).toHaveBeenLastCalledWith(skill.id, expect.objectContaining({ draftRevision: r2, displayName: "Edited again" }));
+  });
+
+  it.each(["changed", "missing", "unavailable"])("blocks cached publication when remote draft is %s", async state => {
+    const r2 = "b".repeat(64);
+    const onClose = vi.fn(), onUpdated = vi.fn();
+    vi.mocked(api.updateSkill).mockResolvedValue({ ...skill, draftRevision: r2 });
+    vi.mocked(api.publishPlugin).mockRejectedValue(new Error("Temporary publication failure"));
+    if (state === "unavailable") vi.mocked(api.getSkillDraft).mockRejectedValueOnce(new Error("Draft unavailable"));
+    else vi.mocked(api.getSkillDraft).mockResolvedValueOnce({ ...skill, draftRevision: state === "changed" ? "c".repeat(64) : undefined });
+    render(<EditSkillModal skill={{ ...skill, draftRevision: "a".repeat(64), listingState: "draft" }} categories={categories} onClose={onClose} onUpdated={onUpdated} />);
+    fireEvent.change(screen.getByPlaceholderText(displayNamePlaceholder), { target: { value: "My saved title" } });
+    fireEvent.change(screen.getByPlaceholderText(changelogPlaceholder), { target: { value: "Saved notes" } });
+    fireEvent.click(screen.getByRole("button", { name: /发布|skillMarket.plugin.actionPublish/ }));
+    await screen.findByText("Temporary publication failure");
+    fireEvent.click(screen.getByRole("button", { name: /发布|skillMarket.plugin.actionPublish/ }));
+    await screen.findByText(state === "unavailable" ? "Draft unavailable" : /资源状态已变化|skillMarket.errors.stateConflict/);
+    await waitFor(() => expect(api.getSkillDraft).toHaveBeenCalledWith(skill.id));
+    expect(api.publishPlugin).toHaveBeenCalledTimes(1);
+    expect(api.updateSkill).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onUpdated).not.toHaveBeenCalled();
+    expect(screen.getByPlaceholderText(displayNamePlaceholder)).toHaveValue("My saved title");
   });
 
   it.each(["save", "publish"])("resets a pending %s session without letting its completion unlock the next save", async phase => {

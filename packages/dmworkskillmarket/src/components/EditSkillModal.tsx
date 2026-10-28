@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "re
 import { AlertCircle, Box, ImagePlus, Loader2, Upload, XCircle } from "lucide-react";
 import { t, useI18n, WKButton, WKInput, WKModal } from "@octo/base";
 import type { Category, Skill, Visibility } from "../types/skill";
-import { updateSkill, uploadIcon, initReupload, uploadFile, triggerParse, pollParse, getSkillTags, publishPlugin } from "../api/skillApi";
+import { getSkillDraft, updateSkill, uploadIcon, initReupload, uploadFile, triggerParse, pollParse, getSkillTags, publishPlugin } from "../api/skillApi";
 import { MAX_SKILL_TAGS, validateSkillTag, validateSkillTags } from "../utils/format";
 import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 import IconCropModal from "./IconCropModal";
@@ -492,6 +492,14 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
         });
         if (!isCurrent()) return;
         savedDraft.current = { key: formKey, iconBlob, iconUrl, parseTaskId, value: updated };
+      } else if (publish) {
+        // A failed publish may be retried much later, after another editor saved.
+        // Revalidate the cached save without reimporting its archive.
+        const current = await getSkillDraft(skill.id);
+        if (!isCurrent()) return;
+        if (!updated?.draftRevision || current.draftRevision !== updated.draftRevision) {
+          throw new Error(t("skillMarket.errors.stateConflict"));
+        }
       }
       if (!updated) return;
       if (publish) {

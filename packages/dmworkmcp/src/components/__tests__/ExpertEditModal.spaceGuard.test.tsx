@@ -17,6 +17,7 @@ function emitBus(event: string, payload?: unknown) {
 }
 
 const updateExpertVisibility = vi.fn();
+const getExpertEditMetadata = vi.fn();
 const publishPluginListing = vi.fn();
 
 vi.mock("@octo/base", () => ({
@@ -59,6 +60,7 @@ vi.mock("@octo/base", () => ({
 }));
 
 vi.mock("../../api/expertService", () => ({
+  getExpertEditMetadata: (...a: unknown[]) => getExpertEditMetadata(...a),
   updateExpertVisibility: (...a: unknown[]) => updateExpertVisibility(...a),
 }));
 vi.mock("../../api/pluginReview", () => ({
@@ -249,6 +251,7 @@ describe("ExpertEditModal space-switch guard", () => {
     const r1 = "a".repeat(64), r2 = "b".repeat(64);
     const onClose = vi.fn(), onSaved = vi.fn();
     updateExpertVisibility.mockReset().mockResolvedValue(r2);
+    getExpertEditMetadata.mockResolvedValue({ draftRevision: r2 });
     publishPluginListing.mockReset().mockRejectedValueOnce(new Error("Temporary publication failure")).mockResolvedValue({ displayStatus: "published" });
     await act(async () => {
       ReactDOM.render(<ExpertEditModal item={{ ...item, draftRevision: r1, listingState: "draft" }} onClose={onClose} onSaved={onSaved} onEditContent={vi.fn()} />, container);
@@ -265,6 +268,27 @@ describe("ExpertEditModal space-switch guard", () => {
     expect(publishPluginListing).toHaveBeenCalledTimes(2);
     expect(updateExpertVisibility).toHaveBeenCalledTimes(editAgain ? 2 : 1);
     if (editAgain) expect(updateExpertVisibility).toHaveBeenLastCalledWith(item.id, "private", expect.objectContaining({ draftRevision: r2, name: "Edited again" }));
+  });
+
+  it.each(["changed", "missing", "unavailable"])("blocks cached publication when remote draft is %s", async state => {
+    const onClose = vi.fn(), onSaved = vi.fn();
+    updateExpertVisibility.mockReset().mockResolvedValue("b".repeat(64));
+    publishPluginListing.mockReset().mockRejectedValueOnce(new Error("Temporary publication failure"));
+    if (state === "unavailable") getExpertEditMetadata.mockRejectedValueOnce(new Error("Draft unavailable"));
+    else getExpertEditMetadata.mockResolvedValueOnce({ draftRevision: state === "changed" ? "c".repeat(64) : undefined });
+    await act(async () => { ReactDOM.render(<ExpertEditModal item={{ ...item, draftRevision: "a".repeat(64) }} onClose={onClose} onSaved={onSaved} onEditContent={vi.fn()} />, container); });
+    const name = container!.querySelector('input:not([type="radio"])') as HTMLInputElement;
+    await act(async () => { Simulate.change(name, { target: { value: "My saved expert" } } as any); });
+    await act(async () => { button("skillMarket.plugin.actionPublish").click(); });
+    expect(container!.textContent).toContain("Temporary publication failure");
+    await act(async () => { button("skillMarket.plugin.actionPublish").click(); });
+    expect(container!.textContent).toContain(state === "unavailable" ? "Draft unavailable" : "skillMarket.errors.stateConflict");
+    expect(getExpertEditMetadata).toHaveBeenCalledWith(item.id);
+    expect(updateExpertVisibility).toHaveBeenCalledTimes(1);
+    expect(publishPluginListing).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(name.value).toBe("My saved expert");
   });
 
   it("stops listening once unmounted", async () => {

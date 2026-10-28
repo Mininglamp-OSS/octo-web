@@ -3,7 +3,7 @@ import { AlertCircle, Bot, UserRound, Users } from "lucide-react";
 import { t, useI18n, WKApp, WKButton, WKInput, WKModal } from "@octo/base";
 import { versionErrorKey } from "@dmwork/skillmarket";
 import type { ExpertItem } from "../mock/expertMock";
-import { updateExpertVisibility } from "../api/expertService";
+import { getExpertEditMetadata, updateExpertVisibility } from "../api/expertService";
 import type { ExpertVisibility } from "../api/expertService";
 import { publishPluginListing } from "../api/pluginReview";
 
@@ -120,6 +120,13 @@ export default function ExpertEditModal({
         if (!isCurrentSpace()) return;
         // Save has committed even if the following publication fails.
         savedDraft.current = { name: name.trim(), version: version.trim(), changelog, visibility, draftRevision: draftRevision ?? savedDraft.current?.draftRevision ?? item.draftRevision };
+      } else if (publish) {
+        const current = await getExpertEditMetadata(item.id);
+        if (!isCurrentSpace()) return;
+        const expected = savedDraft.current?.draftRevision ?? item.draftRevision;
+        if (!expected || current.draftRevision !== expected) {
+          throw new Error(t("skillMarket.errors.stateConflict"));
+        }
       }
       if (publish) {
         const outcome = await publishPluginListing(item.id, {
