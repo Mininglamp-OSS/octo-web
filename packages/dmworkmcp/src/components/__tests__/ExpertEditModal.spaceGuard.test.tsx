@@ -125,6 +125,45 @@ afterEach(() => {
  * uses for target switches.
  */
 describe("ExpertEditModal space-switch guard", () => {
+  it("does not add direct publication to an unchanged organization-listed container", async () => {
+    await act(async () => {
+      ReactDOM.render(<ExpertEditModal item={{ ...item, visibility: "space", listingState: "published" }} onClose={vi.fn()} onSaved={vi.fn()} onEditContent={vi.fn()} />, container);
+    });
+    expect([...container!.querySelectorAll("button")].some(b => b.textContent === "skillMarket.plugin.actionPublish")).toBe(false);
+  });
+
+  it.each(["expert", "squad"])("publishes a saved private %s draft after closing and reopening", async kind => {
+    const original = { ...item, kind, listingState: "published", draftRevision: "a".repeat(64) };
+    let draft = original;
+    let released = original;
+    updateExpertVisibility.mockReset().mockImplementation(async (_id, _visibility, fields) => {
+      draft = { ...draft, name: fields.name, version: fields.version, draftRevision: "b".repeat(64) };
+      return draft.draftRevision;
+    });
+    getExpertEditMetadata.mockReset().mockImplementation(async () => draft);
+    publishPluginListing.mockReset().mockImplementation(async () => { released = draft; return { displayStatus: "published" }; });
+    const props = { onClose: vi.fn(), onSaved: vi.fn(), onEditContent: vi.fn() };
+    await act(async () => { ReactDOM.render(<ExpertEditModal {...props} item={original as any} />, container); });
+    const fields = container!.querySelectorAll('input:not([type="radio"])');
+    await act(async () => {
+      Simulate.change(fields[0], { target: { value: "Saved container" } } as any);
+      Simulate.change(fields[1], { target: { value: "1.0.1" } } as any);
+    });
+    await act(async () => { button(SAVE).click(); });
+    expect(props.onClose).toHaveBeenCalledOnce();
+    expect(publishPluginListing).not.toHaveBeenCalled();
+    expect(released.name).toBe(original.name);
+    await act(async () => { ReactDOM.render(<ExpertEditModal {...props} item={null} />, container); });
+    await act(async () => { ReactDOM.render(<ExpertEditModal {...props} item={draft as any} />, container); });
+    await act(async () => { button("skillMarket.plugin.actionPublish").click(); });
+    expect(getExpertEditMetadata).toHaveBeenCalledWith(original.id);
+    expect(updateExpertVisibility).toHaveBeenCalledOnce();
+    expect(publishPluginListing).toHaveBeenCalledWith(original.id, { version: "1.0.1" });
+    expect(released.name).toBe("Saved container");
+    expect(released.version).toBe("1.0.1");
+    expect(props.onClose).toHaveBeenCalledTimes(2);
+  });
+
   it("abandons a save whose write settles after a Space switch", async () => {
     let settle: (() => void) | undefined;
     updateExpertVisibility.mockImplementation(

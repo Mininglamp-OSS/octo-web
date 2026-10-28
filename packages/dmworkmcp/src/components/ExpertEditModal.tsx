@@ -98,6 +98,9 @@ export default function ExpertEditModal({
   const versionError = versionErrorKey(item?.version, version, item?.version);
   const canSave = Boolean(name.trim() && version.trim() && !versionError);
   const willBeUnlisted = item?.listingState !== "published" || visibilityChanged;
+  // Reopening hydrates the saved draft, so a clean form may still have an
+  // unreleased private version. Match the Skill editor's explicit release path.
+  const showDraftActions = willBeUnlisted || stored === "private";
   const canPublish = canSave && (visibility !== "space" || Boolean(changelog.trim()));
 
   /**
@@ -141,7 +144,7 @@ export default function ExpertEditModal({
         );
       } else {
         onSaved(
-          willBeUnlisted
+          showDraftActions
             ? t("skillMarket.plugin.draftSavedToast")
             : t("skillMarket.list.saved")
         );
@@ -179,12 +182,12 @@ export default function ExpertEditModal({
             disabled={!dirty || !canSave || (saving && publishing)}
           >
             {t(
-              willBeUnlisted
+              showDraftActions
                 ? "skillMarket.plugin.actionSaveDraft"
                 : "skillMarket.common.save"
             )}
           </WKButton>
-          {(willBeUnlisted || metadataChanged) && (
+          {(showDraftActions || metadataChanged) && (
             <WKButton
               variant="primary"
               onClick={() => void submit(true)}
