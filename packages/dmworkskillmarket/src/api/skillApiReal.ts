@@ -687,7 +687,7 @@ export async function updateSkill(id: string, form: UpdateSkillForm): Promise<Sk
     return request<PluginDetailWire>("/plugins/import", {
       method: "POST",
       body: importBody(form, id),
-    }).then((detail) => mapSkillDetail(detail.plugin));
+    }).then((detail) => ({ ...mapSkillDetail(detail.plugin), draftRevision: detail.draft_revision, draftChangelog: form.changelog ?? "" }));
   }
   // Metadata-only edit: the upsert is a full replace, so merge the form onto
   // the current documents and re-embed the canonical manifest.
@@ -761,7 +761,7 @@ export async function updateSkill(id: string, form: UpdateSkillForm): Promise<Sk
   // A save IS a version snapshot server-side (the backend appends a
   // plugin_versions row and keeps the default-scene placement's category in
   // sync on every upsert), so there is no separate publish step.
-  return mapSkillDetail(detail.plugin);
+  return ({ ...mapSkillDetail(detail.plugin), draftRevision: detail.draft_revision, draftChangelog: form.changelog ?? "" });
 }
 
 export function deleteSkill(id: string): Promise<void> {

@@ -1657,6 +1657,12 @@ describe("skillApiReal", () => {
 });
 
 describe("metadata concurrency and cancellation", () => {
+  it("returns the revision committed by the update response", async () => {
+    mockFetch.mockReturnValueOnce(jsonResponse({ plugin: pluginSkillWire(), relations: [] }));
+    mockFetch.mockReturnValueOnce(jsonResponse({ plugin: pluginSkillWire(), relations: [], draft_revision: "saved-r2" }));
+    expect((await updateSkill("ci-failure-map", { displayName: "Saved" })).draftRevision).toBe("saved-r2");
+  });
+
   it("sends the revision of the echoed draft and surfaces a concurrent conflict", async () => {
     mockFetch.mockReturnValueOnce(jsonResponse({ plugin: pluginSkillWire(), relations: [] }));
     mockFetch.mockResolvedValueOnce({ status: 409, json: async () => ({ error: { code: "CONFLICT" } }) });

@@ -341,6 +341,12 @@ describe("loadExpertReviewSnapshot — one revision, one read", () => {
  });
 
 describe("guarded expert metadata edits", () => {
+  it("returns the revision committed by the update response", async () => {
+    wire();
+    mock.instance.post.mockResolvedValueOnce({ data: { data: { draft_revision: "saved-r2" } } });
+    await expect(updateExpertVisibility("squad-1", "private", { name: "Saved", version: "2.4.0" })).resolves.toBe("saved-r2");
+  });
+
   beforeEach(() => { mock.instance.get.mockReset(); mock.instance.post.mockReset(); });
   it("sends the echoed revision and leaves a server conflict visible", async () => {
     wire();

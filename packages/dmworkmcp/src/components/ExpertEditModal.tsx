@@ -57,6 +57,7 @@ export default function ExpertEditModal({
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const spaceGenerationRef = useRef(0);
+  const savedDraft = useRef<{ name: string; version: string; changelog: string; visibility: ExpertVisibility; draftRevision?: string } | null>(null);
 
   useEffect(() => {
     const handleSpaceChanged = () => {
@@ -75,6 +76,8 @@ export default function ExpertEditModal({
   // Reseed on every open / target switch so a previous session's selection or
   // error never leaks into the next record.
   useEffect(() => {
+    spaceGenerationRef.current += 1;
+    savedDraft.current = null;
     if (!item) return;
     setVisibility(tenantVisibility(item.visibility) ?? "private");
     setName(item.name);
@@ -88,7 +91,10 @@ export default function ExpertEditModal({
   const isSquad = item?.kind === "squad";
   const visibilityChanged = stored !== undefined && visibility !== stored;
   const metadataChanged = name.trim() !== item?.name || version.trim() !== (item?.version || "1.0.0");
-  const dirty = stored !== undefined && (visibilityChanged || metadataChanged || changelog !== (item?.draftChangelog ?? ""));
+  const baseline = savedDraft.current;
+  const dirty = stored !== undefined && (baseline
+    ? name.trim() !== baseline.name || version.trim() !== baseline.version || changelog !== baseline.changelog || visibility !== baseline.visibility
+    : visibilityChanged || metadataChanged || changelog !== (item?.draftChangelog ?? ""));
   const versionError = versionErrorKey(item?.version, version, item?.version);
   const canSave = Boolean(name.trim() && version.trim() && !versionError);
   const willBeUnlisted = item?.listingState !== "published" || visibilityChanged;
@@ -110,8 +116,10 @@ export default function ExpertEditModal({
     setError(null);
     try {
       if (dirty) {
-        await updateExpertVisibility(item.id, visibility, { name: name.trim(), version: version.trim(), changelog, draftRevision: item.draftRevision });
+        const draftRevision = await updateExpertVisibility(item.id, visibility, { name: name.trim(), version: version.trim(), changelog, draftRevision: savedDraft.current?.draftRevision ?? item.draftRevision });
         if (!isCurrentSpace()) return;
+        // Save has committed even if the following publication fails.
+        savedDraft.current = { name: name.trim(), version: version.trim(), changelog, visibility, draftRevision: draftRevision ?? savedDraft.current?.draftRevision ?? item.draftRevision };
       }
       if (publish) {
         const outcome = await publishPluginListing(item.id, {

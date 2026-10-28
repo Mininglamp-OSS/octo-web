@@ -56,6 +56,8 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
   const iconInputRef = useRef<HTMLInputElement | null>(null);
   const tagFieldRef = useRef<HTMLDivElement | null>(null);
   const abortRef = useRef(false);
+  const formGeneration = useRef(0);
+  const savedDraft = useRef<{ key: string; iconBlob: Blob | null; iconUrl?: string; parseTaskId: string | null; value: Skill } | null>(null);
   const [name, setName] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [description, setDescription] = useState("");
@@ -97,9 +99,11 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
   const [error, setError] = useState<string | null>(null);
   const [confirmClose, setConfirmClose] = useState(false);
 
-  useEffect(() => () => { abortRef.current = true; }, []);
+  useEffect(() => () => { abortRef.current = true; formGeneration.current += 1; }, []);
 
   useEffect(() => {
+    formGeneration.current += 1;
+    savedDraft.current = null;
     if (!skill) {
       abortRef.current = true;
       return;
@@ -132,7 +136,10 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
   }, [skill]);
 
   const busy = uploadStage === "uploading" || uploadStage === "parsing";
-  const dirty = Boolean(skill) && (
+  const formKey = JSON.stringify([version, parseTaskId, changelog, name, displayName, description, categoryId, tags, tagDraft, visibility]);
+  const dirty = savedDraft.current
+    ? savedDraft.current.key !== formKey || savedDraft.current.iconBlob !== iconBlob
+    : Boolean(skill) && (
     name !== skill?.name ||
     displayName !== (skill?.displayName ?? "") ||
     categoryId !== skill?.categoryId ||
@@ -433,7 +440,9 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
    * meet a different contract depending on whether the plugin already exists.
    */
   async function submit(publish: boolean) {
-    if (!skill) return;
+    if (!skill || saving) return;
+    const generation = formGeneration.current;
+    const isCurrent = () => generation === formGeneration.current;
     if (!name.trim() || !displayName.trim() || !categoryId || !version.trim() || (parseTaskId && !changelog.trim())) {
       setError(t(!categoryId ? "skillMarket.form.categoryRequired" : "skillMarket.form.validationRequired"));
       return;
@@ -451,30 +460,38 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
     setPublishing(publish);
     setError(null);
     try {
-      let iconUrl: string | undefined;
-      if (iconBlob) {
-        iconUrl = await uploadIcon(iconBlob);
+      const previous = savedDraft.current;
+      let updated = previous?.value;
+      if (!previous || previous.key !== formKey || previous.iconBlob !== iconBlob) {
+        let iconUrl = previous?.iconBlob === iconBlob ? previous.iconUrl : undefined;
+        if (iconBlob && previous?.iconBlob !== iconBlob) {
+          iconUrl = await uploadIcon(iconBlob);
+          if (!isCurrent()) return;
+        }
+        updated = await updateSkill(skill.id, {
+          draftRevision: previous?.value.draftRevision ?? skill.draftRevision,
+          version,
+          ...(parseTaskId && parseTaskId !== previous?.parseTaskId ? { parseTaskId } : {}),
+          changelog,
+          name,
+          displayName,
+          description,
+          categoryId,
+          tags: submittedTags,
+          // The declared audience, as edited. A re-upload is a full replace, so it
+          // must always be sent — omitting it would leave the column to a backend
+          // default rather than to what the author chose.
+          //
+          // Widening it on an already-published plugin un-lists the row server-side
+          // (the audience changed, so the listing has to be re-earned through the
+          // normal 发布 path). The hint below says so before the author saves.
+          visibility,
+          ...(iconUrl !== undefined ? { iconUrl } : {}),
+        });
+        if (!isCurrent()) return;
+        savedDraft.current = { key: formKey, iconBlob, iconUrl, parseTaskId, value: updated };
       }
-      const updated = await updateSkill(skill.id, {
-        draftRevision: skill.draftRevision,
-        version,
-        ...(parseTaskId ? { parseTaskId } : {}),
-        changelog,
-        name,
-        displayName,
-        description,
-        categoryId,
-        tags: submittedTags,
-        // The declared audience, as edited. A re-upload is a full replace, so it
-        // must always be sent — omitting it would leave the column to a backend
-        // default rather than to what the author chose.
-        //
-        // Widening it on an already-published plugin un-lists the row server-side
-        // (the audience changed, so the listing has to be re-earned through the
-        // normal 发布 path). The hint below says so before the author saves.
-        visibility,
-        ...(iconUrl !== undefined ? { iconUrl } : {}),
-      });
+      if (!updated) return;
       if (publish) {
         // Saved first, so what gets published is what the author just wrote —
         // and if widening the audience un-listed the row, this is the step that
@@ -486,6 +503,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
           version,
           ...(visibility === "space" ? { changelog } : {}),
         });
+        if (!isCurrent()) return;
         onUpdated(updated);
         onPublished?.(
           outcome.displayStatus === "pending_review"
@@ -497,10 +515,9 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
       }
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("skillMarket.form.saveFailed"));
+      if (isCurrent()) setError(err instanceof Error ? err.message : t("skillMarket.form.saveFailed"));
     } finally {
-      setSaving(false);
-      setPublishing(false);
+      if (isCurrent()) { setSaving(false); setPublishing(false); }
     }
   }
 

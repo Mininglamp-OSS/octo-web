@@ -245,6 +245,28 @@ describe("ExpertEditModal space-switch guard", () => {
     expect(updateExpertVisibility).toHaveBeenCalledTimes(1);
   });
 
+  it.each([false, true])("retries publication after a committed save (edit again: %s)", async editAgain => {
+    const r1 = "a".repeat(64), r2 = "b".repeat(64);
+    const onClose = vi.fn(), onSaved = vi.fn();
+    updateExpertVisibility.mockReset().mockResolvedValue(r2);
+    publishPluginListing.mockReset().mockRejectedValueOnce(new Error("Temporary publication failure")).mockResolvedValue({ displayStatus: "published" });
+    await act(async () => {
+      ReactDOM.render(<ExpertEditModal item={{ ...item, draftRevision: r1, listingState: "draft" }} onClose={onClose} onSaved={onSaved} onEditContent={vi.fn()} />, container);
+    });
+    const name = container!.querySelector('input:not([type="radio"])') as HTMLInputElement;
+    await act(async () => { Simulate.change(name, { target: { value: "Saved expert" } } as any); });
+    await act(async () => { button("skillMarket.plugin.actionPublish").click(); });
+    expect(container!.textContent).toContain("Temporary publication failure");
+    expect(onClose).not.toHaveBeenCalled();
+    expect(name.value).toBe("Saved expert");
+    if (editAgain) await act(async () => { Simulate.change(name, { target: { value: "Edited again" } } as any); });
+    await act(async () => { button("skillMarket.plugin.actionPublish").click(); });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(publishPluginListing).toHaveBeenCalledTimes(2);
+    expect(updateExpertVisibility).toHaveBeenCalledTimes(editAgain ? 2 : 1);
+    if (editAgain) expect(updateExpertVisibility).toHaveBeenLastCalledWith(item.id, "private", expect.objectContaining({ draftRevision: r2, name: "Edited again" }));
+  });
+
   it("stops listening once unmounted", async () => {
     await act(async () => {
       ReactDOM.render(

@@ -651,7 +651,7 @@ async function updateExpertVisibilityReal(
   id: string,
   visibility: ExpertVisibility,
   metadata?: { name: string; version: string; changelog?: string; draftRevision?: string }
-): Promise<void> {
+): Promise<string | undefined> {
   // include_relations: the echo has to name the current child set, and this is
   // the same read the detail view already performs.
   let detail: PluginDetailWire;
@@ -668,7 +668,7 @@ async function updateExpertVisibilityReal(
   if (!detail.draft_revision || (metadata?.draftRevision && metadata.draftRevision !== detail.draft_revision)) throw new Error(t("skillMarket.errors.stateConflict"));
   const plugin = detail.plugin;
   try {
-    await expertAxios.post(`${BASE}/plugins/upsert`, {
+    const saved = await expertAxios.post(`${BASE}/plugins/upsert`, {
       expected_draft_revision: detail.draft_revision,
       ...(metadata?.changelog !== undefined ? { changelog: metadata.changelog } : {}),
       plugin: {
@@ -703,6 +703,7 @@ async function updateExpertVisibilityReal(
           : {}),
       })),
     });
+    return saved?.data?.data?.draft_revision;
   } catch (err) {
     if (axios.isCancel(err)) throw err;
     throw new Error(extractErrorMessage(err));
@@ -924,7 +925,7 @@ export function updateExpertVisibility(
   id: string,
   visibility: ExpertVisibility,
   metadata?: { name: string; version: string; changelog?: string; draftRevision?: string }
-): Promise<void> {
+): Promise<string | undefined> {
   if (USE_MOCK) {
     return Promise.reject(
       new Error("updateExpertVisibility is not available under USE_MOCK")

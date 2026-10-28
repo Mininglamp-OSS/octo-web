@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Toast } from "@douyinfe/semi-ui";
-import { t, useI18n } from "@octo/base";
+import { t, useI18n, WKApp } from "@octo/base";
 import {
   EditSkillModal,
   DeleteConfirmModal,
@@ -64,6 +64,9 @@ export default function MineActionHost({
   );
   const [botTarget, setBotTarget] = useState<ExpertItem | null>(null);
   const changedRef = useRef(false);
+  const loadGeneration = useRef(0);
+  const sessionKey = () => `${WKApp.loginInfo.token}:${WKApp.shared.currentSpaceId}`;
+
 
   const clear = useCallback(() => {
     setSkill(null);
@@ -81,9 +84,16 @@ export default function MineActionHost({
   }, []);
 
   const close = useCallback(() => {
+    loadGeneration.current += 1;
     clear();
     onClose();
   }, [clear, onClose]);
+
+  useEffect(() => {
+    const invalidate = () => { loadGeneration.current += 1; clear(); };
+    WKApp.mittBus.on("space-changed", invalidate);
+    return () => { loadGeneration.current += 1; WKApp.mittBus.off("space-changed", invalidate); };
+  }, [clear]);
 
   const notifyChanged = useCallback(() => {
     if (changedRef.current) return;
@@ -92,11 +102,14 @@ export default function MineActionHost({
   }, [onChanged]);
 
   useEffect(() => {
+    const generation = ++loadGeneration.current;
     if (!request) {
       clear();
       return undefined;
     }
     let active = true;
+    const session = sessionKey();
+    const current = () => active && generation === loadGeneration.current && session === sessionKey();
     changedRef.current = false;
     clear();
 
@@ -104,7 +117,7 @@ export default function MineActionHost({
       if (request.type === "skill") {
         if (request.action === "view") {
           const categories = await getCategories();
-          if (!active) return;
+          if (!current()) return;
           setSkillCategories(categories);
           setSkillDetailId(request.pluginId);
           return;
@@ -113,7 +126,7 @@ export default function MineActionHost({
           request.action === "edit" ? getSkillDraft(request.pluginId) : getSkill(request.pluginId),
           getCategories(),
         ]);
-        if (!active) return;
+        if (!current()) return;
         setSkillCategories(categories);
         setSkillFlow(request.action);
         setSkill(item);
@@ -126,7 +139,7 @@ export default function MineActionHost({
           return;
         }
         const item = await fetchMcpDetail(request.pluginId);
-        if (active) {
+        if (current()) {
           setConnectorFlow(request.action);
           setConnector(item);
         }
@@ -135,14 +148,14 @@ export default function MineActionHost({
 
       if (request.action === "edit") {
         const draft = await getExpertEditMetadata(request.pluginId);
-        if (active) setExpert(draft);
+        if (current()) setExpert(draft);
         return;
       }
 
       const item = await (request.type === "squad"
         ? getSquad(request.pluginId)
         : getExpert(request.pluginId));
-      if (!active) return;
+      if (!current()) return;
       if (request.action === "view") {
         setExpertDetail(item);
       } else {
@@ -158,7 +171,7 @@ export default function MineActionHost({
     };
 
     void load().catch((error) => {
-      if (!active) return;
+      if (!current()) return;
       Toast.error(
         error instanceof Error
           ? error.message
@@ -177,7 +190,7 @@ export default function MineActionHost({
         skillId={skillDetailId}
         categories={skillCategories}
         onClose={close}
-        onEdit={(item) => {
+        onEdit={async (item) => {
           const pending = item.displayStatus === "pending_review";
           if (pending) {
             Toast.warning(t("skillMarket.review.pendingBlocksEdit"));
@@ -185,9 +198,18 @@ export default function MineActionHost({
           }
           const listedToOrg =
             item.listingState === "published" && item.visibility === "space";
-          setSkillDetailId(null);
-          setSkillFlow(listedToOrg ? "upgrade" : "edit");
-          setSkill(item);
+          const generation = ++loadGeneration.current;
+          const session = sessionKey();
+          try {
+            const editable = listedToOrg ? item : await getSkillDraft(item.id);
+            if (generation !== loadGeneration.current || session !== sessionKey()) return;
+            setSkillDetailId(null);
+            setSkillFlow(listedToOrg ? "upgrade" : "edit");
+            setSkill(editable);
+          } catch (error) {
+            if (generation !== loadGeneration.current || session !== sessionKey()) return;
+            Toast.error(error instanceof Error ? error.message : t("skillMarket.common.loadFailed"));
+          }
         }}
         onDelete={(item) => setDeletingSkill(item)}
       />
