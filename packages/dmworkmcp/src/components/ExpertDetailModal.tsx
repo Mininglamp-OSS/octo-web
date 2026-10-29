@@ -227,6 +227,7 @@ export default function ExpertDetailModal({ item, onClose }: ExpertDetailModalPr
                 <ExpertSpecView
                   instruction={drillMember.instruction}
                   mcpConfig={drillMember.mcpConfig}
+                  connectors={drillMember.connectors}
                   skills={drillMember.skills}
                   // member_key is optional on the wire. Without it the backend
                   // cannot address this member's skill package, so fail the
@@ -318,6 +319,7 @@ export default function ExpertDetailModal({ item, onClose }: ExpertDetailModalPr
               <ExpertSpecView
                 instruction={item.instruction}
                 mcpConfig={item.mcpConfig}
+                connectors={item.connectors}
                 skills={item.skills}
                 fetchSkillContent={(i) => getExpertSkillContent(item.id, i, item.skills?.[i])}
                 fetchSkillPackageUrl={(i) => getExpertSkillDownloadUrl(item.id, i, item.skills?.[i])}

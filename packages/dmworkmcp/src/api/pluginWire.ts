@@ -89,6 +89,7 @@ export interface PluginListItemWire {
   download_count: number;
   manifest_json: PluginManifestWire;
   current_version?: string;
+  current_version_id?: string;
   /** Owner-scoped listing fields: emitted only for `GET /plugins?mode=mine` and
    *  `GET /plugins/detail`, so they are absent on the public market grid.
    *  Optional rather than defaulted — "not returned" and "draft" are different

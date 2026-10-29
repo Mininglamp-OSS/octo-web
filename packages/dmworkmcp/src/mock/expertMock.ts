@@ -6,6 +6,18 @@
 
 import type { DependencyIssueReason } from "../api/expertWire";
 
+export interface DependencyMetadata {
+  summary?: string;
+  creatorName?: string;
+  botName?: string;
+}
+
+export interface ExpertConnector extends DependencyMetadata {
+  pluginId: string;
+  name: string;
+  config?: string;
+}
+
 /**
  * A skill attached to an expert / squad member — a whole Agent-Skill package
  * (a .zip/.skill containing SKILL.md). `name` is always present; the rest is the
@@ -18,7 +30,9 @@ import type { DependencyIssueReason } from "../api/expertWire";
  * Content/package bytes are fetched lazily via the skill_md / skill_download
  * endpoints; they are never carried inline on this shape.
  */
-export interface ExpertSkill {
+export interface ExpertSkill extends DependencyMetadata {
+  /** Display label from the selected snapshot, never the current head. */
+  version?: string;
   name: string;
   /** The bound skill's own plugin id (expert_skill relation target). Lets the
    *  expert editor open it for editing and preserve/rebuild the relation. */
@@ -53,6 +67,7 @@ export interface ExpertMember {
   instruction?: string;
   /** Raw MCP servers config (mcpServers JSON) carried from the source expert. */
   mcpConfig?: string;
+  connectors?: ExpertConnector[];
   /** Skills attached to this member, carried from the source expert. */
   skills?: ExpertSkill[];
 }
@@ -105,6 +120,7 @@ interface ExpertBase {
   instruction?: string;
   /** Raw MCP servers config (mcpServers JSON), as entered in the config editor. */
   mcpConfig?: string;
+  connectors?: ExpertConnector[];
   /** Skills attached to the expert (uploaded; content fetched lazily on view). */
   skills?: ExpertSkill[];
   /**

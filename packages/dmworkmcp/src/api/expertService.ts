@@ -26,7 +26,7 @@ import type {
   MemberContextWire,
 } from "./expertWire";
 import { parseTeamAgentsMarkdown } from "./expertWire";
-import type { ExpertMember, ExpertSkill } from "../mock/expertMock";
+import type { ExpertMember, ExpertSkill, ExpertConnector } from "../mock/expertMock";
 import {
   SCENE_CODE,
   jsonAttachment,
@@ -435,7 +435,7 @@ function detailIndexKey(id: string): string {
   return `${WKApp.loginInfo.token}:${WKApp.shared.currentSpaceId}:${id}`;
 }
 interface HistoricalPluginWire {
-  version: { plugin_id: string; version_id: string; relations: PluginRelationWire[] };
+  version: { plugin_id: string; version_id: string; declared_version?: string; release?: { version_label?: string }; relations: PluginRelationWire[] };
   manifest_json: PluginManifestWire;
   plugin_json: PluginPackageWire;
 }
@@ -452,6 +452,8 @@ async function relationDetail(rel: PluginRelationWire) {
       plugin_id: snapshot.version.plugin_id,
       plugin_name: snapshot.manifest_json.plugin_name ?? snapshot.manifest_json.name ?? "",
       plugin_json: snapshot.plugin_json,
+      manifest_json: snapshot.manifest_json,
+      current_version: snapshot.version.release?.version_label || snapshot.version.declared_version,
     },
     relations: snapshot.version.relations,
   };
@@ -485,7 +487,8 @@ function isDanglingTarget(reason: unknown): boolean {
 /** Load every expert_skill relation target and project it for the browser,
  *  returning the skills plus their plugin ids (positionally aligned). */
 async function loadSkills(
-  relations: PluginRelationWire[] | undefined
+  relations: PluginRelationWire[] | undefined,
+  attribution: PluginListItemWire[] = []
 ): Promise<{ skills: ExpertSkill[]; pluginIds: SkillTarget[] }> {
   const rels = liveRelations(relations, "expert_skill");
   // allSettled, not all: a soft-deleted / unresolvable expert_skill target must
@@ -501,7 +504,16 @@ async function loadSkills(
   const pluginIds: SkillTarget[] = [];
   settled.forEach((res, i) => {
     if (res.status === "fulfilled") {
-      skills.push(fromSkillPlugin(res.value.plugin, rels[i].target_version_id));
+      const rel = rels[i];
+      const creator = attribution.find(p => p.plugin_id === rel.target_plugin_id &&
+        p.current_version_id === rel.target_version_id);
+      skills.push(fromSkillPlugin({ ...res.value.plugin,
+        ...(rel.target_version_id && creator ? {
+          creator_name: creator.creator_name,
+          created_by_type: creator.created_by_type,
+          created_by_bot_name: creator.created_by_bot_name,
+        } : {}),
+      }, rel.target_version_id));
       pluginIds.push({ pluginId: rels[i].target_plugin_id, versionId: rels[i].target_version_id });
     } else if (rels[i].target_version_id || axios.isCancel(res.reason) || !isDanglingTarget(res.reason)) {
       // A pinned read or non-404 failure must surface, never become a partial graph.
@@ -512,16 +524,54 @@ async function loadSkills(
   return { skills, pluginIds };
 }
 
+/** Graph attribution is optional: older servers may not support the graph.
+ * Only creator identity is used; historical labels/content always use snapshots. */
+async function dependencyAttribution(id: string): Promise<PluginListItemWire[]> {
+  try {
+    const graph = await get<{ related_plugins?: PluginListItemWire[] }>("/plugins/detail_graph", { plugin_id: id });
+    return graph?.related_plugins ?? [];
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    return [];
+  }
+}
+
+async function loadConnectors(relations: PluginRelationWire[] | undefined): Promise<ExpertConnector[]> {
+  const rels = liveRelations(relations, "expert_connector");
+  const settled = await Promise.allSettled(rels.map(async rel => {
+    // Connectors have no versioned artifact contract.
+    if (rel.target_version_id) throw new Error("Unexpected pinned connector relation");
+    const { plugin } = await pluginDetail(rel.target_plugin_id);
+    return {
+      pluginId: plugin.plugin_id,
+      name: plugin.plugin_name,
+      summary: plugin.manifest_json?.description,
+      creatorName: plugin.creator_name,
+      botName: plugin.created_by_type === "bot" ? plugin.created_by_bot_name : undefined,
+      config: rawAttachment(plugin.plugin_json, "mcp.json"),
+    };
+  }));
+  const connectors: ExpertConnector[] = [];
+  settled.forEach(result => {
+    if (result.status === "fulfilled") connectors.push(result.value);
+    else if (axios.isCancel(result.reason) || !isDanglingTarget(result.reason)) throw result.reason;
+  });
+  return connectors;
+}
+
 async function getExpertReal(id: string): Promise<ExpertAgent> {
   const request = beginDetail("expert", id);
-  const [detail, maps] = await Promise.all([
+  const [detail, maps, attribution] = await Promise.all([
     pluginDetail(id),
     getExpertCategoryMaps("expert"),
+    dependencyAttribution(id),
   ]);
   const plugin = detail.plugin;
   const categoryName =
     (plugin.category_id && maps.idToName.get(plugin.category_id)) || "";
-  const { skills, pluginIds } = await loadSkills(detail.relations);
+  const [{ skills, pluginIds }, connectors] = await Promise.all([
+    loadSkills(detail.relations, attribution), loadConnectors(detail.relations),
+  ]);
   request.assertCurrent();
   expertSkillIndex.set(request.key, pluginIds);
   const base = mapPluginAgentListItem(plugin, categoryName);
@@ -534,14 +584,16 @@ async function getExpertReal(id: string): Promise<ExpertAgent> {
     instruction: rawAttachment(plugin.plugin_json, "AGENTS.md") ?? "",
     mcpConfig: rawAttachment(plugin.plugin_json, "mcp.json") ?? "",
     skills,
+    connectors: liveRelations(detail.relations, "expert_connector").length ? connectors : undefined,
   };
 }
 
 async function getSquadReal(id: string): Promise<ExpertSquad> {
   const request = beginDetail("squad", id);
-  const [detail, maps] = await Promise.all([
+  const [detail, maps, attribution] = await Promise.all([
     pluginDetail(id),
     getExpertCategoryMaps("expert_team"),
+    dependencyAttribution(id),
   ]);
   const plugin = detail.plugin;
   const categoryName =
@@ -559,7 +611,7 @@ async function getSquadReal(id: string): Promise<ExpertSquad> {
   // rethrown so a transient failure doesn't silently shrink the member list (and
   // memberCount). Cancellation still propagates.
   const settledMembers = await Promise.allSettled(
-    memberRels.map((rel) => loadSquadMember(rel, skillIndex))
+    memberRels.map((rel) => loadSquadMember(rel, skillIndex, attribution))
   );
   const members: ExpertMember[] = [];
   for (const [index, res] of settledMembers.entries()) {
@@ -589,7 +641,8 @@ async function getSquadReal(id: string): Promise<ExpertSquad> {
 
 async function loadSquadMember(
   rel: PluginRelationWire,
-  skillIndex: Map<string, SkillTarget[]>
+  skillIndex: Map<string, SkillTarget[]>,
+  attribution: PluginListItemWire[]
 ): Promise<ExpertMember> {
   const detail = await relationDetail(rel);
   const plugin = detail.plugin;
@@ -600,7 +653,9 @@ async function loadSquadMember(
     jsonAttachment<MemberContextWire>(plugin.plugin_json, "expert/context.json") ?? {};
   const memberKey =
     wiring.member_key || context.member_key || rel.target_plugin_id;
-  const { skills, pluginIds } = await loadSkills(detail.relations);
+  const [{ skills, pluginIds }, connectors] = await Promise.all([
+    loadSkills(detail.relations, attribution), loadConnectors(detail.relations),
+  ]);
   skillIndex.set(memberKey, pluginIds);
   return {
     key: memberKey,
@@ -613,6 +668,7 @@ async function loadSquadMember(
     instruction: rawAttachment(plugin.plugin_json, "AGENTS.md") ?? "",
     mcpConfig: rawAttachment(plugin.plugin_json, "mcp.json") ?? "",
     skills,
+    connectors: liveRelations(detail.relations, "expert_connector").length ? connectors : undefined,
   };
 }
 

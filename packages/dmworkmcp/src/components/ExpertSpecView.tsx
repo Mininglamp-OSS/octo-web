@@ -1,50 +1,53 @@
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import { Boxes, ChevronDown, FileText, Wrench } from "lucide-react";
 import { t, useI18n } from "@octo/base";
-import type { ExpertSkill } from "../mock/expertMock";
+import type { ExpertConnector, ExpertSkill } from "../mock/expertMock";
+import DependencyMetadata from "../ui/DependencyMetadata";
 import ExpertSkillBrowser from "./ExpertSkillBrowser";
 import { redactMcpConfig } from "../utils/redactMcpConfig";
 
 interface ExpertSpecViewProps {
   instruction?: string;
   mcpConfig?: string;
+  connectors?: ExpertConnector[];
   skills?: ExpertSkill[];
-  /** Fetch the stored SKILL.md text for the skill at `index` (legacy fallback). */
   fetchSkillContent: (index: number) => Promise<string>;
-  /** Resolve the presigned package URL for the skill at `index` (file browser). */
   fetchSkillPackageUrl?: (index: number) => Promise<string>;
 }
 
-/**
- * Reusable 指令 / MCP / Skills spec sections, shared by a standalone expert's
- * detail and a squad member's drill-in detail. Each section renders only when
- * its field is present. A content/downloadable skill row expands in place
- * (accordion) into an ExpertSkillBrowser: it fetches + unzips the package
- * client-side and lets the user switch between the bundled files to view each
- * one's content.
- */
+let nextSpecId = 0;
+
+/** Shared by expert detail and the pinned member of an expert team. */
 export default function ExpertSpecView({
   instruction,
   mcpConfig,
+  connectors,
   skills,
   fetchSkillContent,
   fetchSkillPackageUrl,
 }: ExpertSpecViewProps) {
   useI18n();
-  // Index of the expanded skill (null when all collapsed); one open at a time.
-  const [openSkill, setOpenSkill] = useState<number | null>(null);
-  // The detail view is read-only and public; mask any literal secret in the
-  // mcp.json (env/header values, url query tokens, positional args) so a
-  // hand-written credential is not exposed. redactMcpConfig returns null when
-  // it can't safely parse/round-trip the config (fail closed) — render a
-  // localized notice instead of the untrusted original.
-  const redactedMcpConfig = useMemo(
-    () => (mcpConfig ? redactMcpConfig(mcpConfig) : mcpConfig),
-    [mcpConfig]
-  );
-
-  const toggle = (index: number) =>
-    setOpenSkill((cur) => (cur === index ? null : index));
+  const [id] = useState(() => `expert-spec-${++nextSpecId}`);
+  const [openSkill, setOpenSkill] = useState<string | null>(null);
+  const [openConnector, setOpenConnector] = useState<string | null>(null);
+  const metadata = {
+    authorLabel: t("mcp.expert.dependencyAuthor"),
+    unknownAuthor: t("mcp.expert.dependencyUnknownAuthor"),
+    noSummary: t("mcp.expert.dependencyNoSummary"),
+  };
+  // Only legacy experts without connector relations use their inline config.
+  const mcps: ExpertConnector[] =
+    connectors !== undefined
+      ? connectors
+      : mcpConfig
+      ? [
+          {
+            pluginId: "legacy-inline",
+            name: t("mcp.expert.dependencyLegacyConfig"),
+            config: mcpConfig,
+          },
+        ]
+      : [];
 
   return (
     <>
@@ -52,87 +55,149 @@ export default function ExpertSpecView({
         <section className="wk-mcp-expert-section">
           <div className="wk-mcp-expert-section__heading">
             <FileText size={18} aria-hidden="true" />
-            <div>
-              <h3>{t("mcp.expert.instructionTitle")}</h3>
-            </div>
+            <h3>{t("mcp.expert.instructionTitle")}</h3>
           </div>
           <p className="wk-mcp-expert-instruction">{instruction}</p>
         </section>
       )}
-
-      {mcpConfig && (
-        <section className="wk-mcp-expert-section">
-          <div className="wk-mcp-expert-section__heading">
-            <Boxes size={18} aria-hidden="true" />
-            <div>
-              <h3>{t("mcp.expert.mcpTitle")}</h3>
-            </div>
-          </div>
-          <pre className="wk-mcp-expert-code">
-            {redactedMcpConfig ?? t("mcp.expert.mcpUnavailable")}
-          </pre>
-        </section>
-      )}
-
-      {skills && skills.length > 0 && (
+      {!!skills?.length && (
         <section className="wk-mcp-expert-section">
           <div className="wk-mcp-expert-section__heading">
             <Wrench size={18} aria-hidden="true" />
-            <div>
-              <h3>{t("mcp.expert.skillsTitle")}</h3>
-            </div>
+            <h3>{t("mcp.expert.skillsTitle")}</h3>
           </div>
           <div className="wk-mcp-expert-dependency-list">
             {skills.map((skill, index) => {
-              const expandable = skill.hasContent || skill.canDownload;
-              if (!expandable) {
-                return (
-                  <span
-                    className="wk-mcp-expert-dependency-item"
-                    key={`${skill.name}-${index}`}
-                  >
-                    {skill.name}
-                    {skill.versionId ? ` · ${t("mcp.expert.versionPinned")} ${skill.versionId.slice(-8)}` : ` · ${t("mcp.expert.versionUnpinned")}`}
-                  </span>
-                );
-              }
-              const isOpen = openSkill === index;
+              const key = `${skill.pluginId || skill.name}:${
+                skill.versionId || "legacy"
+              }:${index}`;
+              const isOpen = openSkill === key;
+              const panelId = `${id}-skill-${index}`;
+              const label =
+                skill.version ||
+                (skill.versionId
+                  ? skill.versionId.slice(-8)
+                  : t("mcp.expert.versionUnpinned"));
               return (
-                <div className="wk-mcp-expert-skill" key={`${skill.name}-${index}`}>
+                <div className="wk-mcp-expert-skill" key={key}>
                   <button
                     type="button"
+                    id={`${panelId}-trigger`}
                     className="wk-mcp-expert-skill__row"
                     aria-expanded={isOpen}
-                    onClick={() => toggle(index)}
+                    aria-controls={panelId}
+                    onClick={() => setOpenSkill(isOpen ? null : key)}
                   >
-                    <span>
-                      {skill.name}
-                      {skill.versionId ? (
-                        <span className="wk-mcp-expert-skill__pin" title={skill.versionId}> · {t("mcp.expert.versionPinned")} {skill.versionId.slice(-8)}</span>
-                      ) : (
-                        <span className="wk-mcp-expert-skill__pin"> · {t("mcp.expert.versionUnpinned")}</span>
-                      )}
+                    <span className="wk-mcp-dependency-name">{skill.name}</span>
+                    <span
+                      className="wk-mcp-dependency-version"
+                      title={
+                        skill.versionId
+                          ? `${t("mcp.expert.versionPinned")} · ${
+                              skill.versionId
+                            }`
+                          : undefined
+                      }
+                    >
+                      {label}
                     </span>
                     <ChevronDown
                       size={16}
                       aria-hidden="true"
-                      className={
-                        isOpen
-                          ? "wk-mcp-expert-skill__chevron is-open"
-                          : "wk-mcp-expert-skill__chevron"
-                      }
+                      className={`wk-mcp-expert-skill__chevron${
+                        isOpen ? " is-open" : ""
+                      }`}
                     />
                   </button>
                   {isOpen && (
-                    <ExpertSkillBrowser
-                      skill={skill}
-                      fetchContent={() => fetchSkillContent(index)}
-                      fetchPackageUrl={
-                        fetchSkillPackageUrl
-                          ? () => fetchSkillPackageUrl(index)
-                          : undefined
-                      }
+                    <div
+                      id={panelId}
+                      role="region"
+                      aria-labelledby={`${panelId}-trigger`}
+                      className="wk-mcp-dependency-body"
+                    >
+                      <DependencyMetadata
+                        {...metadata}
+                        creatorName={skill.creatorName}
+                        botName={skill.botName}
+                        summary={skill.summary}
+                      />
+                      {skill.hasContent || skill.canDownload ? (
+                        <ExpertSkillBrowser
+                          key={key}
+                          skill={skill}
+                          fetchContent={() => fetchSkillContent(index)}
+                          fetchPackageUrl={
+                            fetchSkillPackageUrl
+                              ? () => fetchSkillPackageUrl(index)
+                              : undefined
+                          }
+                        />
+                      ) : (
+                        <p className="wk-mcp-expert-skill__state">
+                          {t("mcp.expert.dependencyNoContent")}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+      {!!mcps.length && (
+        <section className="wk-mcp-expert-section">
+          <div className="wk-mcp-expert-section__heading">
+            <Boxes size={18} aria-hidden="true" />
+            <h3>{t("mcp.expert.mcpTitle")}</h3>
+          </div>
+          <div className="wk-mcp-expert-dependency-list">
+            {mcps.map((connector, index) => {
+              const key = `${connector.pluginId}:${index}`;
+              const isOpen = openConnector === key;
+              const panelId = `${id}-mcp-${index}`;
+              return (
+                <div className="wk-mcp-expert-skill" key={key}>
+                  <button
+                    type="button"
+                    id={`${panelId}-trigger`}
+                    className="wk-mcp-expert-skill__row"
+                    aria-expanded={isOpen}
+                    aria-controls={panelId}
+                    onClick={() => setOpenConnector(isOpen ? null : key)}
+                  >
+                    <span className="wk-mcp-dependency-name">
+                      {connector.name}
+                    </span>
+                    <ChevronDown
+                      size={16}
+                      aria-hidden="true"
+                      className={`wk-mcp-expert-skill__chevron${
+                        isOpen ? " is-open" : ""
+                      }`}
                     />
+                  </button>
+                  {isOpen && (
+                    <div
+                      id={panelId}
+                      role="region"
+                      aria-labelledby={`${panelId}-trigger`}
+                      className="wk-mcp-dependency-body"
+                    >
+                      <DependencyMetadata
+                        {...metadata}
+                        creatorName={connector.creatorName}
+                        botName={connector.botName}
+                        summary={connector.summary}
+                      />
+                      {connector.config && (
+                        <pre className="wk-mcp-expert-code">
+                          {redactMcpConfig(connector.config) ??
+                            t("mcp.expert.mcpUnavailable")}
+                        </pre>
+                      )}
+                    </div>
                   )}
                 </div>
               );
