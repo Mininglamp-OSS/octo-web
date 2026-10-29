@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "re
 import { AlertCircle, Box, ImagePlus, Loader2, Upload, XCircle } from "lucide-react";
 import { t, useI18n, WKButton, WKInput, WKModal } from "@octo/base";
 import type { Category, Skill, Visibility } from "../types/skill";
-import { updateSkill, uploadIcon, initReupload, uploadFile, triggerParse, pollParse, getSkillTags, publishPlugin } from "../api/skillApi";
+import { getSkillDraft, updateSkill, uploadIcon, initReupload, uploadFile, triggerParse, pollParse, getSkillTags, publishPlugin } from "../api/skillApi";
 import { MAX_SKILL_TAGS, validateSkillTag, validateSkillTags } from "../utils/format";
 import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 import IconCropModal from "./IconCropModal";
@@ -56,6 +56,8 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
   const iconInputRef = useRef<HTMLInputElement | null>(null);
   const tagFieldRef = useRef<HTMLDivElement | null>(null);
   const abortRef = useRef(false);
+  const formGeneration = useRef(0);
+  const savedDraft = useRef<{ key: string; iconBlob: Blob | null; iconUrl?: string; parseTaskId: string | null; value: Skill } | null>(null);
   const [name, setName] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [description, setDescription] = useState("");
@@ -97,9 +99,13 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
   const [error, setError] = useState<string | null>(null);
   const [confirmClose, setConfirmClose] = useState(false);
 
-  useEffect(() => () => { abortRef.current = true; }, []);
+  useEffect(() => () => { abortRef.current = true; formGeneration.current += 1; }, []);
 
   useEffect(() => {
+    formGeneration.current += 1;
+    savedDraft.current = null;
+    setSaving(false);
+    setPublishing(false);
     if (!skill) {
       abortRef.current = true;
       return;
@@ -125,24 +131,24 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
     setIconPreview(skill.iconUrl || null);
     setIconBlob(null);
     setIconCropFile(null);
-    // Start blank: the field is editable whenever a changelog is actually asked
-    // for (a re-upload, or a 本组织 publish), and seeding it with filler text
-    // would submit that filler as the org-review changelog unless the author
-    // noticed and cleared it. A re-upload also blanks it below.
-    setChangelog("");
+    setChangelog(skill.draftChangelog ?? "");
     setError(null);
     setConfirmClose(false);
     setTimeout(() => { abortRef.current = false; }, 0);
   }, [skill]);
 
   const busy = uploadStage === "uploading" || uploadStage === "parsing";
-  const dirty = Boolean(skill) && (
+  const formKey = JSON.stringify([version, parseTaskId, changelog, name, displayName, description, categoryId, tags, tagDraft, visibility]);
+  const dirty = savedDraft.current
+    ? savedDraft.current.key !== formKey || savedDraft.current.iconBlob !== iconBlob
+    : Boolean(skill) && (
     name !== skill?.name ||
     displayName !== (skill?.displayName ?? "") ||
     categoryId !== skill?.categoryId ||
     JSON.stringify(tags) !== JSON.stringify(skill?.tags) ||
     Boolean(tagDraft.trim()) ||
     Boolean(uploadedFile) ||
+    changelog !== (skill?.draftChangelog ?? "") ||
     Boolean(iconBlob)
   );
 
@@ -177,16 +183,15 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
     !tagSubmitError,
   );
 
-  // Whether this save leaves the plugin unlisted — either it already is, or
-  // widening the audience is about to un-list it server-side. That is exactly
-  // when 保存草稿 is the honest label and 发布 has something to do; on a published
-  // plugin whose audience is unchanged there is nothing to publish, so the
-  // primary action is not rendered rather than sitting there disabled.
+  // Saving a private Skill advances its draft, even while an older release
+  // stays listed. Keep the release action available after saving and reopening;
+  // local dirty state cannot tell whether the server has an unreleased draft.
   // Only private/space are selectable here; anything else is admin-managed.
   const tenantVisibility = visibility === "private" || visibility === "space";
   const willBeUnlisted =
     skill?.listingState !== "published" ||
     (skill?.visibility !== undefined && visibility !== skill.visibility);
+  const showDraftActions = willBeUnlisted || skill?.visibility === "private";
   // 发布 does NOT inherit the grandfathering. On 本组织 it routes through
   // `Service.Publish` → `SubmitReview`, which gates on `validVersion` with no
   // stored-label exemption, so a legacy label that saves fine would 400 on
@@ -436,9 +441,11 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
    * meet a different contract depending on whether the plugin already exists.
    */
   async function submit(publish: boolean) {
-    if (!skill) return;
+    if (!skill || saving) return;
+    const generation = formGeneration.current;
+    const isCurrent = () => generation === formGeneration.current;
     if (!name.trim() || !displayName.trim() || !categoryId || !version.trim() || (parseTaskId && !changelog.trim())) {
-      setError(t("skillMarket.form.validationRequired"));
+      setError(t(!categoryId ? "skillMarket.form.categoryRequired" : "skillMarket.form.validationRequired"));
       return;
     }
     const draftError = getTagDraftError();
@@ -454,28 +461,46 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
     setPublishing(publish);
     setError(null);
     try {
-      let iconUrl: string | undefined;
-      if (iconBlob) {
-        iconUrl = await uploadIcon(iconBlob);
+      const previous = savedDraft.current;
+      let updated = previous?.value;
+      if (!previous || previous.key !== formKey || previous.iconBlob !== iconBlob) {
+        let iconUrl = previous?.iconBlob === iconBlob ? previous.iconUrl : undefined;
+        if (iconBlob && previous?.iconBlob !== iconBlob) {
+          iconUrl = await uploadIcon(iconBlob);
+          if (!isCurrent()) return;
+        }
+        updated = await updateSkill(skill.id, {
+          draftRevision: previous?.value.draftRevision ?? skill.draftRevision,
+          version,
+          ...(parseTaskId && parseTaskId !== previous?.parseTaskId ? { parseTaskId } : {}),
+          changelog,
+          name,
+          displayName,
+          description,
+          categoryId,
+          tags: submittedTags,
+          // The declared audience, as edited. A re-upload is a full replace, so it
+          // must always be sent — omitting it would leave the column to a backend
+          // default rather than to what the author chose.
+          //
+          // Widening it on an already-published plugin un-lists the row server-side
+          // (the audience changed, so the listing has to be re-earned through the
+          // normal 发布 path). The hint below says so before the author saves.
+          visibility,
+          ...(iconUrl !== undefined ? { iconUrl } : {}),
+        });
+        if (!isCurrent()) return;
+        savedDraft.current = { key: formKey, iconBlob, iconUrl, parseTaskId, value: updated };
+      } else if (publish) {
+        // A failed publish may be retried much later, after another editor saved.
+        // Revalidate the cached save without reimporting its archive.
+        const current = await getSkillDraft(skill.id);
+        if (!isCurrent()) return;
+        if (!updated?.draftRevision || current.draftRevision !== updated.draftRevision) {
+          throw new Error(t("skillMarket.errors.stateConflict"));
+        }
       }
-      const updated = await updateSkill(skill.id, {
-        version,
-        ...(parseTaskId ? { parseTaskId, changelog } : {}),
-        name,
-        displayName,
-        description,
-        categoryId,
-        tags: submittedTags,
-        // The declared audience, as edited. A re-upload is a full replace, so it
-        // must always be sent — omitting it would leave the column to a backend
-        // default rather than to what the author chose.
-        //
-        // Widening it on an already-published plugin un-lists the row server-side
-        // (the audience changed, so the listing has to be re-earned through the
-        // normal 发布 path). The hint below says so before the author saves.
-        visibility,
-        ...(iconUrl !== undefined ? { iconUrl } : {}),
-      });
+      if (!updated) return;
       if (publish) {
         // Saved first, so what gets published is what the author just wrote —
         // and if widening the audience un-listed the row, this is the step that
@@ -487,6 +512,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
           version,
           ...(visibility === "space" ? { changelog } : {}),
         });
+        if (!isCurrent()) return;
         onUpdated(updated);
         onPublished?.(
           outcome.displayStatus === "pending_review"
@@ -498,10 +524,9 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
       }
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("skillMarket.form.saveFailed"));
+      if (isCurrent()) setError(err instanceof Error ? err.message : t("skillMarket.form.saveFailed"));
     } finally {
-      setSaving(false);
-      setPublishing(false);
+      if (isCurrent()) { setSaving(false); setPublishing(false); }
     }
   }
 
@@ -544,11 +569,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
           ) : (
           <>
             <WKButton variant="secondary" onClick={requestClose} disabled={saving}>{t("skillMarket.common.cancel")}</WKButton>
-            {/* Same shape as the create modal. The secondary action is only called
-                保存草稿 when the save actually leaves a draft behind — on a
-                published plugin whose audience is unchanged it is a plain 保存,
-                and there is nothing to publish, so 发布 is not offered at all
-                rather than sitting there permanently disabled. */}
+            {/* Saving a private draft does not replace its published snapshot. */}
             <WKButton
               variant="secondary"
               onClick={() => void submit(false)}
@@ -556,12 +577,12 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
               disabled={!canSave || (saving && publishing)}
             >
               {t(
-                willBeUnlisted
+                showDraftActions
                   ? "skillMarket.plugin.actionSaveDraft"
                   : "skillMarket.common.save"
               )}
             </WKButton>
-            {willBeUnlisted && (
+            {showDraftActions && (
               <WKButton
                 variant="primary"
                 onClick={() => void submit(true)}
@@ -667,7 +688,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
           <h3 className="skill-market-form__section-title">
             {t("skillMarket.plugin.columnVisibility")}
           </h3>
-          {!tenantVisibility ? (
+          {skill?.listingState === "published" && tenantVisibility ? <p className="skill-market-form__hint">{t("skillMarket.visibility.useAction")}</p> : !tenantVisibility ? (
             // Admin-managed audience. Shown, not editable: a tenant cannot mint
             // or change 全平台, and the value has to survive the save.
             <p className="skill-market-form__hint">
@@ -703,13 +724,6 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
               </label>
             ))}
           </div>
-          )}
-          {/* Saying it before the save, not after: a published plugin whose
-              audience widens stops being listed until it goes through 发布 again,
-              and an author who is not told will read that as their plugin
-              disappearing. */}
-          {skill?.listingState === "published" && visibility !== skill.visibility && (
-            <p className="skill-market-form__hint">{t("skillMarket.plugin.visibilityChangeUnlists")}</p>
           )}
 
           <h3 className="skill-market-form__section-title">{t("skillMarket.form.basicInfoSection")}</h3>

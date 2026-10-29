@@ -51,6 +51,8 @@ export interface SkillDependencyIssue {
 }
 
 export interface Skill {
+  draftRevision?: string;
+  draftChangelog?: string;
   id: string;
   name: string;
   displayName: string;
@@ -102,7 +104,7 @@ export interface Skill {
 // a stored field. The snake_case wire shape lives in `api/pluginWire.ts`.
 
 export type ReviewStatus = "pending" | "approved" | "rejected" | "canceled";
-export type ReviewKind = "first" | "upgrade";
+export type ReviewKind = "first" | "upgrade" | "visibility";
 export type ReviewListMode = "mine" | "space";
 export type ReviewTargetScope = "space" | "system";
 export type ReviewDecisionSource = "web" | "im" | "policy";
@@ -210,6 +212,7 @@ export interface NewSkillForm {
 }
 
 export interface UpdateSkillForm {
+  draftRevision?: string;
   parseTaskId?: string;
   name?: string;
   displayName?: string;

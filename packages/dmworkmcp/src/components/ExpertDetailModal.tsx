@@ -234,14 +234,14 @@ export default function ExpertDetailModal({ item, onClose }: ExpertDetailModalPr
                   // with a guessed empty key (wrong lookup / opaque 4xx).
                   fetchSkillContent={(i) =>
                     drillMember.key
-                      ? getSquadSkillContent(item.id, drillMember.key, i)
+                      ? getSquadSkillContent(item.id, drillMember.key, i, drillMember.skills?.[i])
                       : Promise.reject(
                           new Error(t("mcp.expert.memberKeyMissing"))
                         )
                   }
                   fetchSkillPackageUrl={(i) =>
                     drillMember.key
-                      ? getSquadSkillDownloadUrl(item.id, drillMember.key, i)
+                      ? getSquadSkillDownloadUrl(item.id, drillMember.key, i, drillMember.skills?.[i])
                       : Promise.reject(
                           new Error(t("mcp.expert.memberKeyMissing"))
                         )
@@ -319,8 +319,8 @@ export default function ExpertDetailModal({ item, onClose }: ExpertDetailModalPr
                 instruction={item.instruction}
                 mcpConfig={item.mcpConfig}
                 skills={item.skills}
-                fetchSkillContent={(i) => getExpertSkillContent(item.id, i)}
-                fetchSkillPackageUrl={(i) => getExpertSkillDownloadUrl(item.id, i)}
+                fetchSkillContent={(i) => getExpertSkillContent(item.id, i, item.skills?.[i])}
+                fetchSkillPackageUrl={(i) => getExpertSkillDownloadUrl(item.id, i, item.skills?.[i])}
               />
             )}
           </div>

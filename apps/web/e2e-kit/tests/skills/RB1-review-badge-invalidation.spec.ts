@@ -59,12 +59,12 @@ test("@RB1 @p1 @skills @market drawer rejection keeps failure feedback and guard
   await expect(reasonDialog).toBeVisible();
   await expect(drawer.getByRole("button", { name: "取消", exact: true })).toBeDisabled();
   await page.evaluate(() => (globalThis as typeof globalThis & { __e2eRb1ReleaseReject?: () => void }).__e2eRb1ReleaseReject?.());
-  await expect(reasonDialog.getByText("This review was already decided.", { exact: true })).toBeVisible();
+  await expect(reasonDialog.getByText("资源状态已变化，请刷新后重试。", { exact: true })).toBeVisible();
   await expect(reasonDialog.getByRole("textbox")).toHaveValue("Please clarify the requested change.");
   await page.screenshot({ path: testInfo.outputPath("drawer-reject-conflict.png") });
   await reasonDialog.getByRole("button", { name: "取消", exact: true }).click();
   await expect(reasonDialog).toHaveCount(0);
-  await expect(drawer.getByText("This review was already decided.", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("资源状态已变化，请刷新后重试。", { exact: true })).toBeVisible();
 });
 
 for (const action of ["approve", "reject"] as const) {
@@ -110,7 +110,7 @@ test("@RB1 @p1 @skills @market queue approval failure remains visible after reco
   await page.goto("/mcp-market/review?sid=e2etest");
   const approve = page.getByRole("button", { name: "通过「发布风险雷达」的上架申请" });
   await approve.click();
-  await expect(page.locator(".skill-market-review-queue__error")).toContainText("This review was already decided.");
+  await expect(page.locator(".skill-market-review-queue__error")).toContainText("资源状态已变化，请刷新后重试。");
   await expect(approve).toBeEnabled();
   await expect(page.locator(".skill-market-review-queue__error")).toBeVisible();
 });

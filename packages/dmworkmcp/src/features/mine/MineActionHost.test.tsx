@@ -7,8 +7,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const h = vi.hoisted(() => ({
   getCategories: vi.fn(),
   getSkill: vi.fn(),
+  getSkillDraft: vi.fn(),
+  app: { loginInfo: { token: "token" }, shared: { currentSpaceId: "space" }, mittBus: { on: vi.fn(), off: vi.fn() } },
   fetchMcpDetail: vi.fn(),
   getExpert: vi.fn(),
+  getExpertEditMetadata: vi.fn(),
   getSquad: vi.fn(),
   loadExpertReviewSnapshot: vi.fn(),
   toastError: vi.fn(),
@@ -46,6 +49,7 @@ const squad = {
 vi.mock("@octo/base", () => ({
   t: (key: string) => key,
   useI18n: () => undefined,
+  WKApp: h.app,
 }));
 
 vi.mock("@douyinfe/semi-ui", () => ({
@@ -59,6 +63,7 @@ vi.mock("@douyinfe/semi-ui", () => ({
 vi.mock("@dmwork/skillmarket", () => ({
   getCategories: (...args: unknown[]) => h.getCategories(...args),
   getSkill: (...args: unknown[]) => h.getSkill(...args),
+  getSkillDraft: (...args: unknown[]) => h.getSkillDraft(...args),
   SkillDetailModal: ({
     skillId,
     onEdit,
@@ -79,7 +84,7 @@ vi.mock("@dmwork/skillmarket", () => ({
       </div>
     ) : null,
   EditSkillModal: ({ skill: item }: { skill: typeof skill | null }) =>
-    item ? <div data-testid="skill-edit" data-id={item.id} /> : null,
+    item ? <div data-testid="skill-edit" data-id={item.id} data-name={item.name} data-notes={(item as any).draftChangelog} data-revision={(item as any).draftRevision} /> : null,
   NewSkillModal: ({ visible }: { visible: boolean }) =>
     visible ? <div data-testid="skill-upgrade" /> : null,
   DeleteConfirmModal: ({ skill: item }: { skill: typeof skill | null }) =>
@@ -92,6 +97,7 @@ vi.mock("../../api/mcpService", () => ({
 
 vi.mock("../../api/expertService", () => ({
   getExpert: (...args: unknown[]) => h.getExpert(...args),
+  getExpertEditMetadata: (...args: unknown[]) => h.getExpertEditMetadata(...args),
   getSquad: (...args: unknown[]) => h.getSquad(...args),
   loadExpertReviewSnapshot: (...args: unknown[]) =>
     h.loadExpertReviewSnapshot(...args),
@@ -199,9 +205,13 @@ beforeEach(() => {
   document.body.appendChild(container);
   vi.clearAllMocks();
   h.getCategories.mockResolvedValue([]);
+  h.app.loginInfo.token = "token";
+  h.app.shared.currentSpaceId = "space";
   h.getSkill.mockResolvedValue(skill);
+  h.getSkillDraft.mockResolvedValue({ ...skill, name: "New draft", draftChangelog: "Saved draft notes", draftRevision: "revision-2" });
   h.fetchMcpDetail.mockResolvedValue(connector);
   h.getExpert.mockResolvedValue(expert);
+  h.getExpertEditMetadata.mockResolvedValue(expert);
   h.getSquad.mockResolvedValue(squad);
 });
 
@@ -251,6 +261,9 @@ describe("MineActionHost", () => {
         ?.getAttribute("data-id")
     ).toBe(expert.id);
 
+    expect(h.getExpertEditMetadata).toHaveBeenCalledWith(expert.id);
+    expect(h.getExpert).not.toHaveBeenCalled();
+
     renderHost({
       requestId: 4,
       pluginId: squad.id,
@@ -273,7 +286,7 @@ describe("MineActionHost", () => {
       action: "view",
     });
     await act(async () => undefined);
-    act(() => (container.querySelector("button") as HTMLButtonElement).click());
+    await act(async () => (container.querySelector("button") as HTMLButtonElement).click());
     expect(
       container.querySelector('[data-testid="skill-edit"]')
     ).not.toBeNull();
@@ -303,9 +316,33 @@ describe("MineActionHost", () => {
     ).toBe("true");
   });
 
+  it("hydrates detail-to-edit from the draft, including notes and revision", async () => {
+    renderHost({ requestId: 1, pluginId: skill.id, type: "skill", action: "view" });
+    await act(async () => undefined);
+    await act(async () => (container.querySelector("button") as HTMLButtonElement).click());
+    const edit = container.querySelector('[data-testid="skill-edit"]');
+    expect(h.getSkillDraft).toHaveBeenCalledWith(skill.id);
+    expect(edit?.getAttribute("data-name")).toBe("New draft");
+    expect(edit?.getAttribute("data-notes")).toBe("Saved draft notes");
+    expect(edit?.getAttribute("data-revision")).toBe("revision-2");
+  });
+
+  it.each(["request", "space", "auth"])("discards detail-to-edit hydration after a %s change", async reason => {
+    let resolve!: (value: unknown) => void;
+    h.getSkillDraft.mockReturnValueOnce(new Promise(done => { resolve = done; }));
+    renderHost({ requestId: 1, pluginId: skill.id, type: "skill", action: "view" });
+    await act(async () => undefined);
+    act(() => (container.querySelector("button") as HTMLButtonElement).click());
+    if (reason === "request") renderHost({ requestId: 2, pluginId: connector.id, type: "connector", action: "view" });
+    if (reason === "space") { h.app.shared.currentSpaceId = "new-space"; act(() => h.app.mittBus.on.mock.calls.find(([event]) => event === "space-changed")?.[1]()); }
+    if (reason === "auth") h.app.loginInfo.token = "new-token";
+    await act(async () => resolve({ ...skill, draftRevision: "stale" }));
+    expect(container.querySelector('[data-testid="skill-edit"]')).toBeNull();
+  });
+
   it("ignores a stale load after a newer action replaces it", async () => {
     let resolveSkill: (value: typeof skill) => void = () => {};
-    h.getSkill.mockReturnValueOnce(
+    h.getSkillDraft.mockReturnValueOnce(
       new Promise((resolve) => {
         resolveSkill = resolve;
       })
@@ -353,7 +390,7 @@ describe("MineActionHost", () => {
 
   it("reports a load failure and closes the pending action", async () => {
     const onClose = vi.fn();
-    h.getExpert.mockRejectedValueOnce(new Error("load failed"));
+    h.getExpertEditMetadata.mockRejectedValueOnce(new Error("load failed"));
 
     renderHost(
       { requestId: 1, pluginId: expert.id, type: "expert", action: "edit" },

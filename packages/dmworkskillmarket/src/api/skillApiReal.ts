@@ -1,3 +1,4 @@
+import { withReviewInvalidation } from "./reviewSignal";
 /**
  * Real HTTP client for the skill marketplace API.
  *
@@ -7,6 +8,7 @@
  * their legacy endpoints on the same service. Snake_case wire shapes are
  * mapped onto the unchanged camelCase frontend types.
  */
+import { pluginErrorMessage } from "./pluginErrors";
 import { resolveSkillMarketApiBaseURL } from "./constants";
 import { WKApp, t, DEFAULT_REQUEST_TIMEOUT_MS } from "@octo/base";
 import type {
@@ -106,7 +108,7 @@ function normalizeError(input: {
 }): SkillMarketApiError {
   return new SkillMarketApiError(
     input.code ?? (input.status ? `http_${input.status}` : "unknown_error"),
-    input.message || "Request failed",
+    pluginErrorMessage(input.code, input.details) || input.message || "Request failed",
     input.status,
     input.details
   );
@@ -130,91 +132,98 @@ async function requestEnvelope<T>(
   // caller-provided signal (e.g. list-request cancellation) so both cancel
   // paths remain honoured.
   const timeoutSignal = AbortSignal.timeout(DEFAULT_REQUEST_TIMEOUT_MS);
-  const composedSignal =
-    init?.signal && typeof (AbortSignal as unknown as { any?: unknown }).any === "function"
-      ? (AbortSignal as unknown as { any: (signals: AbortSignal[]) => AbortSignal }).any([
-          init.signal,
-          timeoutSignal,
-        ])
-      : init?.signal ?? timeoutSignal;
+  const controller = new AbortController();
+  const signals = [init?.signal, timeoutSignal].filter((s): s is AbortSignal => !!s);
+  const listeners = signals.map(signal => {
+    const abort = () => controller.abort(signal.reason);
+    if (signal.aborted) abort();
+    else signal.addEventListener("abort", abort, { once: true });
+    return () => signal.removeEventListener("abort", abort);
+  });
+  const composedSignal = controller.signal;
   try {
-    res = await fetch(url, {
-      ...init,
-      signal: composedSignal,
-      headers: {
-        ...defaultHeaders,
-        ...(init?.headers as Record<string, string> | undefined),
-      },
-    });
-  } catch (err) {
-    if (err instanceof DOMException && err.name === "AbortError") {
-      throw err; // Let AbortError propagate without wrapping
+    try {
+      res = await fetch(url, {
+        ...init,
+        signal: composedSignal,
+        headers: {
+          ...defaultHeaders,
+          ...(init?.headers as Record<string, string> | undefined),
+        },
+      });
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        throw err; // Let AbortError propagate without wrapping
+      }
+      const message = err instanceof Error ? err.message : "Network error";
+      throw normalizeError({ code: "network_error", message, details: err });
     }
-    const message = err instanceof Error ? err.message : "Network error";
-    throw normalizeError({ code: "network_error", message, details: err });
-  }
 
-  // Handle 401 — redirect to login. Fire-and-forget beacons opt out: a 401
-  // on a background metric must never tear down the session (the page's list
-  // calls are the authoritative session probe), mirroring the expert service.
-  if (res.status === 401 && !options?.skipAuthRedirect) {
-    const loginPath =
-      ((WKApp.loginInfo as unknown as Record<string, unknown>)?.loginUrl as
-        | string
-        | undefined) ?? "/login";
-    if (typeof window !== "undefined") window.location.href = loginPath;
-    throw normalizeError({
-      code: "unauthorized",
-      message: t("skillMarket.errors.unauthorized"),
-      status: 401,
-    });
-  }
+    // Handle 401 — redirect to login. Fire-and-forget beacons opt out: a 401
+    // on a background metric must never tear down the session (the page's list
+    // calls are the authoritative session probe), mirroring the expert service.
+    if (res.status === 401 && !options?.skipAuthRedirect) {
+      const loginPath =
+        ((WKApp.loginInfo as unknown as Record<string, unknown>)?.loginUrl as
+          | string
+          | undefined) ?? "/login";
+      if (typeof window !== "undefined") window.location.href = loginPath;
+      throw normalizeError({
+        code: "unauthorized",
+        message: t("skillMarket.errors.unauthorized"),
+        status: 401,
+      });
+    }
 
-  // Handle 413 — file too large
-  if (res.status === 413) {
-    throw normalizeError({
-      code: "file_too_large",
-      message: t("skillMarket.errors.fileTooLarge"),
-      status: 413,
-    });
-  }
+    // Handle 413 — file too large
+    if (res.status === 413) {
+      throw normalizeError({
+        code: "file_too_large",
+        message: t("skillMarket.errors.fileTooLarge"),
+        status: 413,
+      });
+    }
 
-  const body = (await parseJson(res)) as
-    | (Partial<SuccessEnvelope<T>> & ErrorEnvelope)
-    | null;
-  const ok =
-    typeof res.ok === "boolean"
-      ? res.ok
-      : res.status >= 200 && res.status < 300;
-  if (!ok) {
-    throw normalizeError({
-      code: body?.error?.code ?? `http_${res.status}`,
-      message: body?.error?.message ?? res.statusText ?? "Request failed",
-      status: res.status,
-      details: body?.error?.details ?? body,
-    });
-  }
+    const body = (await parseJson(res)) as
+      | (Partial<SuccessEnvelope<T>> & ErrorEnvelope)
+      | null;
+    if (composedSignal.aborted) throw composedSignal.reason;
+    const ok =
+      typeof res.ok === "boolean"
+        ? res.ok
+        : res.status >= 200 && res.status < 300;
+    if (!ok) {
+      throw normalizeError({
+        code: body?.error?.code ?? `http_${res.status}`,
+        message: body?.error?.message ?? res.statusText ?? "Request failed",
+        status: res.status,
+        details: body?.error?.details ?? body,
+      });
+    }
 
-  // `204 No Content` is a valid success shape for DELETE (and any endpoint
-  // that has nothing to return). `parseJson` returns `null` for an empty
-  // body; envelope shape check would otherwise mis-classify a real 204 as
-  // `invalid_response`, so the UI shows a failure toast even though the
-  // server did the work. Return an empty envelope so callers with `.then()`
-  // just see success — flagged as P1 by Jerry-Xin on PR#851.
-  if (res.status === 204) {
-    return { data: undefined as unknown as T } as SuccessEnvelope<T>;
-  }
+    // `204 No Content` is a valid success shape for DELETE (and any endpoint
+    // that has nothing to return). `parseJson` returns `null` for an empty
+    // body; envelope shape check would otherwise mis-classify a real 204 as
+    // `invalid_response`, so the UI shows a failure toast even though the
+    // server did the work. Return an empty envelope so callers with `.then()`
+    // just see success — flagged as P1 by Jerry-Xin on PR#851.
+    if (res.status === 204) {
+      return { data: undefined as unknown as T } as SuccessEnvelope<T>;
+    }
 
-  if (!body || !("data" in body)) {
-    throw normalizeError({
-      code: body?.error?.code ?? "invalid_response",
-      message: body?.error?.message ?? "Invalid response",
-      status: res.status,
-      details: body,
-    });
-  }
+    if (!body || !("data" in body)) {
+      throw normalizeError({
+        code: body?.error?.code ?? "invalid_response",
+        message: body?.error?.message ?? "Invalid response",
+        status: res.status,
+        details: body,
+      });
+    }
 
-  return body as SuccessEnvelope<T>;
+    return body as SuccessEnvelope<T>;
+  } finally {
+    listeners.forEach(remove => remove());
+  }
 }
 
 async function request<T>(
@@ -598,6 +607,12 @@ export function getSkill(id: string): Promise<Skill> {
   ).then((detail) => mapSkillDetail(detail.plugin));
 }
 
+/** Owner edit forms must read saved drafts, rather than the released projection. */
+export function getSkillDraft(id: string): Promise<Skill> {
+  return request<PluginDetailWire>(`/plugins/${encodeURIComponent(id)}/draft`)
+    .then((detail) => ({ ...mapSkillDetail(detail.plugin), draftRevision: detail.draft_revision, draftChangelog: detail.draft_changelog ?? "" }));
+}
+
 export async function trackSkillView(id: string): Promise<void> {
   await request<Record<string, never>>(
     "/metrics/track",
@@ -672,13 +687,16 @@ export async function updateSkill(id: string, form: UpdateSkillForm): Promise<Sk
     return request<PluginDetailWire>("/plugins/import", {
       method: "POST",
       body: importBody(form, id),
-    }).then((detail) => mapSkillDetail(detail.plugin));
+    }).then((detail) => ({ ...mapSkillDetail(detail.plugin), draftRevision: detail.draft_revision, draftChangelog: form.changelog ?? "" }));
   }
   // Metadata-only edit: the upsert is a full replace, so merge the form onto
   // the current documents and re-embed the canonical manifest.
   const current = await request<PluginDetailWire>(
-    `/plugins/detail?plugin_id=${encodeURIComponent(id)}&include_relations=false`
+    `/plugins/${encodeURIComponent(id)}/draft`
   );
+  if (!current.draft_revision || (form.draftRevision && form.draftRevision !== current.draft_revision)) {
+    throw normalizeError({ code: "CONFLICT" });
+  }
   const plugin = current.plugin;
   const manifest = plugin.manifest_json ?? {};
   const displayName = form.displayName ?? plugin.plugin_name ?? "";
@@ -709,6 +727,7 @@ export async function updateSkill(id: string, form: UpdateSkillForm): Promise<Sk
   const detail = await request<PluginDetailWire>("/plugins/upsert", {
     method: "POST",
     body: JSON.stringify({
+      expected_draft_revision: current.draft_revision,
       plugin: {
         plugin_id: id,
         plugin_name: displayName,
@@ -726,13 +745,23 @@ export async function updateSkill(id: string, form: UpdateSkillForm): Promise<Sk
           attachments,
         },
       },
-      relations: [],
+      // Upsert replaces the whole graph; metadata changes must round-trip pins,
+      // stable relation IDs and opaque edge data from the editable draft.
+      relations: (current.relations ?? []).map((relation) => ({
+        relation_id: relation.relation_id,
+        target_plugin_id: relation.target_plugin_id,
+        target_version_id: relation.target_version_id,
+        relation_type: relation.relation_type,
+        sort_order: relation.sort_order,
+        data: relation.data,
+      })),
+      changelog: form.changelog,
     }),
   });
   // A save IS a version snapshot server-side (the backend appends a
   // plugin_versions row and keeps the default-scene placement's category in
   // sync on every upsert), so there is no separate publish step.
-  return mapSkillDetail(detail.plugin);
+  return ({ ...mapSkillDetail(detail.plugin), draftRevision: detail.draft_revision, draftChangelog: form.changelog ?? "" });
 }
 
 export function deleteSkill(id: string): Promise<void> {
@@ -1366,3 +1395,19 @@ export function updateReviewPolicy(enabled: boolean): Promise<PluginReviewPolicy
     body: JSON.stringify({ is_auto_approve_enabled: enabled }),
   }).then(mapReviewPolicy);
 }
+
+export interface PublishedAudience {
+  name: string;
+  visibility: "private" | "space";
+  publishedVersionId: string;
+}
+export async function getPublishedAudience(id: string): Promise<PublishedAudience> {
+  const detail = await request<PluginDetailWire>(`/plugins/detail?plugin_id=${encodeURIComponent(id)}&include_relations=false`);
+  if (detail.plugin.listing_state !== "published" || !detail.plugin.current_version_id || (detail.plugin.visibility !== "private" && detail.plugin.visibility !== "space")) {
+    throw new Error(t("skillMarket.visibility.unavailable"));
+  }
+  return { name: detail.plugin.plugin_name, visibility: detail.plugin.visibility, publishedVersionId: detail.plugin.current_version_id };
+}
+export const changePublishedAudience = withReviewInvalidation(async (id: string, publishedVersionId: string, visibility: "private" | "space") => request<{ visibility: string; published_version_id: string; display_status: string; review_id?: string }>(`/plugins/${encodeURIComponent(id)}/visibility`, {
+  method: "PATCH", body: JSON.stringify({ visibility, expected_published_version_id: publishedVersionId }),
+}));

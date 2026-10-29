@@ -1,3 +1,4 @@
+import { t } from "@octo/base";
 import type {
   Category,
   NewSkillForm,
@@ -27,6 +28,7 @@ import {
   type PluginListingResult,
   type PublishPluginInput,
   type PluginReviewPolicy,
+  type PublishedAudience,
 } from "./skillApiReal";
 
 let skills = createInitialSkills();
@@ -626,4 +628,19 @@ export function delistPlugin(
   refreshListing(skill.id);
   // No review id: a takedown never opens a review request.
   return withDelay(listingResult(skill.id));
+}
+
+// Mock CRUD has one editable row per Skill; it does not model immutable releases.
+export function getSkillDraft(id: string): Promise<Skill> {
+  return getSkill(id);
+}
+
+// Audience changes require a frozen release and backend review policy. Keep
+// this unsupported operation explicit in mock mode instead of sending mock IDs
+// to the real service or introducing a second publication state machine here.
+export function getPublishedAudience(_id: string): Promise<PublishedAudience> {
+  return withDelayReject(new Error(t("skillMarket.visibility.unavailable")));
+}
+export function changePublishedAudience(_id: string, _version: string, _visibility: "private" | "space"): ReturnType<typeof import("./skillApiReal").changePublishedAudience> {
+  return withDelayReject(new Error(t("skillMarket.visibility.unavailable")));
 }

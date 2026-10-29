@@ -115,6 +115,7 @@ export interface PluginListItemWire {
   install_count: number;
   download_count: number;
   manifest_json: PluginManifestWire;
+  current_version_id?: string;
   current_version?: string;
   /** Listing lifecycle. Both fields are owner-scoped: the server only computes
    *  and emits them for `GET /plugins?mode=mine` and `GET /plugins/detail`, so
@@ -139,6 +140,7 @@ export interface PluginDetailPluginWire extends PluginListItemWire {
 
 export interface PluginRelationWire {
   relation_id: string;
+  target_version_id?: string;
   source_plugin_id: string;
   target_plugin_id: string;
   relation_type: string;
@@ -147,6 +149,8 @@ export interface PluginRelationWire {
 }
 
 export interface PluginDetailWire {
+  draft_revision?: string;
+  draft_changelog?: string;
   plugin: PluginDetailPluginWire;
   relations: PluginRelationWire[];
 }
@@ -196,6 +200,7 @@ export interface PluginReviewRequestWire {
   status: string;
   kind: string;
   version: string;
+  current_version_id?: string;
   current_version?: string;
   changelog?: string;
   readme_content?: string;

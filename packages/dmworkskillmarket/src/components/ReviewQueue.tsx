@@ -10,7 +10,7 @@ import {
 } from "../api/skillApi";
 import { formatFullDateTime, formatRelativeTime } from "../utils/format";
 import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
-import { reviewStatusLabel } from "../utils/review";
+import { reviewStatusLabel, reviewKindLabel } from "../utils/review";
 import MineTable, { type MineAssetType, type MineRow } from "./MineTable";
 import DelistReasonModal from "./DelistReasonModal";
 import RejectReasonModal from "./RejectReasonModal";
@@ -368,6 +368,7 @@ export default function ReviewQueue({ mode }: ReviewQueueProps) {
               meta: (
                 <>
                   <span>{item.applicantName}</span>
+                  {item.kind === "visibility" && <><span aria-hidden="true"> · </span><span>{reviewKindLabel(item.kind)}</span></>}
                   <span aria-hidden="true"> · </span>
                   <span title={formatFullDateTime(item.submittedAt)}>
                     {formatRelativeTime(item.submittedAt)}

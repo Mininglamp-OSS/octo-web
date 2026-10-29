@@ -62,6 +62,12 @@ afterEach(() => {
 });
 
 describe("ReviewQueue", () => {
+  it("identifies audience-only review rows as same-version changes", async () => {
+    vi.mocked(api.listReviewRequests).mockResolvedValue(page([request({ kind: "visibility", version: "1.0.0" })]));
+    render(<ReviewQueue mode="space" />);
+    expect(await screen.findByText(/修改可见范围（版本不变）|skillMarket.review.kindVisibility/)).toBeInTheDocument();
+  });
+
   it("loads the pending sub-tab first and renders the row summary", async () => {
     render(<ReviewQueue mode="space" />);
 

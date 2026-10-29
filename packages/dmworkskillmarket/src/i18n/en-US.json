@@ -26,7 +26,15 @@
     "invalidDownloadUrl": "Invalid download URL",
     "uploadResponseMissing": "Upload failed: response field missing",
     "parseFailed": "Parse failed",
-    "parseTimeout": "Parse timed out, please retry"
+    "parseTimeout": "Parse timed out, please retry",
+    "nameTaken": "This display name is already taken. Change it before uploading again.",
+    "stateConflict": "The resource state changed. Refresh and try again.",
+    "reviewPending": "A review is pending. Cancel it before changing visibility.",
+    "labelTaken": "This version is already published. Use a higher version before publishing.",
+    "relationInUse": "A published resource references this resource. Update the reference before narrowing visibility or deleting.",
+    "dependencyVisibility": "A referenced skill or expert has a narrower audience. Publish the dependencies to this organization before widening visibility.",
+    "reviewRequired": "Submit a new version for organization review.",
+    "versionMigration": "The published version baseline is missing. Complete the version history migration first."
   },
   "list": {
     "pageTitle": "Skills",
@@ -132,7 +140,8 @@
     "validationNoUpload": "Please upload and parse a Skill package first",
     "saveFailed": "Failed to save",
     "createFailed": "Failed to create",
-    "nameTaken": "The name \"{{name}}\" already exists; rename it before uploading"
+    "nameTaken": "The name \"{{name}}\" already exists; rename it before uploading",
+    "categoryRequired": "Select a category. If none are available, ask an organization admin to configure skill categories."
   },
   "upload": {
     "invalidFormat": "Invalid file format",
@@ -276,7 +285,8 @@
     "delistReasonLabel": "Reason",
     "delistReasonPlaceholder": "Optional; recorded in the audit log and shown to the author",
     "delistFailed": "Could not delist",
-    "spaceChanged": "The organization has changed. Close this window and check the review result in its organization."
+    "spaceChanged": "The organization has changed. Close this window and check the review result in its organization.",
+    "kindVisibility": "Visibility change (same version)"
   },
   "plugin": {
     "typeSkill": "Skill",
@@ -331,5 +341,13 @@
       "release_missing": "release missing",
       "unknown": "unavailable"
     }
+  },
+  "visibility": {
+    "title": "Change visibility",
+    "hint": "Only the audience of the published version changes; content and version stay the same. Organization access may require review; the previous audience remains until approval. Narrowing access requires a dependency check.",
+    "saved": "Visibility updated; content version unchanged",
+    "submitted": "Visibility request submitted; previous audience remains until approval",
+    "unavailable": "Visibility cannot be changed for this resource now. Refresh the list and retry.",
+    "useAction": "Use Change visibility to manage the audience of the published version."
   }
 }
