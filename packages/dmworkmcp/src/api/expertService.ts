@@ -548,6 +548,9 @@ async function loadConnectors(relations: PluginRelationWire[] | undefined): Prom
     // Connectors have no versioned artifact contract.
     if (rel.target_version_id) throw new Error("Unexpected pinned connector relation");
     const { plugin } = await pluginDetail(rel.target_plugin_id);
+    if (plugin.plugin_type !== "connector") {
+      throw new Error("Unexpected connector relation target type");
+    }
     return {
       pluginId: plugin.plugin_id,
       name: plugin.plugin_name,
@@ -1304,8 +1307,12 @@ export async function fetchSkillPackage(
   }
   const resp = await fetch(target, { signal, headers });
   if (!resp.ok) throw new Error(`package fetch failed: ${resp.status}`);
+  // Bound the version JSON before decoding/parsing, independently of the
+  // aggregate file-byte budget below. Both metadata and file responses use
+  // the same Content-Length precheck and streaming limit.
+  const responseBytes = await readSkillPackageResponse(resp);
   if (url.startsWith(`${BASE}/plugins/`) && /\/versions\/[^/?]+$/.test(url)) {
-    const snapshot: { data: HistoricalPluginWire } = await resp.json();
+    const snapshot: { data: HistoricalPluginWire } = JSON.parse(new TextDecoder().decode(responseBytes));
     const JSZip = (await import("jszip")).default;
     const zip = new JSZip();
     let size = 0;
@@ -1323,6 +1330,11 @@ export async function fetchSkillPackage(
     }
     return zip.generateAsync({ type: "arraybuffer" });
   }
+  return responseBytes;
+}
+
+/** Shared bounded reader for archive bytes and historical package metadata. */
+async function readSkillPackageResponse(resp: Response): Promise<ArrayBuffer> {
   const declared = Number(resp.headers.get("content-length") ?? "");
   if (Number.isFinite(declared) && declared > MAX_SKILL_PACKAGE_FETCH_BYTES) {
     throw new Error("package too large");
