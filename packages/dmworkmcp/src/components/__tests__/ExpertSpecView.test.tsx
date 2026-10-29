@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import ReactDOM from "react-dom";
+import { act } from "react-dom/test-utils";
 import { afterEach, expect, it, vi } from "vitest";
 vi.mock("@octo/base", () => ({
   t: (key: string) => key,
@@ -12,7 +13,40 @@ vi.mock("../ExpertSkillBrowser", () => ({
   ),
 }));
 import ExpertSpecView from "../ExpertSpecView";
-afterEach(cleanup);
+let container: HTMLDivElement | undefined;
+// Match the package's React 17 renderer and act implementation. The testing
+// library dependency carries a React 18 renderer, so mixing them leaves its
+// concurrent render unflushed under the package's default CI configuration.
+function render(element: React.ReactElement) {
+  container = document.createElement("div");
+  document.body.appendChild(container);
+  act(() => {
+    ReactDOM.render(element, container!);
+  });
+}
+function button(name: string | RegExp) {
+  const match = Array.from(container!.querySelectorAll("button")).find((node) =>
+    typeof name === "string"
+      ? node.textContent === name
+      : name.test(node.textContent || "")
+  );
+  expect(match).toBeDefined();
+  return match!;
+}
+function click(node: HTMLElement) {
+  act(() => {
+    node.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+}
+afterEach(() => {
+  if (container) {
+    act(() => {
+      ReactDOM.unmountComponentAtNode(container!);
+    });
+    container.remove();
+    container = undefined;
+  }
+});
 it("shows summary, creator and version in the skill accordion and uses the selected skill loader", () => {
   const load = vi.fn().mockResolvedValue("pinned body");
   render(
@@ -31,17 +65,17 @@ it("shows summary, creator and version in the skill accordion and uses the selec
       fetchSkillContent={load}
     />
   );
-  const toggle = screen.getByRole("button", { name: /Metrics/ });
+  const toggle = button(/Metrics/);
   expect(toggle.getAttribute("aria-expanded")).toBe("false");
-  expect(screen.queryByText("Check completeness")).toBeNull();
-  fireEvent.click(toggle);
-  expect(screen.getByText("Check completeness")).toBeTruthy();
-  expect(screen.getByText(/Alice/)).toBeTruthy();
-  expect(screen.getByText("1.0.0")).toBeTruthy();
-  fireEvent.click(screen.getByText("files:pin1"));
+  expect(container!.textContent).not.toContain("Check completeness");
+  click(toggle);
+  expect(container!.textContent).toContain("Check completeness");
+  expect(container!.textContent).toContain("Alice");
+  expect(toggle.textContent).toContain("1.0.0");
+  click(button("files:pin1"));
   expect(load).toHaveBeenCalledWith(0);
-  fireEvent.click(toggle);
-  expect(screen.queryByText("Check completeness")).toBeNull();
+  click(toggle);
+  expect(container!.textContent).not.toContain("Check completeness");
 });
 it("shows MCP metadata and masks literal credentials", () => {
   render(
@@ -62,18 +96,18 @@ it("shows MCP metadata and masks literal credentials", () => {
       fetchSkillContent={vi.fn()}
     />
   );
-  fireEvent.click(screen.getByRole("button", { name: "Warehouse MCP" }));
-  expect(screen.getByText("Query warehouse")).toBeTruthy();
-  expect(screen.getByText(/Bob/)).toBeTruthy();
+  click(button("Warehouse MCP"));
+  expect(container!.textContent).toContain("Query warehouse");
+  expect(container!.textContent).toContain("Bob");
   expect(document.body.textContent).not.toContain("do-not-display");
 });
 it("renders missing metadata and non-previewable skills without inventing authors", () => {
   render(
     <ExpertSpecView skills={[{ name: "Legacy" }]} fetchSkillContent={vi.fn()} />
   );
-  fireEvent.click(screen.getByRole("button", { name: /Legacy/ }));
-  expect(screen.getByText(/dependencyUnknownAuthor/)).toBeTruthy();
-  expect(screen.getByText(/dependencyNoSummary/)).toBeTruthy();
+  click(button(/Legacy/));
+  expect(container!.textContent).toContain("dependencyUnknownAuthor");
+  expect(container!.textContent).toContain("dependencyNoSummary");
 });
 it("does not revive inline MCP config when explicit connector relations resolve empty", () => {
   render(
@@ -83,5 +117,5 @@ it("does not revive inline MCP config when explicit connector relations resolve 
       fetchSkillContent={vi.fn()}
     />
   );
-  expect(screen.queryByText(/dependencyLegacyConfig/)).toBeNull();
+  expect(container!.textContent).not.toContain("dependencyLegacyConfig");
 });
