@@ -191,7 +191,7 @@ expertAxios.interceptors.request.use((config) => {
 expertAxios.interceptors.response.use(
   (resp) => resp,
   (err) => {
-    // Only a marketplace 401 means the session itself is invalid. A 401 from the
+    // Required marketplace reads determine session validity. A 401 from the
     // fleet service (secondary, reached via a different gateway path) must NOT
     // tear down the whole session — otherwise a fleet-only auth hiccup, or the
     // Loop-target prefetch that now fires on market mount, would silently log the
@@ -207,7 +207,11 @@ expertAxios.interceptors.response.use(
       // session probe and still log out on a genuinely expired token). Exact
       // pathname match — a suffix check would also exempt any future URL that
       // happens to end in /metrics/track.
-      url !== `${BASE}/metrics/track`
+      url !== `${BASE}/metrics/track` &&
+      // Creator attribution is optional. A graph-specific auth failure must
+      // degrade to missing author metadata without ending an otherwise valid
+      // session. Required catalog/detail reads retain their normal 401 policy.
+      url !== `${BASE}/plugins/detail_graph`
     ) {
       WKApp.shared.logout();
     }
@@ -525,7 +529,9 @@ async function loadSkills(
 }
 
 /** Graph attribution is optional: older servers may not support the graph.
- * Only creator identity is used; historical labels/content always use snapshots. */
+ * Only creator identity is used; historical labels/content always use snapshots.
+ * The root graph contains the transitive closure, including pinned member Skill
+ * nodes. Re-querying a member's current graph could select a different release. */
 async function dependencyAttribution(id: string): Promise<PluginListItemWire[]> {
   try {
     const graph = await get<{ related_plugins?: PluginListItemWire[] }>("/plugins/detail_graph", { plugin_id: id });

@@ -1,8 +1,12 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const mock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), interceptors: { request: { use: vi.fn() }, response: { use: vi.fn() } } }));
+const mock = vi.hoisted(() => ({
+  get: vi.fn(), post: vi.fn(), logout: vi.fn(),
+  responseOnRejected: undefined as ((error: unknown) => Promise<unknown>) | undefined,
+  interceptors: { request: { use: vi.fn() }, response: { use: vi.fn((_success: unknown, reject: (error: unknown) => Promise<unknown>) => { mock.responseOnRejected = reject; }) } },
+}));
 vi.mock("axios", () => ({ default: { create: () => mock, isCancel: () => false } }));
-vi.mock("@octo/base", () => ({ WKApp: { apiClient: { config: {} }, loginInfo: { token: "tok" }, shared: { currentSpaceId: "sp" } }, t: (k: string) => k, buildAcceptLanguage: () => "en-US", DEFAULT_REQUEST_TIMEOUT_MS: 20000 }));
+vi.mock("@octo/base", () => ({ WKApp: { apiClient: { config: {} }, loginInfo: { token: "tok" }, shared: { currentSpaceId: "sp", logout: mock.logout } }, t: (k: string) => k, buildAcceptLanguage: () => "en-US", DEFAULT_REQUEST_TIMEOUT_MS: 20000 }));
 import { getExpert, getSquad, getExpertSkillContent, getSquadSkillContent, getExpertSkillDownloadUrl, getSquadSkillDownloadUrl, fetchSkillPackage } from "./expertService";
 const relation = (id: string, version: string, kind = "expert_skill") => ({ target_plugin_id: id, target_version_id: version, relation_type: kind, data: { member_key: "member" } });
 const pkg = (path: string, text: string) => ({ attachments: [{ path, content_type: "raw", raw_content: text }] });
@@ -22,7 +26,7 @@ function setup() {
     return Promise.resolve({ data: { data: value } });
   });
 }
-beforeEach(() => { mock.get.mockReset(); setup(); });
+beforeEach(() => { mock.get.mockReset(); mock.logout.mockReset(); setup(); });
 describe("exact pinned content", () => {
   it("reads Skill snapshot and original markdown without current metadata/content", async () => {
     const expert = await getExpert("expert");
@@ -173,4 +177,47 @@ it("surfaces a connector read failure instead of showing a partial dependency li
     return result;
   });
   await expect(getExpert("expert")).rejects.toThrow();
+});
+
+
+it.each(["expert", "team"])("keeps the session when optional graph attribution returns 401 for %s", async root => {
+  const original = mock.get.getMockImplementation()!;
+  mock.get.mockImplementation((url, ...rest) => {
+    if (url.endsWith("/plugins/detail_graph")) {
+      // Drive the real interceptor too: rejecting the mock request alone would
+      // bypass the logout side effect that this regression is protecting.
+      return mock.responseOnRejected!({ config: { url }, response: { status: 401 } });
+    }
+    return original(url, ...rest);
+  });
+  const detail = root === "team" ? await getSquad(root) : await getExpert(root);
+  expect(detail.id).toBe(root);
+  const skill = detail.kind === "squad" ? detail.members[0].skills?.[0] : detail.skills?.[0];
+  expect(skill).toMatchObject({ versionId: "s1", name: "old-skill" });
+  expect(skill?.creatorName).toBeUndefined();
+  expect(mock.logout).not.toHaveBeenCalled();
+});
+
+it("still logs out for required detail reads and unrelated graph-like paths", async () => {
+  for (const url of ["/market/api/v1/plugins/detail", "/market/api/v1/other/plugins/detail_graph"]) {
+    await expect(mock.responseOnRejected!({ config: { url }, response: { status: 401 } })).rejects.toBeTruthy();
+  }
+  expect(mock.logout).toHaveBeenCalledTimes(2);
+});
+
+it("resolves nested member skill creators from the root's transitive pinned graph", async () => {
+  const original = mock.get.getMockImplementation()!;
+  mock.get.mockImplementation((url, ...rest) => {
+    if (url.endsWith("/plugins/detail_graph")) return Promise.resolve({ data: { data: { related_plugins: [
+      { plugin_id: "member", current_version_id: "e1", creator_name: "Expert creator" },
+      { plugin_id: "skill", current_version_id: "latest", creator_name: "Wrong current creator" },
+      { plugin_id: "skill", current_version_id: "s1", creator_name: "Pinned skill creator", created_by_type: "bot", created_by_bot_name: "Skill bot" },
+    ] } } });
+    return original(url, ...rest);
+  });
+  const team = await getSquad("team");
+  expect(team.members[0].skills?.[0]).toMatchObject({ versionId: "s1", creatorName: "Pinned skill creator", botName: "Skill bot" });
+  const graphCalls = mock.get.mock.calls.filter(([url]) => url.endsWith("/plugins/detail_graph"));
+  expect(graphCalls).toHaveLength(1);
+  expect(graphCalls[0][1].params.plugin_id).toBe("team");
 });
