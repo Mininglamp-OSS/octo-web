@@ -3,7 +3,9 @@
 
 import { test, expect } from "../../fixtures-authed";
 
-test("@EX1 @p1 @experts @market Experts 市场列表与详情", async ({ authedPage }) => {
+test("@EX1 @p1 @experts @market Experts 市场列表与详情", async ({
+  authedPage,
+}) => {
   await authedPage.addInitScript(() => {
     sessionStorage.setItem("__e2e_scenario", "expert-market-list");
   });
@@ -17,7 +19,15 @@ test("@EX1 @p1 @experts @market Experts 市场列表与详情", async ({ authedP
   await expect(expertCard).toBeVisible();
   await expect(expertCard).toContainText("官方发布");
 
+  // Attribution is optional in the UI, so visible assertions alone would hide
+  // a missing graph mock and only fail the global proxy-error gate afterwards.
+  const graphResponse = authedPage.waitForResponse(
+    "**/market/api/v1/plugins/detail_graph?plugin_id=release-lead"
+  );
   await expertCard.click();
+  const graph = await graphResponse;
+  expect(graph.status()).toBe(200);
+  expect(await graph.json()).toMatchObject({ data: { related_plugins: [] } });
   const detailModal = authedPage.getByRole("dialog");
   await expect(detailModal).toBeVisible();
   await expect(detailModal).toContainText("发布负责人");
