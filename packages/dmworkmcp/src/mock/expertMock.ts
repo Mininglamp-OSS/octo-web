@@ -26,11 +26,20 @@ export interface ExpertSkill {
   /** Pinned version of this skill (expert_skill.target_version_id). Absent means
    *  the edge is legacy/unpinned and the server resolves on write. */
   versionId?: string;
+  /** Human label from the exact bound snapshot, never the latest release. */
+  version?: string;
   hasContent?: boolean;
   canDownload?: boolean;
   fileName?: string;
   fileSize?: number;
   files?: string[];
+}
+
+/** Connectors currently have no version in the marketplace contract. */
+export interface ExpertConnector {
+  pluginId: string;
+  name: string;
+  mcpConfig: string;
 }
 
 /** A single member inside an expert squad. */
@@ -43,6 +52,8 @@ export interface ExpertMember {
   pluginId?: string;
   /** Pinned version of this member (expert_team_expert.target_version_id). */
   versionId?: string;
+  /** Human label from the exact bound snapshot, never the latest release. */
+  version?: string;
   /** Expert template this member is created from. */
   templateId?: string;
   name: string;
@@ -53,6 +64,7 @@ export interface ExpertMember {
   instruction?: string;
   /** Raw MCP servers config (mcpServers JSON) carried from the source expert. */
   mcpConfig?: string;
+  connectors?: ExpertConnector[];
   /** Skills attached to this member, carried from the source expert. */
   skills?: ExpertSkill[];
 }
@@ -105,6 +117,7 @@ interface ExpertBase {
   instruction?: string;
   /** Raw MCP servers config (mcpServers JSON), as entered in the config editor. */
   mcpConfig?: string;
+  connectors?: ExpertConnector[];
   /** Skills attached to the expert (uploaded; content fetched lazily on view). */
   skills?: ExpertSkill[];
   /**

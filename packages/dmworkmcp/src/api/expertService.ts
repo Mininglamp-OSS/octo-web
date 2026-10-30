@@ -26,7 +26,7 @@ import type {
   MemberContextWire,
 } from "./expertWire";
 import { parseTeamAgentsMarkdown } from "./expertWire";
-import type { ExpertMember, ExpertSkill } from "../mock/expertMock";
+import type { ExpertMember, ExpertSkill, ExpertConnector } from "../mock/expertMock";
 import {
   SCENE_CODE,
   jsonAttachment,
@@ -435,7 +435,7 @@ function detailIndexKey(id: string): string {
   return `${WKApp.loginInfo.token}:${WKApp.shared.currentSpaceId}:${id}`;
 }
 interface HistoricalPluginWire {
-  version: { plugin_id: string; version_id: string; relations: PluginRelationWire[] };
+  version: { plugin_id: string; version_id: string; declared_version?: string; release?: { version_label?: string }; relations: PluginRelationWire[] };
   manifest_json: PluginManifestWire;
   plugin_json: PluginPackageWire;
 }
@@ -450,6 +450,8 @@ async function relationDetail(rel: PluginRelationWire) {
   return {
     plugin: {
       plugin_id: snapshot.version.plugin_id,
+      // `version` is an internal revision counter, not the display label.
+      current_version: snapshot.version.release?.version_label ?? snapshot.version.declared_version,
       plugin_name: snapshot.manifest_json.plugin_name ?? snapshot.manifest_json.name ?? "",
       plugin_json: snapshot.plugin_json,
     },
@@ -512,6 +514,23 @@ async function loadSkills(
   return { skills, pluginIds };
 }
 
+/** Connector relations are versionless; keep their names/configs in the detail. */
+async function loadConnectors(relations: PluginRelationWire[] | undefined): Promise<ExpertConnector[]> {
+  const rels = liveRelations(relations, "expert_connector");
+  const results = await Promise.allSettled(rels.map(relationDetail));
+  const connectors: ExpertConnector[] = [];
+  results.forEach((result, index) => {
+    if (result.status === "fulfilled") {
+      connectors.push({ pluginId: rels[index].target_plugin_id,
+        name: result.value.plugin.plugin_name ?? "",
+        mcpConfig: rawAttachment(result.value.plugin.plugin_json, "mcp.json") ?? "" });
+    } else if (rels[index].target_version_id || axios.isCancel(result.reason) || !isDanglingTarget(result.reason)) {
+      throw result.reason;
+    }
+  });
+  return connectors;
+}
+
 async function getExpertReal(id: string): Promise<ExpertAgent> {
   const request = beginDetail("expert", id);
   const [detail, maps] = await Promise.all([
@@ -521,7 +540,7 @@ async function getExpertReal(id: string): Promise<ExpertAgent> {
   const plugin = detail.plugin;
   const categoryName =
     (plugin.category_id && maps.idToName.get(plugin.category_id)) || "";
-  const { skills, pluginIds } = await loadSkills(detail.relations);
+  const [{ skills, pluginIds }, connectors] = await Promise.all([loadSkills(detail.relations), loadConnectors(detail.relations)]);
   request.assertCurrent();
   expertSkillIndex.set(request.key, pluginIds);
   const base = mapPluginAgentListItem(plugin, categoryName);
@@ -534,6 +553,7 @@ async function getExpertReal(id: string): Promise<ExpertAgent> {
     instruction: rawAttachment(plugin.plugin_json, "AGENTS.md") ?? "",
     mcpConfig: rawAttachment(plugin.plugin_json, "mcp.json") ?? "",
     skills,
+    connectors,
   };
 }
 
@@ -600,12 +620,13 @@ async function loadSquadMember(
     jsonAttachment<MemberContextWire>(plugin.plugin_json, "expert/context.json") ?? {};
   const memberKey =
     wiring.member_key || context.member_key || rel.target_plugin_id;
-  const { skills, pluginIds } = await loadSkills(detail.relations);
+  const [{ skills, pluginIds }, connectors] = await Promise.all([loadSkills(detail.relations), loadConnectors(detail.relations)]);
   skillIndex.set(memberKey, pluginIds);
   return {
     key: memberKey,
     pluginId: rel.target_plugin_id,
     versionId: rel.target_version_id,
+    version: rel.target_version_id ? plugin.current_version : undefined,
     templateId: context.template_id,
     name: plugin.plugin_name ?? "",
     role: wiring.role ?? context.role ?? "",
@@ -613,6 +634,7 @@ async function loadSquadMember(
     instruction: rawAttachment(plugin.plugin_json, "AGENTS.md") ?? "",
     mcpConfig: rawAttachment(plugin.plugin_json, "mcp.json") ?? "",
     skills,
+    connectors,
   };
 }
 

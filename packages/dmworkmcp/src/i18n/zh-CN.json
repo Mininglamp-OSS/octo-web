@@ -26,6 +26,7 @@
     "deletedToast": "已删除"
   },
   "expert": {
+    "versionless": "无版本",
     "versionPinned": "固定版本",
     "versionUnpinned": "未固定",
     "typeSquad": "专家团",

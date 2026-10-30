@@ -934,9 +934,20 @@
   word-break: break-all;
 }
 
-.wk-mcp-expert-skill__pin {
+.wk-mcp-bound-version {
+  display: inline-block;
+  flex: 0 0 auto;
+  padding: 0 var(--wk-sp-2);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-full);
   color: var(--wk-text-secondary);
   font-size: 12px;
+  font-weight: normal;
+  line-height: 1.6;
+}
+
+.wk-mcp-expert-skill__row > .wk-mcp-bound-version {
+  margin-left: auto;
 }
 
 .wk-mcp-card__slogan {

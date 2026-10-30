@@ -413,7 +413,7 @@ export function mapPluginSquadListItem(
  *  their files directly as attachments; a legacy skill/ref.json pointer is still
  *  honored for not-yet-expanded rows. */
 export function fromSkillPlugin(
-  plugin: Pick<PluginDetailPluginWire, "plugin_id" | "plugin_name" | "plugin_json">,
+  plugin: Pick<PluginDetailPluginWire, "plugin_id" | "plugin_name" | "plugin_json" | "current_version">,
   versionId?: string
 ): import("../mock/expertMock").ExpertSkill {
   const ref = jsonAttachment<SkillRefWire>(plugin.plugin_json, "skill/ref.json") ?? {};
@@ -446,6 +446,6 @@ export function fromSkillPlugin(
     fileSize: isLegacy ? ref.file_size : treeSize,
     files: isLegacy ? ref.files : treeFiles,
     versionId,
-
+    version: versionId ? plugin.current_version : undefined,
   };
 }
