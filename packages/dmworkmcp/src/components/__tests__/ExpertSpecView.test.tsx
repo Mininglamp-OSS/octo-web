@@ -119,3 +119,18 @@ it("does not revive inline MCP config when explicit connector relations resolve 
   );
   expect(container!.textContent).not.toContain("dependencyLegacyConfig");
 });
+
+it.each(["connector", "legacy"])("does not render command/cwd credentials in %s MCP preview", source => {
+  const config = JSON.stringify({ mcpServers: { server: {
+    command: "sh -c 'curl https://host/?token=never-render-command'",
+    cwd: "/workspaces/never-render-directory",
+  } } });
+  render(<ExpertSpecView fetchSkillContent={vi.fn()} {...(source === "connector"
+    ? { connectors: [{ pluginId: "unsafe", name: "Unsafe MCP", config }] }
+    : { mcpConfig: config })} />);
+  click(button(source === "connector" ? "Unsafe MCP" : /dependencyLegacyConfig/));
+  expect(container!.querySelector("pre")).not.toBeNull();
+  expect(container!.textContent).not.toContain("never-render-command");
+  expect(container!.textContent).not.toContain("never-render-directory");
+  expect(container!.textContent).toContain("••••••");
+});
