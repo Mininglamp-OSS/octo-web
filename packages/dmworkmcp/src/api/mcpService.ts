@@ -676,6 +676,8 @@ function mapListItem(
     createdByBotName: raw.created_by_bot_name,
     matchReasons: [],
     updatedAt: raw.updated_at,
+    // Connectors retain the legacy version lifecycle: the paired backend
+    // excludes them from the owner published-release projection.
     version: raw.current_version ?? "",
   };
 }

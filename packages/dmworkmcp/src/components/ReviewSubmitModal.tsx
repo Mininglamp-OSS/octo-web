@@ -231,8 +231,9 @@ export default function ReviewSubmitModal({
     };
   }, [target, resolveTarget]);
 
-  // An upgrade must exceed the version currently listed, which is exactly what
-  // the server compares against.
+  // An upgrade must exceed the released label. The server also checks the
+  // current draft label in SubmitReview and InsertReviewRequest, so keep that
+  // independent lower bound: release 1.0.3 / draft 1.0.5 cannot submit 1.0.4.
   const versionError = (target?.isUpgrade
     ? upgradeVersionErrorKey(target.version, version)
     : versionErrorKey(target?.version, version)) ||
