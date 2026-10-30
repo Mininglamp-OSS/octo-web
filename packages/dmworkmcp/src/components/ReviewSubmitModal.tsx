@@ -303,15 +303,19 @@ export default function ReviewSubmitModal({
   // Bot updates now submit publication themselves. Returning closes this
   // stale upgrade form and refreshes owner state without claiming success.
   if (editingWithBot && target?.isUpgrade && target.editKind) {
+    const botGeneration = generationRef.current;
     return <ExpertBotPublishModal
       visible
       kind={target.editKind}
       mode="update"
       editingId={target.pluginId}
       onClose={() => {
+        // A dismissed Bot may finish forwarding after another form has opened.
+        if (generationRef.current !== botGeneration) return;
+        generationRef.current++;
         setEditingWithBot(false);
         onBotReturn?.();
-        onClose();
+        if (generationRef.current === botGeneration + 1) onClose();
       }}
       onToast={message => Toast.success(message)}
     />;

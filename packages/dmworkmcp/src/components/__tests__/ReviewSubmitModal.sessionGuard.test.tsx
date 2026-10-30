@@ -7,13 +7,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const busHandlers = new Set<() => void>();
 const submitPluginReview = vi.fn();
 let modalCancel: () => void;
+let botReturn: () => void;
 
 vi.mock("../ExpertBotPublishModal", () => ({
-  default: ({ kind, editingId, onClose }: { kind: string; editingId: string; onClose: () => void }) => (
+  default: ({ kind, editingId, onClose }: { kind: string; editingId: string; onClose: () => void }) => {
+    botReturn = onClose;
+    return (
     <div data-bot-kind={kind} data-plugin-id={editingId}>
       <button onClick={onClose}>return-to-upgrade</button>
     </div>
-  ),
+  ); },
 }));
 
 vi.mock("@dmwork/skillmarket", async () => import("../../../../dmworkskillmarket/src/utils/version"));
@@ -344,6 +347,34 @@ describe("Expert upgrade draft editing", () => {
     expect(onSubmitted).not.toHaveBeenCalled();
     expect(submitPluginReview).not.toHaveBeenCalled();
     expect(loadSnapshot).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["dismiss-reopen", "space-switch", "target-switch"])("ignores a late Bot completion after %s", async reason => {
+    const old = { ...target("old"), isUpgrade: true, editKind: "agent" as const };
+    await render(old);
+    await click("mcp.expert.botUpdateTitleAgent");
+    // Retain the callback a pending forward captured before its child unmounts.
+    const lateForward = botReturn;
+    if (reason === "dismiss-reopen") {
+      act(() => botReturn());
+      await render(null);
+    } else if (reason === "space-switch") changeSpace();
+    await render({ ...target("new"), isUpgrade: true, editKind: "squad" });
+    editChangelog("new unsaved changes");
+    onClose.mockClear(); onBotReturn.mockClear();
+    act(() => lateForward());
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onBotReturn).not.toHaveBeenCalled();
+    expect(container.querySelector("textarea")?.value).toBe("new unsaved changes");
+  });
+
+  it("consumes a Bot return once even if forwarding completes after dismissal", async () => {
+    await render({ ...target(), isUpgrade: true, editKind: "agent" });
+    await click("mcp.expert.botUpdateTitleAgent");
+    const lateForward = botReturn;
+    act(() => { lateForward(); lateForward(); });
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(onBotReturn).toHaveBeenCalledOnce();
   });
 
   it("blocks submission when reloading the Bot draft fails", async () => {
