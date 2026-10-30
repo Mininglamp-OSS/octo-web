@@ -71,6 +71,8 @@ export interface Skill {
    *  "skill". */
   pluginType?: PluginType;
   version: string;
+  /** Editable head retained separately from the released list/upgrade baseline. */
+  draftVersion?: string;
   readmeContent: string;
   iconUrl: string;
   fileName: string;

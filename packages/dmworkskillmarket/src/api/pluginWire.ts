@@ -117,6 +117,9 @@ export interface PluginListItemWire {
   manifest_json: PluginManifestWire;
   current_version_id?: string;
   current_version?: string;
+  /** Formal release baseline on owner listings; current_* still describes the draft. */
+  published_version?: string;
+  published_version_id?: string;
   /** Listing lifecycle. Both fields are owner-scoped: the server only computes
    *  and emits them for `GET /plugins?mode=mine` and `GET /plugins/detail`, so
    *  they are absent on the public marketplace grid — optional here rather than
@@ -202,6 +205,9 @@ export interface PluginReviewRequestWire {
   version: string;
   current_version_id?: string;
   current_version?: string;
+  /** Formal release baseline on owner listings; current_* still describes the draft. */
+  published_version?: string;
+  published_version_id?: string;
   changelog?: string;
   readme_content?: string;
   manifest_hash?: string;

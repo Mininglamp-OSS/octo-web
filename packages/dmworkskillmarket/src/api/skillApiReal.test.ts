@@ -304,6 +304,13 @@ describe("skillApiReal", () => {
     );
   });
 
+  it("uses the formal release for owner display and keeps draft reads independent", async () => {
+    mockFetch.mockReturnValueOnce(jsonResponse([pluginSkillWire({ current_version: "1.0.0", current_version_id: "draft-v0", published_version: "1.0.3", published_version_id: "release-v3" })], 200, { total: 1, page: 1, page_size: 20 }));
+    expect((await getMySkills()).items[0].version).toBe("1.0.3");
+    mockFetch.mockReturnValueOnce(jsonResponse({ plugin: pluginSkillWire({ current_version: "1.0.5", current_version_id: "draft-v5", published_version: "1.0.3", published_version_id: "release-v3" }), relations: [], draft_revision: "revision" }));
+    expect((await getSkillDraft("skill-1")).version).toBe("1.0.5");
+  });
+
   it("getMySkills scopes the unified list to mode=mine", async () => {
     mockFetch.mockReturnValueOnce(
       jsonResponse([], 200, { total: 0, page: 1, page_size: 20 })
@@ -341,6 +348,30 @@ describe("skillApiReal", () => {
     expect(item.displayName).toBe("Saved draft");
     expect(item.version).toBe("1.0.1");
     expect(mockFetch.mock.calls[0][0]).toContain("/plugins/ci-failure-map/draft");
+  });
+
+  it("keeps the editable skill version when the draft also carries a published release", async () => {
+    mockFetch.mockReturnValueOnce(jsonResponse({
+      plugin: pluginSkillWire({ current_version: "1.0.5", published_version: "1.0.3" }),
+      relations: [],
+    }));
+
+    const draft = await getSkillDraft("ci-failure-map");
+
+    expect(draft.version).toBe("1.0.5");
+    expect(draft.draftRevision).toBe(draftRevision);
+    expect(mockFetch.mock.calls[0][0]).toContain("/plugins/ci-failure-map/draft");
+  });
+
+  it("keeps the draft lower bound separately from the owner list release label", async () => {
+    mockFetch.mockReturnValueOnce(jsonResponse([
+      pluginSkillWire({ current_version: "1.0.5", published_version: "1.0.3" }),
+    ], 200, { total: 1, page: 1, page_size: 20 }));
+
+    const skill = (await getMySkills()).items[0];
+
+    expect(skill.version).toBe("1.0.3");
+    expect(skill.draftVersion).toBe("1.0.5");
   });
 
   it("getSkill maps the plugin detail with package artifacts", async () => {

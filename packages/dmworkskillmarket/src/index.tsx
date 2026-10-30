@@ -70,6 +70,7 @@ export {
   isVersionForward,
   isStoredVersionLabel,
   versionErrorKey,
+  upgradeVersionErrorKey,
   nextPatch,
 } from "./utils/version";
 // The 全部 tab renders skills beside connectors and experts, so it needs the
