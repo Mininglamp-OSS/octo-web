@@ -89,6 +89,9 @@ export interface PluginListItemWire {
   download_count: number;
   manifest_json: PluginManifestWire;
   current_version?: string;
+  /** Formal release baseline on owner listings; current_* still describes the draft. */
+  published_version?: string;
+  published_version_id?: string;
   current_version_id?: string;
   /** Owner-scoped listing fields: emitted only for `GET /plugins?mode=mine` and
    *  `GET /plugins/detail`, so they are absent on the public market grid.

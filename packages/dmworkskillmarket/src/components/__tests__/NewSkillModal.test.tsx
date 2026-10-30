@@ -587,6 +587,15 @@ describe("NewSkillModal", () => {
   });
 
   describe("review mode", () => {
+    it("seeds above the published version and rejects reusing that label", async () => {
+      render(<NewSkillModal visible categories={categories} onClose={vi.fn()} onCreated={vi.fn()} reviewSkill={reviewSkillFixture({ version: "1.0.3" })} />);
+      expect(screen.getByPlaceholderText(versionPlaceholder)).toHaveValue("1.0.4");
+      fireEvent.change(screen.getByPlaceholderText(versionPlaceholder), { target: { value: "1.0.3" } });
+      expect(screen.getByText(/新版本必须高于当前已发布版本|versionMustExceedPublished/)).toBeInTheDocument();
+      fireEvent.change(screen.getByPlaceholderText(versionPlaceholder), { target: { value: "1.0.4" } });
+      expect(screen.queryByText(/新版本必须高于当前已发布版本|versionMustExceedPublished/)).not.toBeInTheDocument();
+    });
+
     it("closes an untouched upgrade without showing a leave confirmation", async () => {
       const onClose = vi.fn();
       render(

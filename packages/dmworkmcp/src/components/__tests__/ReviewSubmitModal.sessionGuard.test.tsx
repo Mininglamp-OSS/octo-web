@@ -434,6 +434,19 @@ describe("Expert upgrade version selection", () => {
     await click("skillMarket.plugin.actionUpgrade");
     expect(submitPluginReview).not.toHaveBeenCalled();
   });
+  it.each(["agent", "squad"] as const)("keeps the server draft lower bound for a %s upgrade with a separate release label", async editKind => {
+    await render({ ...target(), version:"1.0.3", isUpgrade:true, editKind,
+      loadSnapshot:async()=>({version:"1.0.5",content,relations:[]}), needs:{content:true,relations:true} });
+    editVersion("1.0.4");
+    expect(button("skillMarket.plugin.actionUpgrade").disabled).toBe(true);
+    await click("skillMarket.plugin.actionUpgrade");
+    expect(submitPluginReview).not.toHaveBeenCalled();
+    editVersion("1.0.5");
+    expect(button("skillMarket.plugin.actionUpgrade").disabled).toBe(false);
+    submitPluginReview.mockResolvedValue(undefined);
+    await click("skillMarket.plugin.actionUpgrade");
+    expect(submitPluginReview).toHaveBeenCalledWith(expect.objectContaining({version:"1.0.5"}));
+  });
   it("retains user input and blocks it when the refreshed draft advances past it", async () => {
     const loadSnapshot=vi.fn().mockResolvedValue({version:"1.1.0",content,relations:[]});
     await render({...target(),isUpgrade:true,editKind:"agent",loadSnapshot,needs:{content:true,relations:true}});

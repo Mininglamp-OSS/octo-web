@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { TextArea, Toast } from "@douyinfe/semi-ui";
-import { isValidVersion, isVersionForward, versionErrorKey } from "@dmwork/skillmarket";
+import { isValidVersion, isVersionForward, versionErrorKey, upgradeVersionErrorKey } from "@dmwork/skillmarket";
 import { t, useI18n, WKApp, WKButton, WKInput, WKModal } from "@octo/base";
 import {
   submitPluginReview,
@@ -231,12 +231,12 @@ export default function ReviewSubmitModal({
     };
   }, [target, resolveTarget]);
 
-  // An upgrade must exceed the version currently listed, which is exactly what
-  // the server compares against.
-  const reusesPublishedVersion = target?.isUpgrade && version.trim() &&
-    isValidVersion(target.version ?? "") && !isVersionForward(bumpPatch(target.version), version);
-  const versionError = versionErrorKey(target?.version, version) ||
-    (reusesPublishedVersion ? "mcp.review.versionMustExceedPublished" : null) ||
+  // An upgrade must exceed the released label. The server also checks the
+  // current draft label in SubmitReview and InsertReviewRequest, so keep that
+  // independent lower bound: release 1.0.3 / draft 1.0.5 cannot submit 1.0.4.
+  const versionError = (target?.isUpgrade
+    ? upgradeVersionErrorKey(target.version, version)
+    : versionErrorKey(target?.version, version)) ||
     (target?.isUpgrade ? versionErrorKey(draftVersion, version) : null);
   const blocked =
     submitting ||
