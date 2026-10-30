@@ -71,6 +71,8 @@ interface ReviewSubmitModalProps {
   onClose: () => void;
   /** Fired after a successful submit, with a ready-to-show message. */
   onSubmitted: (message: string) => void;
+  /** Refresh owner state after returning from the Bot publishing workflow. */
+  onBotReturn?: () => void;
 }
 
 /** Next patch version off a `major.minor.patch` label; falls back to 1.0.0 for
@@ -101,6 +103,7 @@ export default function ReviewSubmitModal({
   target,
   onClose,
   onSubmitted,
+  onBotReturn,
 }: ReviewSubmitModalProps) {
   useI18n();
   const [editingWithBot, setEditingWithBot] = useState(false);
@@ -284,8 +287,8 @@ export default function ReviewSubmitModal({
     onClose();
   }
 
-  // Replace the upgrade dialog while forwarding; keep this component mounted
-  // so version/changelog state survives returning from the Bot prompt.
+  // Bot updates now submit publication themselves. Returning closes this
+  // stale upgrade form and refreshes owner state without claiming success.
   if (editingWithBot && target?.isUpgrade && target.editKind) {
     return <ExpertBotPublishModal
       visible
@@ -294,7 +297,8 @@ export default function ReviewSubmitModal({
       editingId={target.pluginId}
       onClose={() => {
         setEditingWithBot(false);
-        resolveTarget(target);
+        onBotReturn?.();
+        onClose();
       }}
       onToast={message => Toast.success(message)}
     />;

@@ -282,6 +282,7 @@ export default function MineActionHost({
       <ReviewSubmitModal
         target={reviewTarget}
         onClose={close}
+        onBotReturn={notifyChanged}
         onSubmitted={(message) => {
           Toast.success(message);
           notifyChanged();

@@ -60,17 +60,17 @@ export function getExpertBotPublishPrompt(
     ? "请提供要上架的专家团信息（名称、简介、分类、各成员及其已发布版本、角色 / 是否 Leader、调度规则 strategies、依赖 dependencies、权限 permission），或提供 Agent 当前运行环境可访问的 squad.json / squad.yaml 路径。"
     : "请提供要上架的专家信息（名称、简介、分类、角色说明 instruction，以及依赖的已发布技能 / 连接器 ID 和版本），或提供 Agent 当前运行环境可访问的 expert.json / expert.yaml 路径。";
   const askUpdate = isSquad
-    ? "请提供要更新的专家团字段（名称、简介、分类、成员 / 已发布版本 / 角色 / Leader、调度规则、依赖、权限中的任意项；只覆盖本次明确要求修改的内容），或提供 Agent 当前运行环境可访问的 squad.json / squad.yaml 路径。"
-    : "请提供要更新的专家字段（名称、简介、分类、instruction、依赖的技能 / 连接器 ID 和已发布版本中的任意项；只覆盖本次明确要求修改的内容），或提供 Agent 当前运行环境可访问的 expert.json / expert.yaml 路径。";
+    ? "请提供要更新的专家团字段（名称、简介、分类、成员 / 已发布版本 / 角色 / Leader、调度规则、依赖、权限中的任意项；只覆盖本次明确要求修改的内容），并提供本次新版本号和更新说明；也可提供 Agent 当前运行环境可访问的 squad.json / squad.yaml 路径。"
+    : "请提供要更新的专家字段（名称、简介、分类、instruction、依赖的技能 / 连接器 ID 和已发布版本中的任意项；只覆盖本次明确要求修改的内容），并提供本次新版本号和更新说明；也可提供 Agent 当前运行环境可访问的 expert.json / expert.yaml 路径。";
 
   const intro = isUpdate
-    ? `使用 octo-cli 内置的 \`octo-marketplace\` Skill，编辑 OCTO Marketplace 上${entity}的草稿，不改变当前正式发布版本。`
+    ? `使用 octo-cli 内置的 \`octo-marketplace\` Skill，编辑 OCTO Marketplace 上${entity}的草稿，并在保存后立即提交发布，遵循组织的自动或人工审核策略。`
     : `使用 octo-cli 内置的 \`octo-marketplace\` Skill，将指定${entity}上架到 OCTO Marketplace。`;
 
   const idLine = isUpdate ? `\n- ${entity} ID：\`${targetId}\`` : "";
 
   const step4Title = isUpdate
-    ? `4. 按以下草稿编辑约束及 \`expert.md\` 的写入结构保存草稿：`
+    ? `4. 按以下草稿编辑约束及 \`expert.md\` 的写入结构完成修改并提交发布：`
     : `4. 按 \`expert.md\` 的 Create / Publish 流程完成上架：`;
 
   const confirmation = isUpdate ? "确认更新" : "确认上架";
@@ -130,7 +130,7 @@ ${step4Title}
      不要自动改用当前最新版本。
      ${
        isUpdate
-         ? `更新 payload 必须按全量替换语义准备：body 缺失字段会写成零值，\`relations\` 缺失关系会被软删。未修改的 \`plugin_name\` / \`publisher\` / \`icon\` / \`tags\` / \`visibility\` / \`category_id\` 必须原样回填；每条未删除的 relation 也必须原样保留 \`relation_id\` 和 \`data\`，只覆盖用户本次明确要求修改的字段或关系。回填图标时使用写入字段 \`icon\` 本身，不要把展示用的 \`icon_url\` 写回；\`version\` 保持省略，由后端保留当前版本标签。`
+         ? `更新 payload 必须按全量替换语义准备：body 缺失字段会写成零值，\`relations\` 缺失关系会被软删。未修改的 \`plugin_name\` / \`publisher\` / \`icon\` / \`tags\` / \`visibility\` / \`category_id\` 必须原样回填；每条未删除的 relation 也必须原样保留 \`relation_id\` 和 \`data\`，只覆盖用户本次明确要求修改的字段或关系。回填图标时使用写入字段 \`icon\` 本身，不要把展示用的 \`icon_url\` 写回；写入明确确认的新 \`version\`，必须是合法 MAJOR.MINOR.PATCH、不低于当前草稿版本，且不得复用已发布版本号。先确认新版本号和更新说明，不能只保存后让用户另行发布。`
          : ""
      }
      如需附带或更新技能包，此时只确认包内容和目标，不执行技能包写入流程；${actionWord}预览必须写明
@@ -140,7 +140,7 @@ ${step4Title}
      写 \`\${AUTHORIZATION}\`、\`X-Api-Secret\` 写 \`\${X_API_SECRET}\`、\`GITHUB_TOKEN\`
      写 \`\${GITHUB_TOKEN}\`，不要写泛化的 \`\${VAR}\`。即使 \`mcp.md\` 示例使用了与键名不一致的
      占位符（例如键 \`TOKEN\` 配 \`\${GITHUB_TOKEN}\`），也必须改为规范化键名占位 \`\${TOKEN}\`。
-   - 向我展示${actionWord}预览，并在这里暂停，明确等待我回复“${confirmation}”；未收到这四个字，
+   - 向我展示${actionWord}预览${isUpdate ? "（包括新版本号、更新说明，以及保存后立即提交发布的动作）" : ""}，并在这里暂停，明确等待我回复“${confirmation}”；未收到这四个字，
      不得创建、更新、发布或提交审核。可先用 \`--dry-run\` 打印将要发送的请求核对。
    - 在收到“${confirmation}”后，只使用 \`expert.md\` 记录的统一 \`octo-cli marketplace plugin ...\` 命令完成${actionWord}：
      如需附带或更新技能包，此时再按 \`expert.md\` / \`skills.md\` 的统一 skill upload / parse /
@@ -148,11 +148,11 @@ ${step4Title}
      也不得写入 payload 文件。
      ${
        isUpdate
-         ? `只使用 \`plugin upsert --data @${pluginJsonFile}\` 保存草稿，设置 \`plugin.plugin_id = "${targetId}"\` 和顶层 \`expected_draft_revision\`（原样使用读取的 draft_revision），提交完整回填后的 payload。保持原 visibility，不改变已发布版本、正式版本号或可见范围。未修改的关系必须保留 relation_id、target_version_id、sort_order 和 data；不得把固定版本自动换成最新版本。遇到失效依赖，先请我决定移除还是替换及目标版本，不得擅自删除。任何 409 都停止并返回错误摘要；草稿冲突需重新读取并核对修改，version_migration_required 需先完成正式版本基线迁移，不能改走自动审核、取消审核或发布来绕过。只保存草稿，禁止自动发布、提交审核、取消审核或下架；完成后提示我回到市场点击“升级版本”（私有资源在编辑弹窗中点击“发布”）。`
+         ? `先使用 \`plugin upsert --data @${pluginJsonFile}\` 保存草稿，设置 \`plugin.plugin_id = "${targetId}"\` 和顶层 \`expected_draft_revision\`（原样使用读取的 draft_revision），提交完整回填后的 payload。保持原 visibility；未修改的关系必须保留 relation_id、target_version_id、sort_order 和 data，不得把固定版本自动换成最新版本。遇到失效依赖，先请我决定移除还是替换及目标版本，不得擅自删除。任何 409 都停止并返回错误摘要；草稿冲突需重新读取并核对修改，version_migration_required 需先完成正式版本基线迁移，不能取消审核、下架或绕过校验。保存成功后回读草稿，确认正文、关系及版本与本次保存一致；若发现其他并发修改则停止。随后立即按 \`expert.md\` 调用 \`plugin publish\`，传入当前 plugin_id、已确认的新版本号和更新说明，完成本次提交发布，不再等待用户另点按钮。只调用一次发布入口，不同时重复提交审核；不得绕过或修改组织审核策略，不得自动审批、取消已有审核或下架。发布失败时明确报告“草稿已保存，但发布失败”，保留 payload 并给出原因及可重试命令；不得伪造已上架。保存成功后的重试只处理发布，不重复保存或创建资源。若超时或返回 review_pending，先回读当前发布状态及对应审核请求，核对是否已经成功或正在审核，不得盲目重复提交。`
          : `使用 \`plugin upsert --data @${pluginJsonFile}\` 保存草稿，再按 \`expert.md\` 的 \`plugin publish\` 或 \`plugin review-request create\` 发布 / 审核流程继续；只有在 \`expert.md\` 要求且版本来源明确时才传 \`--version\`。审核 payload 的文件名与结构以 \`expert.md\` 为准。`
      }
      ${isUpdate
-       ? `保存后使用相同 Bot 身份再次读取 \`GET /market/api/v1/plugins/${targetId}/draft\`，核对草稿及引用并报告“草稿已保存，尚未发布”。`
+       ? `发布调用后回读 \`plugin get\` 的正式版本与审核状态（有 review_id 时按 \`expert.md\` 查询审核请求），核对本次版本号。只有确认本次版本已发布才报告“新版本已发布并生效”；人工审批返回 pending 时报告“已提交审核，线上仍使用旧版本”；状态不明时报告待核实，不要声称已上架。`
        : `并用 \`octo-cli marketplace plugin get --plugin-id <plugin-id> --include-relations --profile <profile>\` 回读核验。`}
      写入必须使用 Bot Profile，不需要也不要传 \`created_by_type\`；创建、更新、发布或审核失败时
      不要伪造成功，保留本地 payload 文件，并返回可重试命令和错误摘要。不要使用旧的专家 / 专家团专用 create / update / get、分类或技能上传命令。

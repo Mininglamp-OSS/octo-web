@@ -51,7 +51,7 @@
     "botPublishHintAgent": "复制下面的提示词交给 Agent，它会帮你把这个专家发布上架。",
     "botUpdateTitle": "Bot 更新专家团",
     "botUpdateTitleAgent": "Bot 更新专家",
-    "botUpdateHint": "复制下面的提示词交给 Agent，它会保存你的草稿修改；当前已发布版本保持不变，发布需另行操作。",
+    "botUpdateHint": "将提示词交给 Agent，它会在确认修改后保存并提交发布。自动审批通过后生效；人工审批需等待审核。",
     "memberCount": "{{count}} 位专家",
     "viewCountTitle": "浏览 {{count}} 次",
     "installCountTitle": "添加到回路 {{count}} 次",
@@ -418,7 +418,7 @@
     "daysAgo": "{{count}} 天前"
   },
   "review": {
-    "draftEditHint": "如需修改正文或依赖，可将提示词转发给 Bot。Bot 保存草稿后，点击“读取最新草稿”，再确认版本号和更新说明并提交升级。",
+    "draftEditHint": "Bot 会保存修改并提交发布，按组织审核策略生效。使用 Bot 后将关闭本窗口并刷新列表，请根据 Bot 的结果确认发布或审核状态，避免重复提交。",
     "refreshDraft": "读取最新草稿",
     "cancel": "取消",
     "relationsLoading": "正在读取当前子项…",

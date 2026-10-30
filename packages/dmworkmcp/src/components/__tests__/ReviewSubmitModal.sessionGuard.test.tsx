@@ -82,6 +82,7 @@ const CANCEL = "mcp.review.cancel";
 let container: HTMLDivElement;
 let onClose = vi.fn();
 let onSubmitted = vi.fn();
+let onBotReturn = vi.fn();
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -97,7 +98,7 @@ function target(pluginId = "a"): ReviewSubmitTarget {
 async function render(item: ReviewSubmitTarget | null) {
   await act(async () => {
     ReactDOM.render(
-      <ReviewSubmitModal target={item} onClose={onClose} onSubmitted={onSubmitted} />,
+      <ReviewSubmitModal target={item} onClose={onClose} onSubmitted={onSubmitted} onBotReturn={onBotReturn} />,
       container
     );
   });
@@ -131,6 +132,7 @@ beforeEach(() => {
   document.body.appendChild(container);
   onClose = vi.fn();
   onSubmitted = vi.fn();
+  onBotReturn = vi.fn();
 });
 
 afterEach(() => {
@@ -327,25 +329,21 @@ describe("ReviewSubmitModal snapshot session", () => {
 
 
 describe("Expert upgrade draft editing", () => {
-  it.each(["agent", "squad"] as const)("edits %s through the Bot prompt, reloads the draft and submits its exact pins", async kind => {
+  it.each(["agent", "squad"] as const)("hands %s publication to the Bot and closes the stale upgrade form on return", async kind => {
     submitPluginReview.mockClear();
-    submitPluginReview.mockResolvedValue(undefined);
     const loadSnapshot = vi.fn().mockResolvedValue({ version: "1.1.0", content: { manifestJson: { description: "before" }, pluginJson: {} }, relations: [] });
     const item = { ...target("expert-1"), isUpgrade: true, editKind: kind, loadSnapshot, needs: { content: true, relations: true } };
     await render(item);
-    editChangelog("Keep these review notes");
     await click(kind === "squad" ? "mcp.expert.botUpdateTitle" : "mcp.expert.botUpdateTitleAgent");
     expect(container.querySelector("[data-bot-kind]")?.getAttribute("data-bot-kind")).toBe(kind);
     expect(container.querySelector("[data-plugin-id]")?.getAttribute("data-plugin-id")).toBe("expert-1");
     expect(container.querySelector("textarea")).toBeNull();
-    expect(submitPluginReview).not.toHaveBeenCalled();
-    const relations = [{ relationId: "rel-1", targetPluginId: "skill-2", targetVersionId: "fixed-release", relationType: "expert_skill", sortOrder: 0, data: {} }];
-    loadSnapshot.mockResolvedValue({ version: "1.2.0", content: { manifestJson: { description: "repaired draft" }, pluginJson: {} }, relations });
     await click("return-to-upgrade");
-    expect(container.querySelector("textarea")?.value).toBe("Keep these review notes");
-    expect(loadSnapshot).toHaveBeenCalledTimes(2);
-    await click("skillMarket.plugin.actionUpgrade");
-    expect(submitPluginReview).toHaveBeenCalledWith({ pluginId: "expert-1", version: "1.2.0", changelog: "Keep these review notes", manifestJson: { description: "repaired draft" }, pluginJson: {}, relations });
+    expect(onBotReturn).toHaveBeenCalledOnce();
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(onSubmitted).not.toHaveBeenCalled();
+    expect(submitPluginReview).not.toHaveBeenCalled();
+    expect(loadSnapshot).toHaveBeenCalledTimes(1);
   });
 
   it("blocks submission when reloading the Bot draft fails", async () => {

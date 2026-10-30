@@ -51,7 +51,7 @@
     "botPublishHintAgent": "Copy the prompt below to an Agent — it will publish this expert.",
     "botUpdateTitle": "Update squad via Bot",
     "botUpdateTitleAgent": "Update expert via Bot",
-    "botUpdateHint": "Forward this prompt to an Agent to save draft changes. The published version stays unchanged until you publish separately.",
+    "botUpdateHint": "Forward this prompt to an Agent to save confirmed changes and submit publication. Automatic approval takes effect immediately; manual approval remains pending.",
     "memberCount": "{{count}} experts",
     "viewCountTitle": "{{count}} views",
     "installCountTitle": "Added to Loop {{count}} times",
@@ -418,7 +418,7 @@
     "daysAgo": "{{count}} days ago"
   },
   "review": {
-    "draftEditHint": "To change content or dependencies, forward the prompt to a Bot. After the Bot saves the draft, reload it, confirm the version and changelog, then submit the upgrade.",
+    "draftEditHint": "The Bot saves changes and submits publication under the organization review policy. Returning closes this dialog and refreshes the list. Check the Bot result for publication or pending review before submitting again.",
     "refreshDraft": "Reload latest draft",
     "cancel": "Cancel",
     "relationsLoading": "Loading current items…",

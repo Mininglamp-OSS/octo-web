@@ -952,6 +952,7 @@ export default function ExpertMarketListPage({
         target={reviewTarget}
         onClose={() => setReviewTarget(null)}
         onSubmitted={handleListingChanged}
+        onBotReturn={() => { void reload(); myReviews.refresh(); }}
       />
 
       {toast &&

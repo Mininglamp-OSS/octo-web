@@ -197,7 +197,12 @@ describe("getExpertBotPublishPrompt — update mode", () => {
     expect(p).toContain("`relation_id` 和 `data`");
     expect(p).toContain("expected_draft_revision");
     expect(p).toContain("任何 409");
-    expect(p).toContain("只保存草稿，禁止自动发布、提交审核、取消审核或下架");
+    expect(p).toContain("保存成功后回读草稿");
+    expect(p).toContain("调用 `plugin publish`");
+    expect(p).toContain("草稿已保存，但发布失败");
+    expect(p).toContain("已提交审核，线上仍使用旧版本");
+    expect(p).toContain("不得绕过或修改组织审核策略");
+    expect(p).toContain("先确认新版本号和更新说明");
     expect(p).not.toContain("plugin review-request create");
     expect(p).toContain("version_migration_required");
     expect(p).toContain("不要把展示用的 `icon_url` 写回");
@@ -309,7 +314,7 @@ describe("getExpertBotPublishPrompt — update mode", () => {
     expect(p).not.toContain("确认更新");
   });
 
-  it("keeps update version omitted and uses a copyable upsert command", () => {
+  it("requires a confirmed new version and publishes after the upsert", () => {
     const p = getExpertBotPublishPrompt({
       kind: "agent",
       mode: "update",
@@ -317,7 +322,11 @@ describe("getExpertBotPublishPrompt — update mode", () => {
       spaceId: SLUG,
       apiBaseUrl: API,
     });
-    expect(p).toContain("`version` 保持省略");
+    expect(p).toContain("写入明确确认的新 `version`");
+    expect(p).toContain("不得复用已发布版本号");
+    expect(p).toContain("保存成功后的重试只处理发布");
+    expect(p).toContain("新版本已发布并生效");
+    expect(p).not.toContain("草稿已保存，尚未发布");
     expect(p).toContain("plugin upsert --data @expert-plugin.json");
   });
 });
