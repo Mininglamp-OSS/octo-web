@@ -123,7 +123,12 @@
     "sortHottest": "Hottest",
     "expertIdLabel": "Expert ID",
     "teamIdLabel": "Team ID",
-    "copyId": "Copy ID"
+    "copyId": "Copy ID",
+    "dependencyAuthor": "Author",
+    "dependencyUnknownAuthor": "Not provided",
+    "dependencyNoSummary": "No description provided",
+    "dependencyNoContent": "No files to preview",
+    "dependencyLegacyConfig": "MCP configuration"
   },
   "common": {
     "loadFailed": "Failed to load"

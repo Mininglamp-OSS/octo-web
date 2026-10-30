@@ -1,8 +1,13 @@
+// @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const mock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), interceptors: { request: { use: vi.fn() }, response: { use: vi.fn() } } }));
+const mock = vi.hoisted(() => ({
+  get: vi.fn(), post: vi.fn(), logout: vi.fn(),
+  responseOnRejected: undefined as ((error: unknown) => Promise<unknown>) | undefined,
+  interceptors: { request: { use: vi.fn() }, response: { use: vi.fn((_success: unknown, reject: (error: unknown) => Promise<unknown>) => { mock.responseOnRejected = reject; }) } },
+}));
 vi.mock("axios", () => ({ default: { create: () => mock, isCancel: () => false } }));
-vi.mock("@octo/base", () => ({ WKApp: { apiClient: { config: {} }, loginInfo: { token: "tok" }, shared: { currentSpaceId: "sp" } }, t: (k: string) => k, buildAcceptLanguage: () => "en-US", DEFAULT_REQUEST_TIMEOUT_MS: 20000 }));
-import { getExpert, getSquad, getExpertSkillContent, getSquadSkillContent, getExpertSkillDownloadUrl, getSquadSkillDownloadUrl, fetchSkillPackage } from "./expertService";
+vi.mock("@octo/base", () => ({ WKApp: { apiClient: { config: {} }, loginInfo: { token: "tok" }, shared: { currentSpaceId: "sp", logout: mock.logout } }, t: (k: string) => k, buildAcceptLanguage: () => "en-US", DEFAULT_REQUEST_TIMEOUT_MS: 20000 }));
+import { getExpert, getSquad, getExpertSkillContent, getSquadSkillContent, getExpertSkillDownloadUrl, getSquadSkillDownloadUrl, fetchSkillPackage, MAX_SKILL_PACKAGE_FETCH_BYTES } from "./expertService";
 const relation = (id: string, version: string, kind = "expert_skill") => ({ target_plugin_id: id, target_version_id: version, relation_type: kind, data: { member_key: "member" } });
 const pkg = (path: string, text: string) => ({ attachments: [{ path, content_type: "raw", raw_content: text }] });
 const snapshot = (id: string, relations: unknown[], path: string, text: string) => ({ version: { plugin_id: id, version_id: "old", version: "99", declared_version: "1.2.3", relations }, manifest_json: { plugin_name: `old-${id}` }, plugin_json: pkg(path, text) });
@@ -21,7 +26,7 @@ function setup() {
     return Promise.resolve({ data: { data: value } });
   });
 }
-beforeEach(() => { mock.get.mockReset(); setup(); });
+beforeEach(() => { mock.get.mockReset(); mock.logout.mockReset(); setup(); });
 describe("exact pinned content", () => {
   it("reads Skill snapshot and original markdown without current metadata/content", async () => {
     const expert = await getExpert("expert");
@@ -39,7 +44,7 @@ describe("exact pinned content", () => {
     const original = mock.get.getMockImplementation()!;
     mock.get.mockImplementation(async (url, cfg) => {
       if (url.endsWith("/plugins/detail") && cfg?.params?.plugin_id === "connector") {
-        return { data: { data: { plugin: { plugin_id: "connector", plugin_name: "Search", current_version: "misleading", plugin_json: pkg("mcp.json", '{"mcpServers":{"search":{"url":"https://example.com"}}}') } } } };
+        return { data: { data: { plugin: { plugin_id: "connector", plugin_name: "Search", plugin_type: "connector", current_version: "misleading", plugin_json: pkg("mcp.json", '{"mcpServers":{"search":{"url":"https://example.com"}}}') } } } };
       }
       const result = await original(url, cfg);
       if ((url.endsWith("/plugins/detail") && cfg?.params?.plugin_id === "expert") || url.endsWith("/member/versions/e1")) {
@@ -48,7 +53,7 @@ describe("exact pinned content", () => {
       }
       return result;
     });
-    expect((await getExpert("expert")).connectors).toEqual([{ pluginId: "connector", name: "Search", mcpConfig: '{"mcpServers":{"search":{"url":"https://example.com"}}}' }]);
+    expect((await getExpert("expert")).connectors).toEqual([{ pluginId: "connector", name: "Search", config: '{"mcpServers":{"search":{"url":"https://example.com"}}}' }]);
     expect((await getSquad("team")).members[0].connectors?.[0].name).toBe("Search");
   });
 
@@ -88,14 +93,19 @@ describe("exact pinned content", () => {
     const calls: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       calls.push(url);
-      if (url.endsWith("/versions/s1")) return { ok: true, json: async () => ({ data: snapshot("skill", [], "SKILL.md", "Skill V1") }) };
-      return { ok: true, headers: new Headers(), arrayBuffer: async () => new TextEncoder().encode("Skill V1").buffer };
+      if (url.endsWith("/versions/s1")) {
+        const data = snapshot("skill", [], "SKILL.md", "Skill V1");
+        data.plugin_json.attachments.push({ path: "references/checklist.md", content_type: "raw", raw_content: "Checklist V1" });
+        return new Response(JSON.stringify({ data }), { headers: { "content-type": "application/json" } });
+      }
+      return { ok: true, headers: new Headers(), arrayBuffer: async () => new TextEncoder().encode(url.includes("references") ? "Checklist V1" : "Skill V1").buffer };
     }));
     try {
       const bytes = await fetchSkillPackage("/market/api/v1/plugins/skill/versions/s1");
       const JSZip = (await import("jszip")).default;
       expect(await (await JSZip.loadAsync(bytes)).file("SKILL.md")!.async("string")).toBe("Skill V1");
-      expect(calls).toEqual(["/market/api/v1/plugins/skill/versions/s1", "/market/api/v1/plugins/skill/versions/s1/file?path=SKILL.md"]);
+      expect(await (await JSZip.loadAsync(bytes)).file("references/checklist.md")!.async("string")).toBe("Checklist V1");
+      expect(calls).toEqual(["/market/api/v1/plugins/skill/versions/s1", "/market/api/v1/plugins/skill/versions/s1/file?path=SKILL.md", "/market/api/v1/plugins/skill/versions/s1/file?path=references%2Fchecklist.md"]);
     } finally { vi.unstubAllGlobals(); }
   });
 });
@@ -151,4 +161,156 @@ describe("concurrent detail snapshots", () => {
       expect(await getSquadSkillDownloadUrl(kind, "member", 0, displayed)).toContain("/versions/s1");
     }
   });
+});
+
+it("uses the pinned description and release label, and only matching graph provenance", async () => {
+  const original = mock.get.getMockImplementation()!;
+  mock.get.mockImplementation((url, ...rest) => {
+    if (url.endsWith("/plugins/detail_graph")) return Promise.resolve({ data: { data: { related_plugins: [
+      { plugin_id: "skill", current_version_id: "latest", creator_name: "Wrong author", current_version: "9.0.0", manifest_json: { description: "Wrong summary" } },
+      { plugin_id: "skill", current_version_id: "s1", creator_name: "Skill creator", created_by_type: "bot", created_by_bot_name: "Author bot" },
+    ] } } });
+    if (url.endsWith("/skill/versions/s1")) return Promise.resolve({ data: { data: {
+      ...snapshot("skill", [], "SKILL.md", "Pinned body"),
+      version: { plugin_id: "skill", version_id: "s1", declared_version: "1.0.0", release: { version_label: "1.0.1" }, relations: [] },
+      manifest_json: { plugin_name: "Pinned skill", description: "Pinned description" },
+    } } });
+    return original(url, ...rest);
+  });
+  const expert = await getExpert("expert");
+  expect(expert.skills?.[0]).toMatchObject({ name: "Pinned skill", summary: "Pinned description", version: "1.0.1", creatorName: "Skill creator", botName: "Author bot" });
+});
+
+it("does not borrow a creator from the current head when the pinned graph node is absent", async () => {
+  const original = mock.get.getMockImplementation()!;
+  mock.get.mockImplementation((url, ...rest) => url.endsWith("/plugins/detail_graph") ? Promise.resolve({ data: { data: { related_plugins: [
+    { plugin_id: "skill", current_version_id: "latest", creator_name: "Wrong author" },
+  ] } } }) : original(url, ...rest));
+  expect((await getExpert("expert")).skills?.[0]?.creatorName).toBeUndefined();
+});
+
+it("loads connector metadata and configuration for both experts and pinned team members", async () => {
+  const original = mock.get.getMockImplementation()!;
+  mock.get.mockImplementation(async (url, cfg, ...rest) => {
+    if (url.endsWith("/plugins/detail") && cfg?.params?.plugin_id === "connector") return { data: { data: { plugin: {
+      plugin_id: "connector", plugin_type: "connector", plugin_name: "Data MCP", creator_name: "MCP creator", manifest_json: { description: "Query metrics" }, plugin_json: pkg("mcp.json", '{"mcpServers":{}}'),
+    } } } };
+    const result = await original(url, cfg, ...rest);
+    if ((url.endsWith("/plugins/detail") && cfg?.params?.plugin_id === "expert") || url.endsWith("/member/versions/e1")) {
+      const detail = result.data.data;
+      const relations = detail.version?.relations || detail.relations;
+      relations.push({ target_plugin_id: "connector", relation_type: "expert_connector" });
+    }
+    return result;
+  });
+  expect((await getExpert("expert")).connectors?.[0]).toMatchObject({ name: "Data MCP", summary: "Query metrics", creatorName: "MCP creator" });
+  expect((await getSquad("team")).members[0].connectors?.[0].name).toBe("Data MCP");
+});
+
+it("surfaces a connector read failure instead of showing a partial dependency list", async () => {
+  const original = mock.get.getMockImplementation()!;
+  mock.get.mockImplementation(async (url, cfg, ...rest) => {
+    if (url.endsWith("/plugins/detail") && cfg?.params?.plugin_id === "connector") throw { response: { status: 500 } };
+    const result = await original(url, cfg, ...rest);
+    if (url.endsWith("/plugins/detail") && cfg?.params?.plugin_id === "expert") result.data.data.relations.push({ target_plugin_id: "connector", relation_type: "expert_connector" });
+    return result;
+  });
+  await expect(getExpert("expert")).rejects.toThrow();
+});
+
+
+it.each(["expert", "team"])("keeps the session when optional graph attribution returns 401 for %s", async root => {
+  const original = mock.get.getMockImplementation()!;
+  mock.get.mockImplementation((url, ...rest) => {
+    if (url.endsWith("/plugins/detail_graph")) {
+      // Drive the real interceptor too: rejecting the mock request alone would
+      // bypass the logout side effect that this regression is protecting.
+      return mock.responseOnRejected!({ config: { url }, response: { status: 401 } });
+    }
+    return original(url, ...rest);
+  });
+  const detail = root === "team" ? await getSquad(root) : await getExpert(root);
+  expect(detail.id).toBe(root);
+  const skill = detail.kind === "squad" ? detail.members[0].skills?.[0] : detail.skills?.[0];
+  expect(skill).toMatchObject({ versionId: "s1", name: "old-skill" });
+  expect(skill?.creatorName).toBeUndefined();
+  expect(mock.logout).not.toHaveBeenCalled();
+});
+
+it("still logs out for required detail reads and unrelated graph-like paths", async () => {
+  for (const url of ["/market/api/v1/plugins/detail", "/market/api/v1/other/plugins/detail_graph"]) {
+    await expect(mock.responseOnRejected!({ config: { url }, response: { status: 401 } })).rejects.toBeTruthy();
+  }
+  expect(mock.logout).toHaveBeenCalledTimes(2);
+});
+
+it("resolves nested member skill creators from the root's transitive pinned graph", async () => {
+  const original = mock.get.getMockImplementation()!;
+  mock.get.mockImplementation((url, ...rest) => {
+    if (url.endsWith("/plugins/detail_graph")) return Promise.resolve({ data: { data: { related_plugins: [
+      { plugin_id: "member", current_version_id: "e1", creator_name: "Expert creator" },
+      { plugin_id: "skill", current_version_id: "latest", creator_name: "Wrong current creator" },
+      { plugin_id: "skill", current_version_id: "s1", creator_name: "Pinned skill creator", created_by_type: "bot", created_by_bot_name: "Skill bot" },
+    ] } } });
+    return original(url, ...rest);
+  });
+  const team = await getSquad("team");
+  expect(team.members[0].skills?.[0]).toMatchObject({ versionId: "s1", creatorName: "Pinned skill creator", botName: "Skill bot" });
+  const graphCalls = mock.get.mock.calls.filter(([url]) => url.endsWith("/plugins/detail_graph"));
+  expect(graphCalls).toHaveLength(1);
+  expect(graphCalls[0][1].params.plugin_id).toBe("team");
+});
+
+
+it("rejects an oversized historical JSON Content-Length before reading or parsing", async () => {
+  const json = vi.fn();
+  const arrayBuffer = vi.fn();
+  const getReader = vi.fn();
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true,
+    headers: new Headers({ "content-length": String(MAX_SKILL_PACKAGE_FETCH_BYTES + 1) }),
+    body: { getReader }, json, arrayBuffer,
+  }));
+  try {
+    await expect(fetchSkillPackage("/market/api/v1/plugins/skill/versions/s1")).rejects.toThrow("package too large");
+    expect(getReader).not.toHaveBeenCalled();
+    expect(json).not.toHaveBeenCalled();
+    expect(arrayBuffer).not.toHaveBeenCalled();
+  } finally { vi.unstubAllGlobals(); }
+});
+
+it.each([undefined, "1"])("caps historical JSON streams with missing or misleading Content-Length (%s)", async length => {
+  const read = vi.fn()
+    .mockResolvedValueOnce({ done: false, value: new Uint8Array(MAX_SKILL_PACKAGE_FETCH_BYTES) })
+    .mockResolvedValueOnce({ done: false, value: new Uint8Array(1) })
+    .mockResolvedValueOnce({ done: true });
+  const cancel = vi.fn().mockResolvedValue(undefined);
+  const json = vi.fn();
+  const headers = new Headers();
+  if (length) headers.set("content-length", length);
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, headers,
+    body: { getReader: () => ({ read, cancel }) }, json,
+  }));
+  try {
+    await expect(fetchSkillPackage("/market/api/v1/plugins/skill/versions/s1")).rejects.toThrow("package too large");
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(json).not.toHaveBeenCalled();
+  } finally { vi.unstubAllGlobals(); }
+});
+
+it.each(["skill", "expert", "expert_team"])("rejects an expert_connector target of type %s even with mcp.json", async pluginType => {
+  const original = mock.get.getMockImplementation()!;
+  mock.get.mockImplementation(async (url, cfg, ...rest) => {
+    if (url.endsWith("/plugins/detail") && cfg?.params?.plugin_id === "wrong-kind") {
+      return { data: { data: { plugin: { plugin_id: "wrong-kind", plugin_name: "Not a connector", plugin_type: pluginType,
+        manifest_json: {}, plugin_json: pkg("mcp.json", '{"mcpServers":{}}'),
+      } } } };
+    }
+    const response = await original(url, cfg, ...rest);
+    if (url.endsWith("/plugins/detail") && cfg?.params?.plugin_id === "expert") {
+      response.data.data.relations.push({ relation_type: "expert_connector", target_plugin_id: "wrong-kind" });
+    }
+    return response;
+  });
+  await expect(getExpert("expert")).rejects.toThrow("Unexpected connector relation target type");
 });

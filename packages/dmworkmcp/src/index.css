@@ -4693,3 +4693,41 @@
   background: var(--wk-color-hover);
   color: var(--wk-text-primary);
 }
+
+/* Expert dependency previews: version-pinned skill files and connector details. */
+.wk-mcp-dependency-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--wk-font-sans);
+}
+.wk-mcp-dependency-version {
+  flex-shrink: 0;
+  padding: 0 var(--wk-sp-2);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-sm);
+  color: var(--wk-text-secondary);
+  font: var(--wk-text-size-xs)/1.6 var(--wk-font-sans);
+}
+.wk-mcp-expert-skill__row:focus-visible {
+  outline: 2px solid var(--wk-color-accent);
+  outline-offset: 2px;
+}
+.wk-mcp-dependency-body {
+  min-width: 0;
+  padding: var(--wk-sp-3);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-bg-base);
+}
+.wk-mcp-dependency-metadata {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-3);
+  padding: 0 var(--wk-sp-2) var(--wk-sp-3);
+  color: var(--wk-text-secondary);
+  font-size: var(--wk-text-size-sm);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.wk-mcp-dependency-metadata p { margin: 0; }

@@ -33,8 +33,8 @@ describe("bound dependency versions", () => {
   });
   it("labels connectors as versionless and retains redaction when expanded", () => {
     render(<ExpertSpecView fetchSkillContent={vi.fn()} connectors={[
-      { pluginId: "c1", name: "Search", mcpConfig: '{"mcpServers":{"search":{"url":"https://example.com","env":{"API_KEY":"private-value"}}}}' },
-      { pluginId: "c2", name: "Invalid", mcpConfig: '{invalid private-value' },
+      { pluginId: "c1", name: "Search", config: '{"mcpServers":{"search":{"url":"https://example.com","env":{"API_KEY":"private-value"}}}}' },
+      { pluginId: "c2", name: "Invalid", config: '{invalid private-value' },
     ]} />);
     expect(root.querySelector(".wk-mcp-bound-version")?.textContent).toBe("mcp.expert.versionless");
     act(() => root.querySelectorAll("button")[0].click());

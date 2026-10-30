@@ -6,6 +6,18 @@
 
 import type { DependencyIssueReason } from "../api/expertWire";
 
+export interface DependencyMetadata {
+  summary?: string;
+  creatorName?: string;
+  botName?: string;
+}
+
+export interface ExpertConnector extends DependencyMetadata {
+  pluginId: string;
+  name: string;
+  config?: string;
+}
+
 /**
  * A skill attached to an expert / squad member — a whole Agent-Skill package
  * (a .zip/.skill containing SKILL.md). `name` is always present; the rest is the
@@ -18,7 +30,7 @@ import type { DependencyIssueReason } from "../api/expertWire";
  * Content/package bytes are fetched lazily via the skill_md / skill_download
  * endpoints; they are never carried inline on this shape.
  */
-export interface ExpertSkill {
+export interface ExpertSkill extends DependencyMetadata {
   name: string;
   /** The bound skill's own plugin id (expert_skill relation target). Lets the
    *  expert editor open it for editing and preserve/rebuild the relation. */
@@ -33,13 +45,6 @@ export interface ExpertSkill {
   fileName?: string;
   fileSize?: number;
   files?: string[];
-}
-
-/** Connectors currently have no version in the marketplace contract. */
-export interface ExpertConnector {
-  pluginId: string;
-  name: string;
-  mcpConfig: string;
 }
 
 /** A single member inside an expert squad. */

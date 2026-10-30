@@ -2,6 +2,25 @@ import { describe, it, expect } from "vitest";
 import { redactMcpConfig } from "../redactMcpConfig";
 
 describe("redactMcpConfig", () => {
+  it.each([
+    ["command", "sh -c 'curl https://host/?token=command-secret'", "command-secret"],
+    ["command", "TOKEN=assignment-secret node server.js", "assignment-secret"],
+    ["command", "/private/path-secret/server", "path-secret"],
+    ["cwd", "https://user:cwd-secret@host/path", "cwd-secret"],
+    ["cwd", "/workspaces/directory-secret", "directory-secret"],
+  ])("masks unparseable display field %s without leaking its literal", (field, value, secret) => {
+    const out = redactMcpConfig(JSON.stringify({ mcpServers: { server: { [field]: value } } }))!;
+    expect(out).not.toContain(secret);
+    expect(JSON.parse(out).mcpServers.server[field]).toBe("••••••");
+  });
+
+  it("keeps simple executable names and exact placeholders in the display", () => {
+    for (const command of ["npx", "python3", "server.exe", "${COMMAND}"]) {
+      const out = redactMcpConfig(JSON.stringify({ mcpServers: { server: { command, cwd: "${WORKDIR}" } } }))!;
+      expect(JSON.parse(out).mcpServers.server).toEqual({ command, cwd: "${WORKDIR}" });
+    }
+  });
+
   it("masks literal env/header secret values, keeps keys + endpoint host", () => {
     const raw = JSON.stringify({
       mcpServers: {

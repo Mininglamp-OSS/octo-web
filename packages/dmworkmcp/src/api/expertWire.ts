@@ -413,12 +413,12 @@ export function mapPluginSquadListItem(
  *  their files directly as attachments; a legacy skill/ref.json pointer is still
  *  honored for not-yet-expanded rows. */
 export function fromSkillPlugin(
-  plugin: Pick<PluginDetailPluginWire, "plugin_id" | "plugin_name" | "plugin_json" | "current_version">,
+  plugin: Pick<PluginDetailPluginWire, "plugin_id" | "plugin_name" | "plugin_json"> & Partial<PluginDetailPluginWire>,
   versionId?: string
 ): import("../mock/expertMock").ExpertSkill {
   const ref = jsonAttachment<SkillRefWire>(plugin.plugin_json, "skill/ref.json") ?? {};
   const attachments = plugin.plugin_json?.attachments ?? [];
-  const inlineMd = rawAttachment(plugin.plugin_json, "SKILL.md") !== undefined;
+  const hasMarkdown = attachments.some(a => a.path === "SKILL.md");
   const isLegacy = attachments.some(
     (a) => a.path === "skill/ref.json" || a.path === "skill/package.zip"
   );
@@ -433,7 +433,7 @@ export function fromSkillPlugin(
   return {
     name: plugin.plugin_name ?? "",
     pluginId: plugin.plugin_id,
-    hasContent: inlineMd || !!ref.object_key || !!ref.object_key_hash,
+    hasContent: hasMarkdown || !!ref.object_key || !!ref.object_key_hash,
     // A tree skill is downloadable (the backend rebuilds a zip) when it carries
     // supporting files beyond SKILL.md; legacy skills need a resolvable pointer.
     canDownload: isLegacy
@@ -447,5 +447,8 @@ export function fromSkillPlugin(
     files: isLegacy ? ref.files : treeFiles,
     versionId,
     version: versionId ? plugin.current_version : undefined,
+    summary: plugin.manifest_json?.description,
+    creatorName: plugin.creator_name,
+    botName: plugin.created_by_type === "bot" ? plugin.created_by_bot_name : undefined,
   };
 }

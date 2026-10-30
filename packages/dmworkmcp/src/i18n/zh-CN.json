@@ -123,7 +123,12 @@
     "sortHottest": "最热",
     "expertIdLabel": "专家 ID",
     "teamIdLabel": "专家团 ID",
-    "copyId": "复制 ID"
+    "copyId": "复制 ID",
+    "dependencyAuthor": "作者",
+    "dependencyUnknownAuthor": "暂未提供",
+    "dependencyNoSummary": "暂无简介",
+    "dependencyNoContent": "暂无可预览文件",
+    "dependencyLegacyConfig": "MCP 配置"
   },
   "common": {
     "loadFailed": "加载失败"
