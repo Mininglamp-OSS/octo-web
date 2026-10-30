@@ -31,8 +31,6 @@ export interface ExpertConnector extends DependencyMetadata {
  * endpoints; they are never carried inline on this shape.
  */
 export interface ExpertSkill extends DependencyMetadata {
-  /** Display label from the selected snapshot, never the current head. */
-  version?: string;
   name: string;
   /** The bound skill's own plugin id (expert_skill relation target). Lets the
    *  expert editor open it for editing and preserve/rebuild the relation. */
@@ -40,6 +38,8 @@ export interface ExpertSkill extends DependencyMetadata {
   /** Pinned version of this skill (expert_skill.target_version_id). Absent means
    *  the edge is legacy/unpinned and the server resolves on write. */
   versionId?: string;
+  /** Human label from the exact bound snapshot, never the latest release. */
+  version?: string;
   hasContent?: boolean;
   canDownload?: boolean;
   fileName?: string;
@@ -57,6 +57,8 @@ export interface ExpertMember {
   pluginId?: string;
   /** Pinned version of this member (expert_team_expert.target_version_id). */
   versionId?: string;
+  /** Human label from the exact bound snapshot, never the latest release. */
+  version?: string;
   /** Expert template this member is created from. */
   templateId?: string;
   name: string;

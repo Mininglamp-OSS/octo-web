@@ -96,7 +96,7 @@ it("shows MCP metadata and masks literal credentials", () => {
       fetchSkillContent={vi.fn()}
     />
   );
-  click(button("Warehouse MCP"));
+  click(button(/^Warehouse MCP/));
   expect(container!.textContent).toContain("Query warehouse");
   expect(container!.textContent).toContain("Bob");
   expect(document.body.textContent).not.toContain("do-not-display");
@@ -128,7 +128,7 @@ it.each(["connector", "legacy"])("does not render command/cwd credentials in %s 
   render(<ExpertSpecView fetchSkillContent={vi.fn()} {...(source === "connector"
     ? { connectors: [{ pluginId: "unsafe", name: "Unsafe MCP", config }] }
     : { mcpConfig: config })} />);
-  click(button(source === "connector" ? "Unsafe MCP" : /dependencyLegacyConfig/));
+  click(button(source === "connector" ? /^Unsafe MCP/ : /dependencyLegacyConfig/));
   expect(container!.querySelector("pre")).not.toBeNull();
   expect(container!.textContent).not.toContain("never-render-command");
   expect(container!.textContent).not.toContain("never-render-directory");

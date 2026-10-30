@@ -26,6 +26,7 @@
     "deletedToast": "已删除"
   },
   "expert": {
+    "versionless": "无版本",
     "versionPinned": "固定版本",
     "versionUnpinned": "未固定",
     "typeSquad": "专家团",
@@ -51,7 +52,7 @@
     "botPublishHintAgent": "复制下面的提示词交给 Agent，它会帮你把这个专家发布上架。",
     "botUpdateTitle": "Bot 更新专家团",
     "botUpdateTitleAgent": "Bot 更新专家",
-    "botUpdateHint": "复制下面的提示词交给 Agent，它会按你的改动更新已上架的内容。",
+    "botUpdateHint": "将提示词交给 Agent，它会在确认修改后保存并提交发布。自动审批通过后生效；人工审批需等待审核。",
     "memberCount": "{{count}} 位专家",
     "viewCountTitle": "浏览 {{count}} 次",
     "installCountTitle": "添加到回路 {{count}} 次",
@@ -423,6 +424,9 @@
     "daysAgo": "{{count}} 天前"
   },
   "review": {
+    "draftEditHint": "Bot 会保存修改并提交发布，按组织审核策略生效。使用 Bot 后将关闭本窗口并刷新列表，请根据 Bot 的结果确认发布或审核状态，避免重复提交。",
+    "versionMustExceedPublished": "新版本号必须高于当前已发布版本",
+    "refreshDraft": "读取最新草稿",
     "cancel": "取消",
     "relationsLoading": "正在读取当前子项…",
     "relationsFrozen": "本次送审将冻结当前 {{count}} 个子项",

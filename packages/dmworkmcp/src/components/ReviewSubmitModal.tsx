@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { TextArea } from "@douyinfe/semi-ui";
-import { versionErrorKey } from "@dmwork/skillmarket";
+import { TextArea, Toast } from "@douyinfe/semi-ui";
+import { isValidVersion, isVersionForward, versionErrorKey } from "@dmwork/skillmarket";
 import { t, useI18n, WKApp, WKButton, WKInput, WKModal } from "@octo/base";
 import {
   submitPluginReview,
   type PluginReviewRelation,
 } from "../api/pluginReview";
+
+import ExpertBotPublishModal from "./ExpertBotPublishModal";
 
 /**
  * What is being submitted. Built by the market page from the row it was clicked
@@ -24,20 +26,17 @@ export interface ReviewSubmitTarget {
    * False = first listing of a private draft.
    */
   isUpgrade: boolean;
+  /** Expert/team upgrade content is authored through the existing Bot prompt. */
+  editKind?: "agent" | "squad";
   /** Prefilled changelog — used by 重新提交 to carry the rejected attempt's text. */
   initialChangelog?: string;
   /**
    * Resolve everything the submission must freeze, in ONE read.
    *
-   * `content` is the live FROZEN manifest + package, required WITH an upgrade of
-   * an already-listed container (专家 / 专家团): the backend refuses a contentless
-   * submission for a listed plugin field-agnostically (freezeSubmission →
-   * `manifest_json/required`, HTTP 400), because snapshotting the still-live row
-   * would make the review theatre. A 专家/专家团 has no client-side authoring
-   * surface, so the client echoes the live row's own content — the same contract
-   * skill/connector upgrades follow through their full-form review modes.
+   * Expert/team upgrades load the owner's saved draft documents and relations,
+   * never the catalog release. Explicit content freezes exactly that response.
    *
-   * `relations` is the CURRENT child relation graph. The review payload treats an
+   * `relations` is the editable draft relation graph. The review payload treats an
    * absent `relations` as "the server freezes its own read" and a present one
    * (even `[]`) as "replace with exactly this", so a container has to name its
    * children or the snapshot is incomplete, while a leaf type (connector) must
@@ -55,6 +54,8 @@ export interface ReviewSubmitTarget {
   loadSnapshot?: () => Promise<{
     content?: { manifestJson: unknown; pluginJson: unknown };
     relations?: PluginReviewRelation[];
+    /** Editable draft label; may be ahead of the catalog release. */
+    version?: string;
   }>;
   /**
    * Which halves this submission must carry. Drives the fail-closed gate, and has
@@ -70,6 +71,8 @@ interface ReviewSubmitModalProps {
   onClose: () => void;
   /** Fired after a successful submit, with a ready-to-show message. */
   onSubmitted: (message: string) => void;
+  /** Refresh owner state after returning from the Bot publishing workflow. */
+  onBotReturn?: () => void;
 }
 
 /** Next patch version off a `major.minor.patch` label; falls back to 1.0.0 for
@@ -93,20 +96,20 @@ export function bumpPatch(version: string | undefined): string {
  *     under review and the server freezes it — no content is sent,
  *   - a connector 发布新版本 carries genuinely new content and therefore goes
  *     through McpCreateModal's review mode instead (it needs the whole form),
- *   - a 专家 / 专家团 UPGRADE has no client-side content authoring (records are
- *     written by a Bot through octo-cli), so the modal fetches the live row's
- *     own frozen content via `target.loadSnapshot` — the same single read that
- *     resolves the child relations — and echoes it: the backend refuses a
- *     contentless submission on an already-listed plugin, so the client submits
- *     the current bytes without disturbing the live row until approval.
+ *   - an expert/team upgrade freezes saved draft content and exact pins from
+ *     target.loadSnapshot. The old release remains live until approval.
  */
 export default function ReviewSubmitModal({
   target,
   onClose,
   onSubmitted,
+  onBotReturn,
 }: ReviewSubmitModalProps) {
   useI18n();
+  const [editingWithBot, setEditingWithBot] = useState(false);
   const [version, setVersion] = useState("");
+  const [draftVersion, setDraftVersion] = useState<string>();
+  const versionEditedRef = useRef(false);
   const [changelog, setChangelog] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -131,6 +134,7 @@ export default function ReviewSubmitModal({
 
   useEffect(() => {
     const handleSpaceChanged = () => {
+      setEditingWithBot(false);
       generationRef.current++;
       submittingRef.current = false;
       setSubmitting(false);
@@ -169,6 +173,16 @@ export default function ReviewSubmitModal({
         if (generation !== generationRef.current) return;
         setRelations(snapshot.relations);
         setContent(snapshot.content);
+        setDraftVersion(snapshot.version);
+        // Refresh content and pins without replacing a version the user chose,
+        // including input typed while this asynchronous read was pending.
+        if (snapshot.version && !versionEditedRef.current) {
+          const draftIsNew = !item.isUpgrade || !isValidVersion(item.version ?? "") ||
+            isVersionForward(bumpPatch(item.version), snapshot.version);
+          setVersion(!versionErrorKey(item.version, snapshot.version) && draftIsNew
+            ? snapshot.version
+            : bumpPatch(item.version));
+        }
       })
       .catch((err: unknown) => {
         if (generation !== generationRef.current) return;
@@ -192,6 +206,9 @@ export default function ReviewSubmitModal({
   // Reseed on every open / target switch so a previous session's version label,
   // changelog or error never leaks into the next one.
   useLayoutEffect(() => {
+    setEditingWithBot(false);
+    versionEditedRef.current = false;
+    setDraftVersion(undefined);
     submittingRef.current = false;
     setSubmitting(false);
     setError(null);
@@ -216,7 +233,11 @@ export default function ReviewSubmitModal({
 
   // An upgrade must exceed the version currently listed, which is exactly what
   // the server compares against.
-  const versionError = versionErrorKey(target?.version, version);
+  const reusesPublishedVersion = target?.isUpgrade && version.trim() &&
+    isValidVersion(target.version ?? "") && !isVersionForward(bumpPatch(target.version), version);
+  const versionError = versionErrorKey(target?.version, version) ||
+    (reusesPublishedVersion ? "mcp.review.versionMustExceedPublished" : null) ||
+    (target?.isUpgrade ? versionErrorKey(draftVersion, version) : null);
   const blocked =
     submitting ||
     Boolean(versionError) ||
@@ -247,9 +268,8 @@ export default function ReviewSubmitModal({
         pluginId: target.pluginId,
         version: version.trim(),
         changelog: changelog.trim(),
-        // A listed container upgrade must carry its own content, or the backend
-        // refuses it (a contentless submission on a listed plugin 400s); a first
-        // listing carries none (the server freezes the private draft row).
+        // Freeze the draft snapshot previewed by this session. Never substitute
+        // catalog content or silently omit failed relation reads.
         ...(needsContent && content
           ? { manifestJson: content.manifestJson, pluginJson: content.pluginJson }
           : {}),
@@ -278,6 +298,27 @@ export default function ReviewSubmitModal({
     if (submittingRef.current) return;
     generationRef.current++;
     onClose();
+  }
+
+  // Bot updates now submit publication themselves. Returning closes this
+  // stale upgrade form and refreshes owner state without claiming success.
+  if (editingWithBot && target?.isUpgrade && target.editKind) {
+    const botGeneration = generationRef.current;
+    return <ExpertBotPublishModal
+      visible
+      kind={target.editKind}
+      mode="update"
+      editingId={target.pluginId}
+      onClose={() => {
+        // A dismissed Bot may finish forwarding after another form has opened.
+        if (generationRef.current !== botGeneration) return;
+        generationRef.current++;
+        setEditingWithBot(false);
+        onBotReturn?.();
+        if (generationRef.current === botGeneration + 1) onClose();
+      }}
+      onToast={message => Toast.success(message)}
+    />;
   }
 
   return (
@@ -320,9 +361,20 @@ export default function ReviewSubmitModal({
               })
             : t("skillMarket.review.firstListingNotice")}
         </p>
+        {target?.isUpgrade && target.editKind && (
+          <div className="wk-mcp-review-submit__field">
+            <p>{t("mcp.review.draftEditHint")}</p>
+            <WKButton variant="secondary" disabled={submitting} onClick={() => setEditingWithBot(true)}>
+              {t(target.editKind === "squad" ? "mcp.expert.botUpdateTitle" : "mcp.expert.botUpdateTitleAgent")}
+            </WKButton>
+            <WKButton variant="secondary" disabled={submitting || resolving} onClick={() => resolveTarget(target)}>
+              {t("mcp.review.refreshDraft")}
+            </WKButton>
+          </div>
+        )}
         <label className="wk-mcp-review-submit__field">
           <span>{t("skillMarket.review.fieldVersion")}</span>
-          <WKInput value={version} onChange={setVersion} maxLength={32} />
+          <WKInput value={version} onChange={(value) => { versionEditedRef.current = true; setVersion(value); }} maxLength={32} />
           {versionError && <p className="skill-market-field-error">{t(versionError)}</p>}
         </label>
         <label className="wk-mcp-review-submit__field">

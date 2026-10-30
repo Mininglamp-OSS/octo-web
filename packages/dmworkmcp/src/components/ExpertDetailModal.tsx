@@ -16,6 +16,7 @@ import { getExpertSkillContent, getSquadSkillContent, getExpertSkillDownloadUrl,
 import { getMcpAvatarColor } from "../utils/mcpAvatar";
 import { resolveExpertOwner } from "../utils/expertOwner";
 import { isOfficialExpert } from "../utils/publisher";
+import BoundVersionBadge from "./BoundVersionBadge";
 import ExpertSpecView from "./ExpertSpecView";
 import { dependencyIssueReasonKey } from "../api/expertWire";
 
@@ -215,6 +216,7 @@ export default function ExpertDetailModal({ item, onClose }: ExpertDetailModalPr
                   <div className="wk-mcp-expert-member-detail__heading">
                     <strong>
                       {drillMember.name}
+                      <BoundVersionBadge versionId={drillMember.versionId} version={drillMember.version} />
                       {drillMember.leader && (
                         <span className="wk-mcp-expert-tag wk-mcp-expert-tag--leader">
                           {t("mcp.expert.leader")}
@@ -295,20 +297,16 @@ export default function ExpertDetailModal({ item, onClose }: ExpertDetailModalPr
                       <MemberAvatar itemId={item.id} member={member} />
                       <div className="wk-mcp-expert-member-row__copy">
                         <strong>
-                          {member.name}
+                          <span className="wk-mcp-expert-member-row__name" title={member.name}>{member.name}</span>
                           {member.leader && (
                             <span className="wk-mcp-expert-tag wk-mcp-expert-tag--leader">
                               {t("mcp.expert.leader")}
                             </span>
                           )}
-                          <span className="wk-mcp-expert-tag">
-                            {member.versionId
-                              ? `${t("mcp.expert.versionPinned")} ${member.versionId.slice(-8)}`
-                              : t("mcp.expert.versionUnpinned")}
-                          </span>
                         </strong>
                         <span>{member.role}</span>
                       </div>
+                      <BoundVersionBadge versionId={member.versionId} version={member.version} />
                     </button>
                   ))}
                 </div>

@@ -446,7 +446,7 @@ export function fromSkillPlugin(
     fileSize: isLegacy ? ref.file_size : treeSize,
     files: isLegacy ? ref.files : treeFiles,
     versionId,
-    version: plugin.current_version,
+    version: versionId ? plugin.current_version : undefined,
     summary: plugin.manifest_json?.description,
     creatorName: plugin.creator_name,
     botName: plugin.created_by_type === "bot" ? plugin.created_by_bot_name : undefined,

@@ -3,6 +3,7 @@ import { Boxes, ChevronDown, FileText, Wrench } from "lucide-react";
 import { t, useI18n } from "@octo/base";
 import type { ExpertConnector, ExpertSkill } from "../mock/expertMock";
 import DependencyMetadata from "../ui/DependencyMetadata";
+import BoundVersionBadge from "./BoundVersionBadge";
 import ExpertSkillBrowser from "./ExpertSkillBrowser";
 import { redactMcpConfig } from "../utils/redactMcpConfig";
 
@@ -73,11 +74,6 @@ export default function ExpertSpecView({
               }:${index}`;
               const isOpen = openSkill === key;
               const panelId = `${id}-skill-${index}`;
-              const label =
-                skill.version ||
-                (skill.versionId
-                  ? skill.versionId.slice(-8)
-                  : t("mcp.expert.versionUnpinned"));
               return (
                 <div className="wk-mcp-expert-skill" key={key}>
                   <button
@@ -89,18 +85,7 @@ export default function ExpertSpecView({
                     onClick={() => setOpenSkill(isOpen ? null : key)}
                   >
                     <span className="wk-mcp-dependency-name">{skill.name}</span>
-                    <span
-                      className="wk-mcp-dependency-version"
-                      title={
-                        skill.versionId
-                          ? `${t("mcp.expert.versionPinned")} · ${
-                              skill.versionId
-                            }`
-                          : undefined
-                      }
-                    >
-                      {label}
-                    </span>
+                    <BoundVersionBadge versionId={skill.versionId} version={skill.version} />
                     <ChevronDown
                       size={16}
                       aria-hidden="true"
@@ -170,6 +155,7 @@ export default function ExpertSpecView({
                     <span className="wk-mcp-dependency-name">
                       {connector.name}
                     </span>
+                    <span className="wk-mcp-bound-version">{t("mcp.expert.versionless")}</span>
                     <ChevronDown
                       size={16}
                       aria-hidden="true"

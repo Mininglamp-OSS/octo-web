@@ -164,6 +164,7 @@ export default function MineActionHost({
           name: item.name,
           version: item.version,
           isUpgrade: true,
+          editKind: request.type === "squad" ? "squad" : "agent",
           loadSnapshot: () => loadExpertReviewSnapshot(item.id),
           needs: { relations: true, content: true },
         });
@@ -281,6 +282,7 @@ export default function MineActionHost({
       <ReviewSubmitModal
         target={reviewTarget}
         onClose={close}
+        onBotReturn={notifyChanged}
         onSubmitted={(message) => {
           Toast.success(message);
           notifyChanged();
