@@ -1,11 +1,15 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Dropdown, Modal, Tooltip } from "@douyinfe/semi-ui";
 import { MoreHorizontal, AlertTriangle, Bot, FileText, UsersRound, X } from "lucide-react";
 import { useI18n, Dap } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import { ParticipantStatus, TaskStatus, TriggerType, type SummaryListItem } from "../types/summary";
 import { formatDateOnly, getStatusLabel, getSummaryTypeKind, getSummaryTypeLabel, isReferenceable } from "../utils/summaryHelpers";
-import { deriveSummaryDisplayContent } from "../utils/templateResolver";
+import { deriveSummaryDisplayContentWithOffset } from "../utils/templateResolver";
+import {
+    SUMMARY_SEARCH_DESC_WINDOW, SUMMARY_SEARCH_TITLE_WINDOW, SUMMARY_SEARCH_TOOLTIP_WINDOW,
+    codePointLength, leadingTrimCodePoints, shiftRanges, summarySearchSegments,
+} from "../utils/summarySearch";
 import { summaryTestIds } from "../utils/testIds";
 
 interface SummaryCardProps {
@@ -81,15 +85,70 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
         || (isMultiParticipant && task.has_pending_submission === true)
         || isPendingInvite;
 
-    const displayTitle = deriveSummaryDisplayContent(task.trigger_type === TriggerType.AGENT
-        ? task.title || task.task_no : task.topic || task.title || task.task_no);
+    // Search-card render contract — a query highlights a card, it never restyles it:
+    //  1. The title row always renders deriveSummaryDisplayContent(titleSource),
+    //     where titleSource follows the same trigger-type rule in both modes.
+    //  2. The description row renders the trimmed topic only when it adds
+    //     information, i.e. it is non-empty and differs from the title row.
+    //  3. Server ranges are code-point offsets into the RAW field, so each one is
+    //     re-based onto the derived/trimmed string it actually marks.
+    //  4. A raw-field hit the rows above cannot show still gets its own evidence
+    //     row, so "why did this match?" is always answerable on the card.
+    const titleSource = task.trigger_type === TriggerType.AGENT
+        ? task.title || task.task_no
+        : task.topic || task.title || task.task_no;
+    const { text: displayTitle, offset: titleOffset } = deriveSummaryDisplayContentWithOffset(titleSource);
     // Keep the description truthy so an empty topic does not render a
     // 4px-tall empty `.summary-card-desc`, and do NOT gate on length —
     // `.summary-card-desc` already uses `-webkit-line-clamp: 2; overflow:
     // hidden` (src/index.css:476-485), so a topic of any length clamps
     // visually instead of vanishing outright at the 81st character.
     const description = task.topic?.trim() || "";
+    // Chat summaries derive the title from the topic, so there the topic ranges
+    // are what mark the title row; agent and scheduled summaries keep a real
+    // title separate from their topic, which is what the description row shows.
+    const titleUsesTopic = task.trigger_type !== TriggerType.AGENT && Boolean(task.topic);
     const showDescription = description !== "" && description !== displayTitle;
+    const renderParts = (parts: { text: string; matched: boolean }[]) => parts.map((part, index) => part.matched
+        ? <mark className="summary-search-hit" key={index}>{part.text}</mark>
+        : <React.Fragment key={index}>{part.text}</React.Fragment>);
+    // Segmenting walks the whole string, and a list re-renders on every keystroke
+    // and scroll, so each row's segments (card + hover budget) are memoized per
+    // card. `task.search_match` is a stable object per API item.
+    const titleView = useMemo(() => {
+        const ranges = task.search_match
+            ? shiftRanges(titleUsesTopic
+                ? (task.search_match.topic_ranges ?? [])
+                : (task.search_match.title_ranges ?? []), titleOffset, codePointLength(displayTitle))
+            : [];
+        return {
+            ranges,
+            body: summarySearchSegments(displayTitle, ranges, SUMMARY_SEARCH_TITLE_WINDOW),
+            hover: summarySearchSegments(displayTitle, ranges, SUMMARY_SEARCH_TOOLTIP_WINDOW),
+        };
+    }, [task.search_match, titleUsesTopic, displayTitle, titleOffset]);
+    const descriptionView = useMemo(() => {
+        const ranges = task.search_match
+            ? shiftRanges(task.search_match.topic_ranges ?? [],
+                leadingTrimCodePoints(task.topic ?? ""), codePointLength(description))
+            : [];
+        return {
+            ranges,
+            body: summarySearchSegments(description, ranges, SUMMARY_SEARCH_DESC_WINDOW),
+            hover: summarySearchSegments(description, ranges, SUMMARY_SEARCH_TOOLTIP_WINDOW),
+        };
+    }, [task.search_match, task.topic, description]);
+    // A raw-title hit that no row above renders — the card title came from the
+    // topic, or the derivation stripped the framing it sits in — is surfaced on its
+    // own, at its original offsets, because it is the only evidence of the match.
+    const titleEvidence = useMemo(() => {
+        const ranges = task.search_match?.title_ranges ?? [];
+        if (!task.title || ranges.length === 0 || displayTitle === task.title) return null;
+        return {
+            body: summarySearchSegments(task.title, ranges, SUMMARY_SEARCH_DESC_WINDOW),
+            hover: summarySearchSegments(task.title, ranges, SUMMARY_SEARCH_TOOLTIP_WINDOW),
+        };
+    }, [task.search_match, task.title, displayTitle]);
     const displayStatus = displaysWaiting ? TaskStatus.PENDING : task.status;
     const statusColor = getStatusColor(displayStatus);
     const statusText = getStatusLabel(displayStatus);
@@ -184,13 +243,39 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                                 : <FileText size={14} />}
                         </span>
                     </Tooltip>
-                    <div className="summary-card-title">{displayTitle}</div>
+                    {/* Semi's Tooltip declares `content` as PropTypes.node and renders
+                        it as a React child (lib/es/tooltip/index.js renderContentNode),
+                        and the module has no innerHTML path, so these nodes can never be
+                        reinterpreted as markup. */}
+                    {titleView.ranges.length > 0 ? (
+                        <Tooltip content={renderParts(titleView.hover)} position="top">
+                            <div className="summary-card-title">{renderParts(titleView.body)}</div>
+                        </Tooltip>
+                    ) : <div className="summary-card-title">{displayTitle}</div>}
                 </div>
-                {showDescription && (
-                    <div className="summary-card-desc">{description}</div>
+                {titleEvidence && (
+                    <Tooltip content={renderParts(titleEvidence.hover)} position="top">
+                        <div className="summary-card-title-evidence">
+                            <span>{t("summary.search.titleMatch")}</span>
+                            {renderParts(titleEvidence.body)}
+                        </div>
+                    </Tooltip>
                 )}
+                {showDescription && (descriptionView.ranges.length > 0 ? (
+                    <Tooltip content={renderParts(descriptionView.hover)} position="top">
+                        <div className="summary-card-desc">
+                            <span>{t("summary.search.topicMatch")}</span>
+                            {renderParts(descriptionView.body)}
+                        </div>
+                    </Tooltip>
+                ) : (
+                    <div className="summary-card-desc">{description}</div>
+                ))}
             </div>
 
+            {task.is_historical_match && (
+                <div className="summary-search-history">{t("summary.search.historicalRun", { values: { date: formatDateOnly(task.created_at) } })}</div>
+            )}
             {/* 底部：时间 + 操作菜单 */}
             <div className="summary-card-bottom">
                 {isBotCreated && (

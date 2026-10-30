@@ -1,3 +1,4 @@
+import { SUMMARY_SEARCH_MAX_CHARACTERS, summarySearchTooLong } from "../utils/summarySearch";
 import React, { Component } from "react";
 import { Button, Dropdown, Spin, Toast, Banner } from "@douyinfe/semi-ui";
 import { IconSearch, IconPlus } from "@douyinfe/semi-icons";
@@ -59,7 +60,10 @@ interface SummaryListPageState {
     hasMore: boolean;
     error: string | null;
     statusFilter: TaskStatusType | undefined;
+    /** The committed query: the one the items on screen were loaded for. */
     keyword: string;
+    /** In-progress IME text. Only the input shows it; the query does not use it. */
+    pendingKeyword: string | null;
     activeTaskId: number | null;
 }
 
@@ -93,9 +97,13 @@ export default class SummaryListPage extends Component<
         error: null,
         statusFilter: undefined,
         keyword: "",
+        pendingKeyword: null,
         activeTaskId: null,
     };
 
+    private searchComposing = false;
+    private static searchId = 0;
+    private readonly searchLimitId = `summary-search-limit-${++SummaryListPage.searchId}`;
     private searchTimer: ReturnType<typeof setTimeout> | null = null;
     private batchPollTimer: ReturnType<typeof setInterval> | null = null;
     private isBatchPolling = false;
@@ -118,6 +126,16 @@ export default class SummaryListPage extends Component<
     // Kept alongside loadDataSeq — the pair covers both interleavings.
     private isLoadingData = false;
     private isLoadingMore = false;
+    private loadMoreOwner: symbol | null = null;
+    // Set synchronously when the query changes and cleared when the debounced
+    // search actually starts. Without it, a scroll event firing before React
+    // commits items:[]/hasMore:false reads the previous state, passes loadMore's
+    // entry guard and fetches another page of the *old* query — and because
+    // loadDataSeq was already bumped, its seq check would not reject it.
+    private searchInvalidated = false;
+    // Set by an explicit clear during composition: the compositionend the browser
+    // still emits for the discarded text must not restore it.
+    private ignoreCompositionEnd = false;
     private activationRefreshPending = false;
     private loadMoreRetryAt = 0;
     private paginationErrorVisible = false;
@@ -229,7 +247,8 @@ export default class SummaryListPage extends Component<
 
     private flushActivationRefresh = () => {
         if (!this.isMounted_ || !this.activationRefreshPending ||
-            this.isLoadingData || this.isLoadingMore) return;
+            this.isLoadingData || this.isLoadingMore || this.searchComposing ||
+            this.searchTimer !== null || summarySearchTooLong(this.state.keyword)) return;
         this.activationRefreshPending = false;
         void this.loadData({ silent: true, retainView: true });
     };
@@ -283,6 +302,7 @@ export default class SummaryListPage extends Component<
     }
 
     async loadData(opts: { silent?: boolean; retainView?: boolean } = {}): Promise<number | undefined> {
+        if (this.searchComposing || this.searchTimer !== null || summarySearchTooLong(this.state.keyword)) return undefined;
         // Bump-and-capture sequence: this loadData's response is only allowed
         // to commit if no newer loadData/filter change has started meanwhile.
         // Extended in round-7 so loadMore also captures pre-await and drops
@@ -300,11 +320,11 @@ export default class SummaryListPage extends Component<
             : 1;
         const isCurrent = () => seq === this.loadDataSeq &&
             this.isMounted_ && WKApp.shared.currentSpaceId === requestSpaceId &&
-            (!opts.retainView || (
+            (
                 this.props.channelId === channelId &&
                 this.state.statusFilter === statusFilter &&
                 this.state.keyword === keyword
-            ));
+            );
         const readPatches: SummaryReadPatch[] = [];
         this.pendingReadPatches.add(readPatches);
         if (!opts.retainView) {
@@ -457,6 +477,9 @@ export default class SummaryListPage extends Component<
     };
 
     async loadMore() {
+        // searchInvalidated is synchronous, so a scroll arriving before React
+        // commits the keyword reset cannot page the query being replaced.
+        if (this.searchInvalidated || this.searchComposing || summarySearchTooLong(this.state.keyword)) return;
         // isLoadingData is a synchronous flag set at loadData entry: closes
         // the "loadData started first, scroll fires before React commits
         // loading:true" ordering that reading state.loading would miss.
@@ -484,6 +507,8 @@ export default class SummaryListPage extends Component<
         const readPatches: SummaryReadPatch[] = [];
         this.pendingReadPatches.add(readPatches);
         this.isLoadingMore = true;
+        const owner = Symbol("summary-pagination");
+        this.loadMoreOwner = owner;
         this.setState({ loadingMore: true });
         try {
             const nextPage = page + 1;
@@ -543,9 +568,13 @@ export default class SummaryListPage extends Component<
             }
         } finally {
             this.pendingReadPatches.delete(readPatches);
-            this.isLoadingMore = false;
-            if (this.isMounted_) this.setState({ loadingMore: false });
-            this.flushActivationAfterCommit();
+            // A superseded query must not release a newer query's page lock.
+            if (this.loadMoreOwner === owner) {
+                this.loadMoreOwner = null;
+                this.isLoadingMore = false;
+                if (this.isMounted_) this.setState({ loadingMore: false });
+                this.flushActivationAfterCommit();
+            }
         }
     }
 
@@ -683,10 +712,55 @@ export default class SummaryListPage extends Component<
         this.setState({ statusFilter, page: 1 }, () => this.loadData());
     };
 
-    handleKeywordChange = (value: string) => {
-        this.setState({ keyword: value });
+    private beginSearchComposition = () => {
+        this.searchComposing = true;
+        this.ignoreCompositionEnd = false;
+        this.searchInvalidated = true;
+        this.loadDataSeq++;
+        this.isLoadingData = false;
+        this.isLoadingMore = false;
+        this.loadMoreOwner = null;
         if (this.searchTimer) clearTimeout(this.searchTimer);
+        this.searchTimer = null;
+        // Starting composition alone does not change the query or discard scroll.
+        // Only a list that already has cards is worth preserving: with an empty
+        // list the feedback rows are all gated off during composition, so
+        // clearing `loading` would blank the panel instead of keeping it.
+        if (this.state.items.length > 0) this.setState({ loading: false, loadingMore: false });
+    };
+
+    /** An explicit clear wins over a composition in flight: drop the IME text and
+     * swallow the compositionend the browser still delivers for it, so the discarded
+     * query cannot come back. Escape is left to the IME instead. */
+    private clearSearchKeyword = () => {
+        this.ignoreCompositionEnd = this.searchComposing;
+        this.searchComposing = false;
+        this.handleKeywordChange("");
+    };
+
+    handleKeywordChange = (value: string) => {
+        // Invalidate immediately, including the debounce/IME/over-limit interval.
+        this.searchInvalidated = true;
+        this.loadDataSeq++;
+        this.isLoadingData = false;
+        this.isLoadingMore = false;
+        this.loadMoreOwner = null;
+        if (this.searchTimer) clearTimeout(this.searchTimer);
+        this.searchTimer = null;
+        // While an IME composition is in flight the query is not committed yet:
+        // only track the pending input text and leave keyword/items/total/hasMore/
+        // loading alone, so the cards and scroll the user is reading stay on
+        // screen. The committed value is applied on compositionend / blur / clear.
+        const composing = this.searchComposing;
+        this.setState(composing
+            ? { pendingKeyword: value, error: null }
+            : { keyword: value, pendingKeyword: null, page: 1, items: [], total: 0, hasMore: false,
+                error: null, loadingMore: false, loading: !summarySearchTooLong(value) });
+        if (composing || summarySearchTooLong(value)) return;
         this.searchTimer = setTimeout(() => {
+            this.searchTimer = null;
+            // The debounced search is about to start, so the list may page again.
+            this.searchInvalidated = false;
             // 埋点 291:去抖后「发生了一次搜索」，仅在有关键词时发，绝不采关键词值。
             // DAP-271 finding 6：has_result 需在 loadData 拿到结果后才知——移到结果返回后采集。
             //   只在本次搜索关键词非空、且 loadData 返回了有效结果总数(未被更新请求超越/未失败)时打点;
@@ -701,7 +775,7 @@ export default class SummaryListPage extends Component<
                     }
                 });
             });
-        }, 400);
+        }, value === "" ? 0 : 400);
     };
 
     handleDelete = async (taskId: number) => {
@@ -893,7 +967,12 @@ export default class SummaryListPage extends Component<
     }
 
     private renderList(createEntryMode: SummaryCreateEntryMode) {
-        const { items, total, pageSize, loading, loadingMore, hasMore, error, statusFilter, keyword, activeTaskId } = this.state;
+        const { items, total, pageSize, loading, loadingMore, hasMore, error, statusFilter, keyword,
+            pendingKeyword, activeTaskId } = this.state;
+        // The input shows in-progress IME text; every result label keeps reading
+        // the committed `keyword` so a count is never attributed to a query the
+        // list does not hold.
+        const inputKeyword = pendingKeyword ?? keyword;
         const { channelId, onClose } = this.props;
         const { locale, t: translate } = this.context;
         const statusOptions = getStatusOptions();
@@ -974,9 +1053,27 @@ export default class SummaryListPage extends Component<
                             data-testid={summaryTestIds.listSearch}
                             className="summary-list-search-input"
                             placeholder={translate("summary.list.searchPlaceholder")}
-                            value={keyword}
+                            value={inputKeyword}
+                            aria-label={translate("summary.list.searchPlaceholder")}
+                            /* Announce the limit for what the user can see, while
+                               requests stay gated on the committed query. */
+                            aria-invalid={summarySearchTooLong(inputKeyword)}
+                            aria-describedby={summarySearchTooLong(inputKeyword) ? this.searchLimitId : undefined}
+                            onCompositionStart={this.beginSearchComposition}
+                            onCompositionEnd={(e) => {
+                                if (this.ignoreCompositionEnd) { this.ignoreCompositionEnd = false; return; }
+                                this.searchComposing = false; this.handleKeywordChange(e.currentTarget.value);
+                            }}
+                            onBlur={(e) => { if (this.searchComposing) { this.searchComposing = false; this.handleKeywordChange(e.currentTarget.value); } }}
+                            onKeyDown={(e) => { if (e.key === "Escape" && !this.searchComposing) this.handleKeywordChange(""); }}
                             onChange={(e) => this.handleKeywordChange(e.target.value)}
                         />
+                        {/* Escape during composition belongs to the IME, so it is
+                            suppressed there. The clear button stays usable: an
+                            explicit clear wins over the in-flight composition, and
+                            any trailing compositionend for the discarded text is
+                            swallowed in clearSearchKeyword. */}
+                        {inputKeyword && <button type="button" className="summary-search-clear" aria-label={translate("summary.search.clear")} onClick={this.clearSearchKeyword}>×</button>}
                     </div>
                     <Dropdown
                         trigger="click"
@@ -1028,10 +1125,14 @@ export default class SummaryListPage extends Component<
                 {loading && (
                     <div className="summary-list-loading">
                         <Spin size="large" />
+                        {keyword.trim() && <span role="status">{translate("summary.search.searching")}</span>}
                     </div>
                 )}
 
-                {!loading && !error && items.length === 0 && (
+                {!this.searchComposing && !loading && !error && !summarySearchTooLong(keyword) && keyword.trim() && <div className="summary-search-feedback" data-testid="summary-search-count" role="status">{translate("summary.search.count", { values: { count: total } })}</div>}
+                {summarySearchTooLong(inputKeyword) && <div id={this.searchLimitId} className="summary-search-feedback" role="alert">{translate("summary.search.limit", { values: { count: SUMMARY_SEARCH_MAX_CHARACTERS } })}</div>}
+                {!this.searchComposing && !loading && !error && !summarySearchTooLong(keyword) && keyword.trim() && items.length === 0 && <div className="summary-list-empty">{translate("summary.search.noMatches")}</div>}
+                {!this.searchComposing && !loading && !error && !keyword.trim() && items.length === 0 && (
                     <div className="summary-list-empty">
                         {isPanel ? (
                             <>

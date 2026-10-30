@@ -3,7 +3,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render as rtlRender, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import SummaryCard from './SummaryCard';
-import { ParticipantStatus, TaskStatus, TriggerType } from '../types/summary';
+import { ParticipantStatus, TaskStatus, TriggerType, type SummarySearchMatch } from '../types/summary';
 
 vi.mock('@octo/base', async () => {
     const actual = await vi.importActual<Record<string, unknown>>('../__mocks__/dmworkBase');
@@ -564,5 +564,103 @@ describe('SummaryCard completed actions', () => {
         expect(screen.getByText('编辑')).toBeInTheDocument();
         expect(screen.getByText('删除')).toBeInTheDocument();
         expect(screen.queryByText('继续优化')).not.toBeInTheDocument();
+    });
+});
+
+describe('SummaryCard F6 search', () => {
+    // Typed against the wire contract: a missing or null range array is legal,
+    // so the fixtures below are checked instead of cast past the declaration.
+    const nullableRangeCases: SummarySearchMatch[] = [
+        { title_ranges: [[0, 1]], topic_ranges: null },
+        { title_ranges: [[0, 1]] },
+        { title_ranges: null, topic_ranges: [[0, 2]] },
+    ];
+    it.each(nullableRangeCases)('accepts nullable or missing range arrays without crashing: %j', (search_match) => {
+        // Agent summaries keep title and topic separate, so each range array
+        // marks its own row; a null/missing array must degrade to plain text.
+        const { container } = render(<SummaryCard task={makeItem({ title: '标题', topic: '主题',
+            trigger_type: TriggerType.AGENT, search_match } as any)} onClick={noop} onDelete={noop} />);
+        expect(container.querySelector('.summary-card-title')).toHaveTextContent('标题');
+        const expectedHit = search_match.title_ranges ? '标' : '主题';
+        expect(container.querySelector('mark')).toHaveTextContent(expectedHit);
+    });
+    it('falls back to the topic instead of the internal task number when untitled', () => {
+        const { container } = render(<SummaryCard task={makeItem({ title: '', task_no: 'S-1234',
+            topic: '方案评审', search_match: { title_ranges: null, topic_ranges: [[0, 4]] } } as any)}
+            onClick={noop} onDelete={noop} />);
+        // The matched evidence stays visible in the title row and is not repeated
+        // as a second description row.
+        expect(container.querySelector('.summary-card-title')).toHaveTextContent('方案评审');
+        expect(container.querySelector('.summary-card-title mark')).toHaveTextContent('方案评审');
+        expect(container.querySelector('.summary-card-title')).not.toHaveTextContent('S-1234');
+        expect(container.querySelector('.summary-card-desc')).toBeNull();
+    });
+    it('keeps the derived template content as the title of a search card', () => {
+        // Browse and search must render the same card: the title is the derived
+        // content, never the short stored title, and the topic offsets are
+        // re-based onto that derived string.
+        const topic = '总结主题：聊天内容总结\n总结内容：总结聊天中的关键内容、核心结论、待办事项';
+        const keyStart = Array.from(topic).indexOf('关');
+        const { container } = render(<SummaryCard task={makeItem({
+            title: '聊天内容总结', topic,
+            search_match: { title_ranges: null, topic_ranges: [[keyStart, keyStart + 2]] } } as any)}
+            onClick={noop} onDelete={noop} />);
+        const title = container.querySelector('.summary-card-title')!;
+        expect(title).toHaveTextContent('总结聊天中的关键内容、核心结论、待办事项');
+        expect(title).not.toHaveTextContent('聊天内容总结');
+        expect(title.querySelector('mark')).toHaveTextContent('关键');
+    });
+    it('shows the server historical signal even when match ranges are absent', () => {
+        const { container } = render(<SummaryCard task={makeItem({ is_historical_match: true })}
+            onClick={noop} onDelete={noop} />);
+        expect(container.querySelector('.summary-search-history')).toBeInTheDocument();
+    });
+    it('shows original title/topic evidence and opens the matched historical task', () => {
+        const onClick = vi.fn();
+        const { container } = render(<SummaryCard task={makeItem({task_id: 42, schedule_id: 99,
+            title: '😀ＯＣＴＯ', topic: '方案评审', trigger_type: TriggerType.AGENT,
+            search_match: { title_ranges: [[1,5]], topic_ranges: [[0,4]] },
+            is_historical_match: true }) as any} onClick={onClick} onDelete={noop} />);
+        expect(container.querySelector('.summary-card-title mark')).toHaveTextContent('ＯＣＴＯ');
+        expect(container.querySelector('.summary-card-desc')).toHaveTextContent('主题：方案评审');
+        expect(container.querySelector('.summary-search-history')).toHaveTextContent('2026');
+        fireEvent.click(screen.getByTestId('summary-card-42'));
+        expect(onClick).toHaveBeenCalledWith(42);
+    });
+    it('renders the topic as the title of a chat summary, and does not repeat it', () => {
+        // Chat summaries derive their title from the topic in browse mode too, so
+        // a topic hit is highlighted there instead of in a duplicate row.
+        const { container } = render(<SummaryCard task={makeItem({title:'周会排期',topic:'方案评审',
+            search_match:{ title_ranges:[], topic_ranges:[[0,4]] }}) as any} onClick={noop} onDelete={noop} />);
+        expect(container.querySelector('.summary-card-title')).toHaveTextContent('方案评审');
+        expect(container.querySelector('.summary-card-title mark')).toHaveTextContent('方案评审');
+        expect(container.querySelector('.summary-card-desc')).toBeNull();
+    });
+    it('never invents title highlights for a topic-only match on an agent summary', () => {
+        const { container } = render(<SummaryCard task={makeItem({title:'周会排期',topic:'方案评审',
+            trigger_type: TriggerType.AGENT,
+            search_match:{ title_ranges:[], topic_ranges:[[0,4]] }}) as any} onClick={noop} onDelete={noop} />);
+        expect(container.querySelector('.summary-card-title')).toHaveTextContent('周会排期');
+        expect(container.querySelector('.summary-card-title mark')).toBeNull();
+        expect(container.querySelector('.summary-card-desc mark')).toHaveTextContent('方案评审');
+    });
+    it('surfaces a raw-title-only hit the derived title cannot carry', () => {
+        // Manual task, plain topic: the card title is the topic, so a hit that
+        // exists only in the raw title would otherwise be invisible.
+        const { container } = render(<SummaryCard task={makeItem({ title: 'Budget Review', topic: 'Project notes',
+            search_match: { title_ranges: [[0, 6]], topic_ranges: [] } }) as any} onClick={noop} onDelete={noop} />);
+        expect(container.querySelector('.summary-card-title')).toHaveTextContent('Project notes');
+        expect(container.querySelector('.summary-card-title mark')).toBeNull();
+        expect(container.querySelector('.summary-card-desc')).toBeNull();
+        const evidence = container.querySelector('.summary-card-title-evidence')!;
+        expect(evidence).toHaveTextContent('Budget Review');
+        expect(evidence.querySelector('mark')).toHaveTextContent('Budget');
+    });
+    it('adds no evidence row when the title row already carries the hit', () => {
+        const { container } = render(<SummaryCard task={makeItem({ title: 'Budget Review', topic: 'Project notes',
+            trigger_type: TriggerType.AGENT,
+            search_match: { title_ranges: [[0, 6]], topic_ranges: [] } }) as any} onClick={noop} onDelete={noop} />);
+        expect(container.querySelector('.summary-card-title mark')).toHaveTextContent('Budget');
+        expect(container.querySelector('.summary-card-title-evidence')).toBeNull();
     });
 });
