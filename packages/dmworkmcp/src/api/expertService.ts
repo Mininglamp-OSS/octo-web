@@ -711,7 +711,13 @@ export async function getExpertEditMetadata(id: string): Promise<ExpertItem> {
   const item = detail.plugin.plugin_type === "expert_team"
     ? mapPluginSquadListItem(detail.plugin, "")
     : mapPluginAgentListItem(detail.plugin, "");
-  return { ...item, draftRevision: detail.draft_revision, draftChangelog: detail.draft_changelog ?? "" };
+  return {
+    ...item,
+    // List rows use the released baseline; edit forms must keep the saved draft.
+    version: detail.plugin.current_version ?? "",
+    draftRevision: detail.draft_revision,
+    draftChangelog: detail.draft_changelog ?? "",
+  };
 }
 
 async function updateExpertVisibilityReal(

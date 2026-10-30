@@ -128,6 +128,27 @@ describe("updateExpertVisibility — the full-replace echo", () => {
     expect(item.version).toBe("2.4.0");
   });
 
+  it.each(["expert", "expert_team"])(
+    "keeps the editable %s version when the draft also carries a published release",
+    async (pluginType) => {
+      mock.instance.get.mockResolvedValueOnce({ data: { data: {
+        ...SQUAD_WIRE,
+        plugin: {
+          ...SQUAD_WIRE.plugin,
+          plugin_type: pluginType,
+          current_version: "1.0.5",
+          published_version: "1.0.3",
+        },
+      } } });
+
+      const draft = await getExpertEditMetadata("squad-1");
+
+      expect(draft.version).toBe("1.0.5");
+      expect(draft.draftRevision).toBe(SQUAD_WIRE.draft_revision);
+      expect(mock.instance.get.mock.calls[0][0]).toMatch(/\/plugins\/squad-1\/draft$/);
+    }
+  );
+
   it("renames metadata without losing content or exact dependency pins", async () => {
     wire();
     await updateExpertVisibility("squad-1", "space", { name: "Renamed team", version: "2.4.1" });

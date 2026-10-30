@@ -587,6 +587,45 @@ describe("NewSkillModal", () => {
   });
 
   describe("review mode", () => {
+    it("seeds an upgrade at the saved draft when it is ahead of the next release", () => {
+      render(<NewSkillModal visible categories={categories} onClose={vi.fn()} onCreated={vi.fn()} reviewSkill={reviewSkillFixture({ version: "1.0.3", draftVersion: "1.0.5" })} />);
+
+      expect(screen.getByPlaceholderText(versionPlaceholder)).toHaveValue("1.0.5");
+    });
+
+    it("rejects an intermediate release below the draft and accepts the draft label", async () => {
+      render(<NewSkillModal visible categories={categories} onClose={vi.fn()} onCreated={vi.fn()} reviewSkill={reviewSkillFixture({ version: "1.0.3", draftVersion: "1.0.5" })} />);
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText(selectNewZipLabel), {
+          target: { files: [zipFile("upgrade.zip")] },
+        });
+      });
+      fireEvent.change(screen.getByPlaceholderText(changelogPlaceholder), { target: { value: "Upgrade content" } });
+      fireEvent.change(screen.getByPlaceholderText(versionPlaceholder), { target: { value: "1.0.4" } });
+
+      const submit = screen.getByRole("button", { name: upgradeButton });
+      expect(screen.getByText(/版本号只能保持不变或递增|versionMustNotDecrease/)).toBeInTheDocument();
+      expect(submit).toBeDisabled();
+      fireEvent.click(submit);
+      expect(api.createReviewRequest).not.toHaveBeenCalled();
+
+      fireEvent.change(screen.getByPlaceholderText(versionPlaceholder), { target: { value: "1.0.5" } });
+      expect(submit).toBeEnabled();
+      fireEvent.click(submit);
+      await waitFor(() => expect(api.createReviewRequest).toHaveBeenCalledWith(
+        expect.objectContaining({ pluginId: "skill-pack", version: "1.0.5", parseTaskId: "task-123" }),
+      ));
+    });
+
+    it("seeds above the published version and rejects reusing that label", async () => {
+      render(<NewSkillModal visible categories={categories} onClose={vi.fn()} onCreated={vi.fn()} reviewSkill={reviewSkillFixture({ version: "1.0.3" })} />);
+      expect(screen.getByPlaceholderText(versionPlaceholder)).toHaveValue("1.0.4");
+      fireEvent.change(screen.getByPlaceholderText(versionPlaceholder), { target: { value: "1.0.3" } });
+      expect(screen.getByText(/新版本必须高于当前已发布版本|versionMustExceedPublished/)).toBeInTheDocument();
+      fireEvent.change(screen.getByPlaceholderText(versionPlaceholder), { target: { value: "1.0.4" } });
+      expect(screen.queryByText(/新版本必须高于当前已发布版本|versionMustExceedPublished/)).not.toBeInTheDocument();
+    });
+
     it("closes an untouched upgrade without showing a leave confirmation", async () => {
       const onClose = vi.fn();
       render(
