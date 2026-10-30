@@ -47,5 +47,5 @@
 ## 摸清依据
 
 - `packages/dmworkskillmarket/src/pages/SkillListPage.tsx`: 已在组织上架的 Skill 进入升级流程。
-- `packages/dmworkskillmarket/src/components/NewSkillModal.tsx`: 升级表单、dirty 状态和离开确认态。
+- `packages/dmworkskillmarket/src/components/EditSkillModal.tsx`: 升级表单、dirty 状态和离开确认态。
 - `packages/dmworkskillmarket/src/index.css`: 确认页及移动端操作布局。

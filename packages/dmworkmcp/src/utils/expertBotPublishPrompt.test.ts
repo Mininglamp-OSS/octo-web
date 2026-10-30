@@ -184,22 +184,22 @@ describe("getExpertBotPublishPrompt — update mode", () => {
       spaceId: SLUG,
       apiBaseUrl: API,
     });
-    expect(p).toContain("更新 OCTO Marketplace 上已上架的专家");
+    expect(p).toContain("编辑 OCTO Marketplace 上专家的草稿");
     expect(p).toContain(`专家 ID：\`${ID}\``);
     expect(p).toContain(`plugin.plugin_id = "${ID}"`);
     expect(p).toContain(
-      `octo-cli marketplace plugin get --plugin-id ${ID} --include-relations`
+      `GET /market/api/v1/plugins/${ID}/draft`
     );
     expect(p).toContain("全量替换语义");
     expect(p).toContain(
       "`plugin_name` / `publisher` / `icon` / `tags` / `visibility` / `category_id`"
     );
     expect(p).toContain("`relation_id` 和 `data`");
-    expect(p).toContain("未上架的 Space 可见记录");
+    expect(p).toContain("expected_draft_revision");
     expect(p).toContain("任何 409");
-    expect(p).toContain("`listed_requires_review` / `review_pending`");
-    expect(p).toContain("plugin review-request create");
-    expect(p).toContain("不要引用未在本流程中实际生成的文件");
+    expect(p).toContain("只保存草稿，禁止自动发布、提交审核、取消审核或下架");
+    expect(p).not.toContain("plugin review-request create");
+    expect(p).toContain("version_migration_required");
     expect(p).toContain("不要把展示用的 `icon_url` 写回");
     expect(p).toContain("不要伪造成功");
     expect(p).toContain("可重试命令和错误摘要");
@@ -271,11 +271,11 @@ describe("getExpertBotPublishPrompt — update mode", () => {
       spaceId: SLUG,
       apiBaseUrl: API,
     });
-    expect(p).toContain("更新 OCTO Marketplace 上已上架的专家团");
+    expect(p).toContain("编辑 OCTO Marketplace 上专家团的草稿");
     expect(p).toContain(`专家团 ID：\`${ID}\``);
     expect(p).toContain(`plugin.plugin_id = "${ID}"`);
     expect(p).toContain(
-      `octo-cli marketplace plugin get --plugin-id ${ID} --include-relations`
+      `GET /market/api/v1/plugins/${ID}/draft`
     );
     expect(p).toContain("缺失关系会被软删");
     expect(p).not.toContain("squad create --data");
@@ -291,7 +291,7 @@ describe("getExpertBotPublishPrompt — update mode", () => {
     });
     expect(p).not.toContain("; rm -rf /");
     expect(p).toContain('plugin.plugin_id = "<expert-id>"');
-    expect(p).toContain("plugin get --plugin-id <expert-id>");
+    expect(p).toContain("GET /market/api/v1/plugins/<expert-id>/draft");
   });
 
   it("create mode (default) is unchanged", () => {

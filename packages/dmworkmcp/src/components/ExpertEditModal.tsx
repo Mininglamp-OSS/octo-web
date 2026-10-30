@@ -181,13 +181,9 @@ export default function ExpertEditModal({
             loading={saving && !publishing}
             disabled={!dirty || !canSave || (saving && publishing)}
           >
-            {t(
-              showDraftActions
-                ? "skillMarket.plugin.actionSaveDraft"
-                : "skillMarket.common.save"
-            )}
+            {t("skillMarket.plugin.actionSaveDraft")}
           </WKButton>
-          {(showDraftActions || metadataChanged) && (
+          {showDraftActions && (
             <WKButton
               variant="primary"
               onClick={() => void submit(true)}

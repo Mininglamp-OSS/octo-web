@@ -29,15 +29,10 @@ export interface ReviewSubmitTarget {
   /**
    * Resolve everything the submission must freeze, in ONE read.
    *
-   * `content` is the live FROZEN manifest + package, required WITH an upgrade of
-   * an already-listed container (专家 / 专家团): the backend refuses a contentless
-   * submission for a listed plugin field-agnostically (freezeSubmission →
-   * `manifest_json/required`, HTTP 400), because snapshotting the still-live row
-   * would make the review theatre. A 专家/专家团 has no client-side authoring
-   * surface, so the client echoes the live row's own content — the same contract
-   * skill/connector upgrades follow through their full-form review modes.
+   * Expert/team upgrades load the owner's saved draft documents and relations,
+   * never the catalog release. Explicit content freezes exactly that response.
    *
-   * `relations` is the CURRENT child relation graph. The review payload treats an
+   * `relations` is the editable draft relation graph. The review payload treats an
    * absent `relations` as "the server freezes its own read" and a present one
    * (even `[]`) as "replace with exactly this", so a container has to name its
    * children or the snapshot is incomplete, while a leaf type (connector) must
@@ -55,6 +50,8 @@ export interface ReviewSubmitTarget {
   loadSnapshot?: () => Promise<{
     content?: { manifestJson: unknown; pluginJson: unknown };
     relations?: PluginReviewRelation[];
+    /** Editable draft label; may be ahead of the catalog release. */
+    version?: string;
   }>;
   /**
    * Which halves this submission must carry. Drives the fail-closed gate, and has
@@ -93,12 +90,8 @@ export function bumpPatch(version: string | undefined): string {
  *     under review and the server freezes it — no content is sent,
  *   - a connector 发布新版本 carries genuinely new content and therefore goes
  *     through McpCreateModal's review mode instead (it needs the whole form),
- *   - a 专家 / 专家团 UPGRADE has no client-side content authoring (records are
- *     written by a Bot through octo-cli), so the modal fetches the live row's
- *     own frozen content via `target.loadSnapshot` — the same single read that
- *     resolves the child relations — and echoes it: the backend refuses a
- *     contentless submission on an already-listed plugin, so the client submits
- *     the current bytes without disturbing the live row until approval.
+ *   - an expert/team upgrade freezes saved draft content and exact pins from
+ *     target.loadSnapshot. The old release remains live until approval.
  */
 export default function ReviewSubmitModal({
   target,
@@ -169,6 +162,11 @@ export default function ReviewSubmitModal({
         if (generation !== generationRef.current) return;
         setRelations(snapshot.relations);
         setContent(snapshot.content);
+        if (snapshot.version) {
+          setVersion(versionErrorKey(item.version, snapshot.version)
+            ? bumpPatch(snapshot.version)
+            : snapshot.version);
+        }
       })
       .catch((err: unknown) => {
         if (generation !== generationRef.current) return;
@@ -247,9 +245,8 @@ export default function ReviewSubmitModal({
         pluginId: target.pluginId,
         version: version.trim(),
         changelog: changelog.trim(),
-        // A listed container upgrade must carry its own content, or the backend
-        // refuses it (a contentless submission on a listed plugin 400s); a first
-        // listing carries none (the server freezes the private draft row).
+        // Freeze the draft snapshot previewed by this session. Never substitute
+        // catalog content or silently omit failed relation reads.
         ...(needsContent && content
           ? { manifestJson: content.manifestJson, pluginJson: content.pluginJson }
           : {}),

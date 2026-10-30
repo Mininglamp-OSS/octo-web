@@ -1041,36 +1041,21 @@ export async function loadExpertReviewContent(
   };
 }
 
-/** The full upgrade snapshot for a 专家 / 专家团 — content AND child relations —
- *  derived from ONE `/plugins/detail` read.
- *
- * WHY NOT compose `loadExpertReviewContent` + `loadExpertChildRelations`: those
- * each issue their own detail GET, and `ReviewSubmitModal` resolves the two
- * loaders under `Promise.all`. A Bot write — the only way these records are
- * authored — landing between the two responses freezes content from one revision
- * together with the relation graph of another: internally inconsistent bytes
- * that were never live at any instant. Nothing downstream detects it. The submit
- * payload carries no revision token, the backend validates the submitted
- * manifest only against fields a content update does not change and treats
- * submitted `relations` as authoritative without cross-checking them against the
- * submitted content, and at approval the chimera is applied to the live row
- * having passed a review where it looked entirely normal.
- *
- * This is not a narrow window: an upgrade submission is typically triggered
- * BECAUSE the Bot just updated the record, so submissions cluster around write
- * activity. Deriving both projections from a single response is what makes the
- * frozen snapshot a coherent past state — the uniformly-stale snapshot the
- * design already accepts, rather than a state that never existed.
+/** Freeze the owner's saved draft documents and exact pins from ONE response.
+ * Public detail serves the older release and may omit unavailable dependencies;
+ * it must never be used to build an upgrade payload. Draft failures propagate.
  */
 export async function loadExpertReviewSnapshot(id: string): Promise<{
   content: { manifestJson: unknown; pluginJson: unknown };
   relations: ExpertChildRelation[];
+  version?: string;
 }> {
   if (USE_MOCK) {
     throw new Error("loadExpertReviewSnapshot is not available under USE_MOCK");
   }
-  const detail = await pluginDetail(id);
+  const detail = await get<PluginDetailWire>(`/plugins/${encodeURIComponent(id)}/draft`);
   return {
+    version: detail.plugin.current_version ?? undefined,
     content: {
       manifestJson: detail.plugin.manifest_json,
       pluginJson: detail.plugin.plugin_json,

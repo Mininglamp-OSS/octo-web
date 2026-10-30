@@ -188,10 +188,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
   // local dirty state cannot tell whether the server has an unreleased draft.
   // Only private/space are selectable here; anything else is admin-managed.
   const tenantVisibility = visibility === "private" || visibility === "space";
-  const willBeUnlisted =
-    skill?.listingState !== "published" ||
-    (skill?.visibility !== undefined && visibility !== skill.visibility);
-  const showDraftActions = willBeUnlisted || skill?.visibility === "private";
+  const showDraftActions = tenantVisibility;
   // 发布 does NOT inherit the grandfathering. On 本组织 it routes through
   // `Service.Publish` → `SubmitReview`, which gates on `validVersion` with no
   // stored-label exemption, so a legacy label that saves fine would 400 on
@@ -248,6 +245,14 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
     const f = event.currentTarget.files?.[0];
     if (f) setIconCropFile(f);
   }
+
+  const showUpgradeLeaveConfirm = confirmClose && skill?.listingState === "published" && visibility === "space";
+  const leaveActionsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showUpgradeLeaveConfirm) return;
+    const frame = window.requestAnimationFrame(() => leaveActionsRef.current?.querySelector("button")?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [showUpgradeLeaveConfirm]);
 
   function requestClose() {
     if (busy) {
@@ -534,12 +539,17 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
     <>
       <WKModal
         visible={Boolean(skill)}
-        onCancel={requestClose}
-        title={skill ? t("skillMarket.form.editTitle", { values: { name: skill.name } }) : t("skillMarket.form.editTitleFallback")}
+        onCancel={() => confirmClose ? setConfirmClose(false) : requestClose()}
+        title={showUpgradeLeaveConfirm ? t("skillMarket.confirm.leaveUpgradeTitle") : skill ? t("skillMarket.form.editTitle", { values: { name: skill.name } }) : t("skillMarket.form.editTitleFallback")}
         size="lg"
-        className="skill-market-workflow-modal"
+        className={showUpgradeLeaveConfirm ? "skill-market-workflow-modal skill-market-workflow-modal--leave-confirm" : "skill-market-workflow-modal"}
         footer={
-          confirmClose ? (
+          showUpgradeLeaveConfirm ? (
+            <div ref={leaveActionsRef} className="skill-market-leave-confirm__actions">
+              <WKButton variant="secondary" onClick={() => setConfirmClose(false)}>{t(busy ? "skillMarket.confirm.keepUploading" : "skillMarket.confirm.keepEditing")}</WKButton>
+              <WKButton className="skill-market-leave-confirm__leave" variant="danger" onClick={confirmLeave}>{t("skillMarket.confirm.leave")}</WKButton>
+            </div>
+          ) : confirmClose ? (
             <InlineConfirmBar
               message={t(
                 busy ? "skillMarket.confirm.busyMessage" : "skillMarket.confirm.unsavedMessage"
@@ -589,13 +599,21 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
                 loading={saving && publishing}
                 disabled={!canPublishNow || (saving && !publishing)}
               >
-                {t("skillMarket.plugin.actionPublish")}
+                {t(skill?.listingState === "published" && visibility === "space"
+                  ? "skillMarket.plugin.actionUpgrade"
+                  : "skillMarket.plugin.actionPublish")}
               </WKButton>
             )}
           </>
           )
         }
       >
+        {showUpgradeLeaveConfirm ? (
+          <section className="skill-market-leave-confirm" role="alert">
+            <span className="skill-market-leave-confirm__icon" aria-hidden="true"><AlertCircle size={28} /></span>
+            <p>{t(busy ? "skillMarket.confirm.busyMessage" : "skillMarket.confirm.upgradeUnsavedMessage")}</p>
+          </section>
+        ) : (
         <div className="skill-market-form skill-market-form--workflow">
           {error && (
             <div className="skill-market-form__error">
@@ -859,6 +877,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
             </label>
           </div>
         </div>
+        )}
       </WKModal>
       <IconCropModal
         visible={!!iconCropFile}

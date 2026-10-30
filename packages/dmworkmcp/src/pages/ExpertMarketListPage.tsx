@@ -576,12 +576,9 @@ export default function ExpertMarketListPage({
       })),
       ariaLabel: item.name,
       onOpen: () => openDetail(item),
-      // 编辑 is withheld once the record is listed to the org: a direct edit takes
-      // effect immediately for everyone, which would route around review (the
-      // backend answers such a write with 409 listed_requires_review). A listed
-      // record changes only through 升级版本, and while a request is pending it
-      // does not change at all — the live version stays up until a decision lands.
-      onEdit: review.canEdit ? () => handleEdit(item) : undefined,
+      // Published experts keep serving their release while the owner edits a
+      // separate draft. Pending submissions remain read-only in this UI.
+      onEdit: !review.canCancelReview ? () => handleEdit(item) : undefined,
       onDelete: () => setDeleteTarget(item),
       editAria: t("skillMarket.plugin.ariaEdit", { values: { name: item.name } }),
       deleteAria: t("skillMarket.plugin.ariaDelete", { values: { name: item.name } }),

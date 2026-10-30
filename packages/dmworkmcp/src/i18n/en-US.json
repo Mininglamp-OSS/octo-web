@@ -51,7 +51,7 @@
     "botPublishHintAgent": "Copy the prompt below to an Agent — it will publish this expert.",
     "botUpdateTitle": "Update squad via Bot",
     "botUpdateTitleAgent": "Update expert via Bot",
-    "botUpdateHint": "Copy the prompt below to an Agent — it will apply your changes to the published listing.",
+    "botUpdateHint": "Forward this prompt to an Agent to save draft changes. The published version stays unchanged until you publish separately.",
     "memberCount": "{{count}} experts",
     "viewCountTitle": "{{count}} views",
     "installCountTitle": "Added to Loop {{count}} times",

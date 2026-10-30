@@ -283,15 +283,32 @@ describe("loadExpertReviewSnapshot — one revision, one read", () => {
     mock.instance.post.mockReset();
   });
 
-  it("reads /plugins/detail exactly once", async () => {
+  it("reads the editable draft exactly once", async () => {
     wire();
 
     await loadExpertReviewSnapshot("squad-1");
 
     const detailReads = mock.instance.get.mock.calls.filter((c: unknown[]) =>
-      String(c[0]).endsWith("/plugins/detail")
+      String(c[0]).endsWith("/plugins/squad-1/draft")
     );
     expect(detailReads).toHaveLength(1);
+    expect(mock.instance.get).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the draft pins and documents even when release detail differs", async () => {
+    const draft = { ...SQUAD_WIRE, plugin: { ...SQUAD_WIRE.plugin, current_version: "3.0.0", manifest_json: { description: "repaired draft" } }, relations: [{ ...SQUAD_WIRE.relations[0], target_plugin_id: "replacement", target_version_id: "fixed-version" }] };
+    mock.instance.get.mockImplementation((url: string) => Promise.resolve({ data: { data: url.endsWith("/draft") ? draft : SQUAD_WIRE } }));
+    const snapshot = await loadExpertReviewSnapshot("squad-1");
+    expect(snapshot.version).toBe("3.0.0");
+    expect(snapshot.content.manifestJson).toEqual({ description: "repaired draft" });
+    expect(snapshot.relations).toEqual([expect.objectContaining({ targetPluginId: "replacement", targetVersionId: "fixed-version", relationId: "rel-1", data: { member_key: "lead", is_leader: true } })]);
+    expect(mock.instance.get).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not fall back to a release or empty relations when draft reading fails", async () => {
+    mock.instance.get.mockRejectedValue(new Error("draft unavailable"));
+    await expect(loadExpertReviewSnapshot("squad-1")).rejects.toThrow();
+    expect(mock.instance.get).toHaveBeenCalledTimes(1);
   });
 
   it("takes content and relations from the SAME response", async () => {
@@ -308,7 +325,7 @@ describe("loadExpertReviewSnapshot — one revision, one read", () => {
     const responses = [SQUAD_WIRE, revisionB];
     let call = 0;
     mock.instance.get.mockImplementation((url: string) => {
-      if (url.endsWith("/plugins/detail")) {
+      if (url.endsWith("/plugins/squad-1/draft")) {
         const body = responses[Math.min(call, responses.length - 1)];
         call += 1;
         return Promise.resolve({ data: { data: body } });

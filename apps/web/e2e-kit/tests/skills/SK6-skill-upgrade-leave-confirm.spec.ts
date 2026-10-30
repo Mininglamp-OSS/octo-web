@@ -18,7 +18,7 @@ for (const viewport of [
     await expect(dialog).toContainText("升级版本");
 
     await dialog.getByPlaceholder("例如 1.2.0").fill("2.0.0");
-    await dialog.getByPlaceholder("简述本次提交的变更内容").fill("保留这份发布说明");
+    await dialog.getByPlaceholder("简述此版本变更内容").fill("保留这份发布说明");
     await dialog.getByRole("button", { name: "取消", exact: true }).click();
 
     await expect(page.getByRole("dialog")).toHaveCount(1);
@@ -35,7 +35,7 @@ for (const viewport of [
 
     await page.keyboard.press("Escape");
     await expect(dialog.getByPlaceholder("例如 1.2.0")).toHaveValue("2.0.0");
-    await expect(dialog.getByPlaceholder("简述本次提交的变更内容")).toHaveValue("保留这份发布说明");
+    await expect(dialog.getByPlaceholder("简述此版本变更内容")).toHaveValue("保留这份发布说明");
 
     await dialog.getByRole("button", { name: "关闭", exact: true }).click();
     await expect(dialog).toContainText("确认离开升级？");

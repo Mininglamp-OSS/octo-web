@@ -692,7 +692,7 @@ describe("expert catalog server search and pagination", () => {
       expect(Array.from(pending.querySelectorAll("button"), (el) => el.textContent)).toEqual(["cancel"]);
       const published = root.querySelector('[data-item="expert-102"]')!;
       expect(published.getAttribute("data-status")).toBe("published");
-      expect(Array.from(published.querySelectorAll("button"), (el) => el.textContent)).toEqual(["upgrade"]);
+      expect(Array.from(published.querySelectorAll("button"), (el) => el.textContent)).toEqual(["edit", "upgrade"]);
       const draft = root.querySelector('[data-item="expert-103"]')!;
       expect(Array.from(draft.querySelectorAll("button"), (el) => el.textContent)).toEqual(["edit", "publish"]);
       expect(itemCount()).toBe(112);

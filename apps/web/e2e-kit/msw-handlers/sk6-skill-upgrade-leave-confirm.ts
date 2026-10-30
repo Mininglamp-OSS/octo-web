@@ -53,6 +53,9 @@ export async function registerSkillUpgradeLeaveConfirm(page: Page): Promise<void
     };
 
     worker.use(
+      http.get("*/market/api/v1/plugins/upgrade-leave-demo/draft", () =>
+        HttpResponse.json({ data: { plugin: skill, relations: [], draft_revision: "a".repeat(64) } })
+      ),
       http.get("*/market/api/v1/plugins", () =>
         HttpResponse.json({
           data: [skill],

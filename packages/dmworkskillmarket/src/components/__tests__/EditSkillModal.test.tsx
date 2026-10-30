@@ -95,6 +95,27 @@ describe("EditSkillModal", () => {
     expect(screen.queryByRole("button", { name: /发布|skillMarket.plugin.actionPublish/ })).not.toBeInTheDocument();
   });
 
+  it("saves a listed organization draft and publishes only on explicit upgrade", async () => {
+    const orgSkill = { ...skill, visibility: "space" as const, listingState: "published" as const, draftRevision: "a".repeat(64) };
+    const saved = { ...orgSkill, displayName: "Updated organization draft", version: "1.1.4", draftRevision: "b".repeat(64), draftChangelog: "Saved draft change" };
+    vi.mocked(api.updateSkill).mockResolvedValue(saved);
+    vi.mocked(api.publishPlugin).mockResolvedValue({ pluginId: skill.id, listingState: "published", displayStatus: "published" });
+    const props = { skill: orgSkill, categories, onClose: vi.fn(), onUpdated: vi.fn(), onPublished: vi.fn() };
+    const view = render(<EditSkillModal {...props} />);
+    fireEvent.change(screen.getByPlaceholderText(displayNamePlaceholder), { target: { value: saved.displayName } });
+    fireEvent.change(screen.getByDisplayValue(orgSkill.version), { target: { value: saved.version } });
+    fireEvent.change(screen.getByPlaceholderText(changelogPlaceholder), { target: { value: saved.draftChangelog } });
+    fireEvent.click(screen.getByRole("button", { name: /保存草稿|skillMarket.plugin.actionSaveDraft/ }));
+    await waitFor(() => expect(props.onUpdated).toHaveBeenCalledOnce());
+    expect(api.publishPlugin).not.toHaveBeenCalled();
+    expect(api.updateSkill).toHaveBeenCalledWith(skill.id, expect.objectContaining({ draftRevision: orgSkill.draftRevision, version: saved.version }));
+    view.rerender(<EditSkillModal {...props} skill={null} />);
+    view.rerender(<EditSkillModal {...props} skill={saved} />);
+    fireEvent.click(screen.getByRole("button", { name: /升级版本|skillMarket.plugin.actionUpgrade/ }));
+    await waitFor(() => expect(props.onPublished).toHaveBeenCalledOnce());
+    expect(api.publishPlugin).toHaveBeenCalledWith({ pluginId: skill.id, version: saved.version, changelog: saved.draftChangelog });
+  });
+
   it("prefills and saves the current draft explanation without a reupload", async () => {
     const props = { skill: { ...skill, draftChangelog: "Saved draft note" }, categories, onClose: vi.fn(), onUpdated: vi.fn() };
     render(<EditSkillModal {...props} />);
