@@ -390,7 +390,7 @@ function mapSkill(raw: PluginListItemWire): Skill {
       raw.visibility === "system"
         ? raw.visibility
         : "private",
-    version: raw.current_version ?? "1.0.0",
+    version: raw.published_version ?? raw.current_version ?? "1.0.0",
     readmeContent: "",
     iconUrl: raw.icon_url ?? raw.icon ?? "",
     fileName: "",

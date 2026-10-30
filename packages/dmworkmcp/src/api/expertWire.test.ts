@@ -158,3 +158,11 @@ describe("dependency issues", () => {
     ]);
   })
 })
+
+describe("owner published version projection", () => {
+  it("uses the release label without changing draft snapshot mapping", () => {
+    const row = { plugin_id: "expert", current_version: "1.0.0", published_version: "1.0.3" } as never;
+    expect(mapPluginAgentListItem(row, "").version).toBe("1.0.3");
+    expect(mapPluginAgentListItem({ plugin_id: "draft", current_version: "1.0.0" } as never, "").version).toBe("1.0.0");
+  });
+});
