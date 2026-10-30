@@ -95,3 +95,15 @@ describe("isStoredVersionLabel", () => {
     expect(isStoredVersionLabel(undefined, "1.0")).toBe(false);
   });
 });
+
+import { upgradeVersionErrorKey } from "./version";
+describe("published content upgrades", () => {
+  it.each(["1.0.0", "1.0.3", "1.00.3"])("rejects a same or older label %s", version => {
+    expect(upgradeVersionErrorKey("1.0.3", version)).toBe("skillMarket.plugin.versionMustExceedPublished");
+  });
+  it("allows a newer release while keeping same-version draft saves valid", () => {
+    expect(upgradeVersionErrorKey("1.0.3", "1.0.4")).toBeNull();
+    expect(upgradeVersionErrorKey("1.9.0", "1.10.0")).toBeNull();
+    expect(versionErrorKey("1.0.3", "1.0.3")).toBeNull();
+  });
+});

@@ -41,6 +41,16 @@ describe("ReviewDetailDrawer frozen relations", () => {
     vi.mocked(api.getReviewRequest).mockResolvedValue(detail());
   });
 
+  it("renders exactly one close button and preserves its close action", async () => {
+    const onClose=vi.fn();
+    render(<ReviewDetailDrawer reviewId="review-1" canReview onClose={onClose} onDecided={vi.fn()} />);
+    await screen.findByText("Planning Team", { exact: true });
+    const close=screen.getAllByRole("button", { name: /关闭|review.close/ });
+    expect(close).toHaveLength(1);
+    fireEvent.click(close[0]);
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
   it("shows the frozen relation graph and approval-critical wiring", async () => {
     render(
       <ReviewDetailDrawer
@@ -266,9 +276,9 @@ describe("ReviewDetailDrawer frozen relations", () => {
     render(<ReviewDetailDrawer {...props} reviewId="review-1" />);
     await screen.findByText("Planning Team", { exact: true });
     const drawer = screen.getByRole("dialog");
-    expect(within(drawer).getAllByRole("button", { name: "关闭" })).toHaveLength(2);
+    expect(within(drawer).getAllByRole("button", { name: "关闭" })).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "通过并上架" }));
-    // Built-in X disappears via options; the custom header X stays disabled.
+    // Only the custom header X exists; it stays disabled while deciding.
     expect(within(drawer).getAllByRole("button", { name: "关闭" })).toHaveLength(1);
     expect(within(drawer).getByRole("button", { name: "关闭" })).toBeDisabled();
     fireEvent.keyDown(drawer, { key: "Escape" });

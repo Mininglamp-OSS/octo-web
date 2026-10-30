@@ -363,7 +363,7 @@ function commonFromPlugin(raw: PluginListItemWire, categoryName: string) {
     creatorName: raw.creator_name ?? "",
     viewCount: raw.view_count ?? 0,
     installCount: raw.install_count ?? 0,
-    version: raw.current_version ?? "",
+    version: raw.published_version ?? raw.current_version ?? "",
     dependencyIssues: mapDependencyIssues(raw.dependency_issues),
   };
 }

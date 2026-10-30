@@ -174,7 +174,7 @@ export default function ReviewDetailDrawer({
       <WKModal
         visible={Boolean(reviewId)}
         onCancel={handleClose}
-        options={{ closable: !acting, maskClosable: !acting, closeOnEsc: !acting }}
+        options={{ closable: false, maskClosable: !acting, closeOnEsc: !acting }}
         title={null}
         size="lg"
         header={
