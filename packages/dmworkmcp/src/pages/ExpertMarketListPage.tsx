@@ -462,6 +462,7 @@ export default function ExpertMarketListPage({
       name: item.name,
       version: item.version,
       isUpgrade,
+      editKind: item.kind === "squad" ? "squad" : "agent",
       initialChangelog,
       // ONE detail read backs both halves. Content and relations MUST come from
       // the same revision: composed from two reads, a Bot write landing between
@@ -951,6 +952,7 @@ export default function ExpertMarketListPage({
         target={reviewTarget}
         onClose={() => setReviewTarget(null)}
         onSubmitted={handleListingChanged}
+        onBotReturn={() => { void reload(); myReviews.refresh(); }}
       />
 
       {toast &&

@@ -1,13 +1,15 @@
 import React, { useMemo, useState } from "react";
 import { Boxes, ChevronDown, FileText, Wrench } from "lucide-react";
 import { t, useI18n } from "@octo/base";
-import type { ExpertSkill } from "../mock/expertMock";
+import type { ExpertSkill, ExpertConnector } from "../mock/expertMock";
+import BoundVersionBadge from "./BoundVersionBadge";
 import ExpertSkillBrowser from "./ExpertSkillBrowser";
 import { redactMcpConfig } from "../utils/redactMcpConfig";
 
 interface ExpertSpecViewProps {
   instruction?: string;
   mcpConfig?: string;
+  connectors?: ExpertConnector[];
   skills?: ExpertSkill[];
   /** Fetch the stored SKILL.md text for the skill at `index` (legacy fallback). */
   fetchSkillContent: (index: number) => Promise<string>;
@@ -26,12 +28,14 @@ interface ExpertSpecViewProps {
 export default function ExpertSpecView({
   instruction,
   mcpConfig,
+  connectors,
   skills,
   fetchSkillContent,
   fetchSkillPackageUrl,
 }: ExpertSpecViewProps) {
   useI18n();
   // Index of the expanded skill (null when all collapsed); one open at a time.
+  const [openConnector, setOpenConnector] = useState<number | null>(null);
   const [openSkill, setOpenSkill] = useState<number | null>(null);
   // The detail view is read-only and public; mask any literal secret in the
   // mcp.json (env/header values, url query tokens, positional args) so a
@@ -60,7 +64,7 @@ export default function ExpertSpecView({
         </section>
       )}
 
-      {mcpConfig && (
+      {(mcpConfig || !!connectors?.length) && (
         <section className="wk-mcp-expert-section">
           <div className="wk-mcp-expert-section__heading">
             <Boxes size={18} aria-hidden="true" />
@@ -68,9 +72,25 @@ export default function ExpertSpecView({
               <h3>{t("mcp.expert.mcpTitle")}</h3>
             </div>
           </div>
-          <pre className="wk-mcp-expert-code">
+          <div className="wk-mcp-expert-dependency-list">
+            {connectors?.map((connector, index) => (
+              <div className="wk-mcp-expert-skill" key={connector.pluginId}>
+                <button type="button" className="wk-mcp-expert-skill__row"
+                  aria-expanded={openConnector === index}
+                  onClick={() => setOpenConnector(current => current === index ? null : index)}>
+                  <span>{connector.name}</span>
+                  <span className="wk-mcp-bound-version">{t("mcp.expert.versionless")}</span>
+                  <ChevronDown size={16} aria-hidden="true" className={`wk-mcp-expert-skill__chevron${openConnector === index ? " is-open" : ""}`} />
+                </button>
+                {openConnector === index && <pre className="wk-mcp-expert-code">
+                  {redactMcpConfig(connector.mcpConfig) ?? t("mcp.expert.mcpUnavailable")}
+                </pre>}
+              </div>
+            ))}
+          </div>
+          {mcpConfig && <pre className="wk-mcp-expert-code">
             {redactedMcpConfig ?? t("mcp.expert.mcpUnavailable")}
-          </pre>
+          </pre>}
         </section>
       )}
 
@@ -88,11 +108,11 @@ export default function ExpertSpecView({
               if (!expandable) {
                 return (
                   <span
-                    className="wk-mcp-expert-dependency-item"
+                    className="wk-mcp-expert-skill__row"
                     key={`${skill.name}-${index}`}
                   >
-                    {skill.name}
-                    {skill.versionId ? ` · ${t("mcp.expert.versionPinned")} ${skill.versionId.slice(-8)}` : ` · ${t("mcp.expert.versionUnpinned")}`}
+                    <span>{skill.name}</span>
+                    <BoundVersionBadge versionId={skill.versionId} version={skill.version} />
                   </span>
                 );
               }
@@ -105,14 +125,8 @@ export default function ExpertSpecView({
                     aria-expanded={isOpen}
                     onClick={() => toggle(index)}
                   >
-                    <span>
-                      {skill.name}
-                      {skill.versionId ? (
-                        <span className="wk-mcp-expert-skill__pin" title={skill.versionId}> · {t("mcp.expert.versionPinned")} {skill.versionId.slice(-8)}</span>
-                      ) : (
-                        <span className="wk-mcp-expert-skill__pin"> · {t("mcp.expert.versionUnpinned")}</span>
-                      )}
-                    </span>
+                    <span>{skill.name}</span>
+                    <BoundVersionBadge versionId={skill.versionId} version={skill.version} />
                     <ChevronDown
                       size={16}
                       aria-hidden="true"

@@ -26,6 +26,7 @@
     "deletedToast": "Deleted"
   },
   "expert": {
+    "versionless": "No version",
     "versionPinned": "Pinned version",
     "versionUnpinned": "Not pinned",
     "typeSquad": "Squads",
@@ -51,7 +52,7 @@
     "botPublishHintAgent": "Copy the prompt below to an Agent — it will publish this expert.",
     "botUpdateTitle": "Update squad via Bot",
     "botUpdateTitleAgent": "Update expert via Bot",
-    "botUpdateHint": "Copy the prompt below to an Agent — it will apply your changes to the published listing.",
+    "botUpdateHint": "Forward this prompt to an Agent to save confirmed changes and submit publication. Automatic approval takes effect immediately; manual approval remains pending.",
     "memberCount": "{{count}} experts",
     "viewCountTitle": "{{count}} views",
     "installCountTitle": "Added to Loop {{count}} times",
@@ -418,6 +419,9 @@
     "daysAgo": "{{count}} days ago"
   },
   "review": {
+    "draftEditHint": "The Bot saves changes and submits publication under the organization review policy. Returning closes this dialog and refreshes the list. Check the Bot result for publication or pending review before submitting again.",
+    "versionMustExceedPublished": "The new version must be higher than the published version",
+    "refreshDraft": "Reload latest draft",
     "cancel": "Cancel",
     "relationsLoading": "Loading current items…",
     "relationsFrozen": "This submission freezes the current {{count}} item(s)",
