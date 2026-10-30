@@ -610,7 +610,14 @@ export function getSkill(id: string): Promise<Skill> {
 /** Owner edit forms must read saved drafts, rather than the released projection. */
 export function getSkillDraft(id: string): Promise<Skill> {
   return request<PluginDetailWire>(`/plugins/${encodeURIComponent(id)}/draft`)
-    .then((detail) => ({ ...mapSkillDetail(detail.plugin), draftRevision: detail.draft_revision, draftChangelog: detail.draft_changelog ?? "" }));
+    .then((detail) => ({
+      ...mapSkillDetail(detail.plugin),
+      // Edit forms always use the editable head, even if a response also
+      // contains release metadata consumed by owner-list projections.
+      version: detail.plugin.current_version ?? "1.0.0",
+      draftRevision: detail.draft_revision,
+      draftChangelog: detail.draft_changelog ?? "",
+    }));
 }
 
 export async function trackSkillView(id: string): Promise<void> {
