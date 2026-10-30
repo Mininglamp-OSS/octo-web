@@ -358,7 +358,7 @@ export default function AllAssetsList({
         : () => onOpenType(wireType),
       onVisibility: wireType !== "connector" && item.listingState === "published" && !pending && (item.visibility === "private" || item.visibility === "space") ? () => setVisibilityId(item.id) : undefined,
       onEdit:
-        onRequestAction && !pending && (!listedToOrg || wireType !== "connector")
+        onRequestAction && !listedToOrg && !pending
           ? () => onRequestAction({ pluginId: item.id, type: rowType, action: "edit" })
           : undefined,
       editAria: t("skillMarket.plugin.ariaEdit", { values: { name: item.name } }),

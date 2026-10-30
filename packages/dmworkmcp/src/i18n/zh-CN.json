@@ -418,6 +418,8 @@
     "daysAgo": "{{count}} 天前"
   },
   "review": {
+    "draftEditHint": "如需修改正文或依赖，可将提示词转发给 Bot。Bot 保存草稿后，点击“读取最新草稿”，再确认版本号和更新说明并提交升级。",
+    "refreshDraft": "读取最新草稿",
     "cancel": "取消",
     "relationsLoading": "正在读取当前子项…",
     "relationsFrozen": "本次送审将冻结当前 {{count}} 个子项",

@@ -67,6 +67,15 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
   const refreshRef = useRef(list.refresh);
   const reviewsRefreshRef = useRef(myReviews.refresh);
   const [createVisible, setCreateVisible] = useState(false);
+  // 提交组织审核 / 重新提交 / 发布新版本 all funnel into NewSkillModal's review
+  // mode: it collects the version label + changelog and calls
+  // `POST /plugins/review_requests`. Content edits go through the separate edit
+  // flow first — an owner edit is a mutable draft server-side and never mints a
+  // version on its own.
+  const [reviewSkill, setReviewSkill] = useState<Skill | null>(null);
+  const [reviewInitial, setReviewInitial] = useState<{ version?: string; changelog?: string } | null>(
+    null
+  );
   const [publishMenuOpen, setPublishMenuOpen] = useState(false);
   const [botPublishVisible, setBotPublishVisible] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -106,6 +115,8 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
       setVisibilityId(null);
       setPublishMenuOpen(false);
       setCreateVisible(false);
+      setReviewSkill(null);
+      setReviewInitial(null);
       setBotPublishVisible(false);
       setDetailId(null);
       setEditing(null);
@@ -187,13 +198,15 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
 
   function closeCreate() {
     setCreateVisible(false);
+    setReviewSkill(null);
+    setReviewInitial(null);
   }
 
   /** Open NewSkillModal in review-submit mode for an already-published skill. */
-  function openReviewSubmit(skill: Skill) {
-    // Reuse the draft editor so upgrading can publish a previously saved draft
-    // without requiring another upload or reading the old release.
-    void openEditor(skill);
+  function openReviewSubmit(skill: Skill, initialChangelog?: string) {
+    setReviewSkill(skill);
+    setReviewInitial(initialChangelog ? { changelog: initialChangelog } : null);
+    setCreateVisible(true);
   }
 
   async function handleCancelReview(reviewId: string) {
@@ -265,10 +278,26 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
     }
   }
 
-  /** Detail and owner rows both edit the saved draft, never the release. */
+  /** Edit from the detail modal — the SECOND entry point into the editor, gated
+   *  with the same predicate as the row's 编辑 button so it cannot route around
+   *  review (mirrors McpMarketListPage.handleEditFromDetail). Passing
+   *  `setEditing` straight through — as this did — let a listed-to-org skill's
+   *  detail modal open EditSkillModal → updateSkill → a full replace that takes
+   *  effect for the whole org, bypassing the review the row gate exists to force.
+   *  The row's onEdit/onUpgrade split (`:447`/`:464`) is the exact predicate:
+   *    - not listed to the org, nothing pending → the normal edit,
+   *    - listed to the org → 升级版本 (the edit becomes the reviewed content),
+   *    - a request pending → refused; the live version must not move while a
+   *      reviewer is looking at the next one. */
   function handleEditFromDetail(skill: Skill) {
-    if (skill.displayStatus === "pending_review") {
+    const listedToOrg = skill.listingState === "published" && skill.visibility === "space";
+    const pending = skill.displayStatus === "pending_review";
+    if (pending) {
       showToast(t("skillMarket.review.pendingBlocksEdit"));
+      return;
+    }
+    if (listedToOrg) {
+      openReviewSubmit(skill);
       return;
     }
     void openEditor(skill);
@@ -334,6 +363,10 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
                   onClick={() => {
                     Dap.shared.track("market_manual_publish_dialog_opened", { market_type: "skill" });
                     setPublishMenuOpen(false);
+                    // Plain upload, not a review resubmit — clear any review
+                    // context left over from an earlier 提交审核 click.
+                    setReviewSkill(null);
+                    setReviewInitial(null);
                     setCreateVisible(true);
                   }}
                 >
@@ -458,10 +491,15 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
                 dependencyIssues: skill.dependencyIssues,
                 ariaLabel: skill.name,
                 onOpen: () => openDetail(skill),
-                // Owner saves advance the draft; publication is a separate action.
-                // Pending submissions remain read-only in the UI.
+                // 编辑 is withheld only from a plugin LISTED TO THE ORG: a direct
+                // edit would take effect immediately for everyone, routing around
+                // review. A private plugin — published or not — has no org audience
+                // to protect and stays editable, and a draft/rejected/delisted row
+                // is editable by definition (that is how you fix and republish).
+                // While a request is pending nothing changes either, so the live
+                // version stays up until a decision lands.
                 onVisibility: skill.listingState === "published" && !pending && (skill.visibility === "private" || skill.visibility === "space") ? () => setVisibilityId(skill.id) : undefined,
-                onEdit: !pending ? () => void openEditor(skill) : undefined,
+                onEdit: !listedToOrg && !pending ? () => void openEditor(skill) : undefined,
                 onDelete: () => setDeleting(skill),
                 // The shared plugin namespace, same as the connector and expert
                 // pages: one MineTable affordance must not announce itself with
@@ -529,6 +567,8 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
         categories={list.categories}
         onClose={closeCreate}
         onCreated={handleCreated}
+        reviewSkill={reviewSkill}
+        reviewInitial={reviewInitial}
       />
       <BotPublishModal
         visible={botPublishVisible}

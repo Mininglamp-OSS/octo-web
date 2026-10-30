@@ -163,8 +163,13 @@ describe("SkillListPage", () => {
       await screen.findByRole("row", { name: "meeting-note-cleaner" })
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^安装$/ })).not.toBeInTheDocument();
-    // Owner edits advance the draft while the released version stays live.
-    expect(screen.getByRole("button", { name: editSkillName })).toBeInTheDocument();
+    // The fixture is listed to the org — org intent (visibility "space") AND an
+    // actual listing (listingState "published") — so 编辑 is deliberately
+    // withheld: a direct edit would take effect for everyone immediately and
+    // route around review. 删除 stays available.
+    expect(
+      screen.queryByRole("button", { name: editSkillName })
+    ).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: deleteSkillName })
     ).toBeInTheDocument();
@@ -235,7 +240,7 @@ describe("SkillListPage", () => {
     {
       label: "plugin listed to the org",
       patch: { visibility: "space", listingState: "published", displayStatus: "published" },
-      editable: true,
+      editable: false,
     },
     {
       label: "plugin whose review is still pending",
@@ -841,8 +846,10 @@ describe("SkillListPage", () => {
     expect(api.getSkill).toHaveBeenCalledTimes(2);
   });
 
-  it("opens the owner draft editor from a listed-to-org detail", async () => {
-    // The owner edits the saved draft, even while the old release is listed.
+  it("gates the detail modal's 编辑 for a listed-to-org row into 升级版本, not a direct edit", async () => {
+    // The default fixture is published + space (listed to the org). Opening its
+    // detail modal and clicking 编辑 must NOT reach updateSkill — it opens the
+    // 升级版本 (review-submit) flow instead, so the edit becomes reviewed content.
     vi.mocked(api.getSkill).mockReset().mockResolvedValue(skill);
     vi.mocked(api.getSkillDraft).mockResolvedValue(skill);
 
@@ -855,8 +862,11 @@ describe("SkillListPage", () => {
 
     fireEvent.click(screen.getAllByRole("button", { name: editSkillName }).at(-1)!);
 
-    expect(await screen.findByPlaceholderText(/简述此版本变更内容|skillMarket\.form\.changelogPlaceholder/)).toBeInTheDocument();
-    expect(api.getSkillDraft).toHaveBeenCalledWith(skill.id);
+    // The review-submit modal opened (its changelog placeholder is distinct from
+    // EditSkillModal's), and no direct edit fired.
+    expect(
+      await screen.findByPlaceholderText(reviewChangelogPlaceholder)
+    ).toBeInTheDocument();
     expect(api.updateSkill).not.toHaveBeenCalled();
   });
 

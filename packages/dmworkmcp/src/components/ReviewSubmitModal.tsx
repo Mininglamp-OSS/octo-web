@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { TextArea } from "@douyinfe/semi-ui";
+import { TextArea, Toast } from "@douyinfe/semi-ui";
 import { versionErrorKey } from "@dmwork/skillmarket";
 import { t, useI18n, WKApp, WKButton, WKInput, WKModal } from "@octo/base";
 import {
   submitPluginReview,
   type PluginReviewRelation,
 } from "../api/pluginReview";
+
+import ExpertBotPublishModal from "./ExpertBotPublishModal";
 
 /**
  * What is being submitted. Built by the market page from the row it was clicked
@@ -24,6 +26,8 @@ export interface ReviewSubmitTarget {
    * False = first listing of a private draft.
    */
   isUpgrade: boolean;
+  /** Expert/team upgrade content is authored through the existing Bot prompt. */
+  editKind?: "agent" | "squad";
   /** Prefilled changelog — used by 重新提交 to carry the rejected attempt's text. */
   initialChangelog?: string;
   /**
@@ -99,6 +103,7 @@ export default function ReviewSubmitModal({
   onSubmitted,
 }: ReviewSubmitModalProps) {
   useI18n();
+  const [editingWithBot, setEditingWithBot] = useState(false);
   const [version, setVersion] = useState("");
   const [changelog, setChangelog] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -124,6 +129,7 @@ export default function ReviewSubmitModal({
 
   useEffect(() => {
     const handleSpaceChanged = () => {
+      setEditingWithBot(false);
       generationRef.current++;
       submittingRef.current = false;
       setSubmitting(false);
@@ -190,6 +196,7 @@ export default function ReviewSubmitModal({
   // Reseed on every open / target switch so a previous session's version label,
   // changelog or error never leaks into the next one.
   useLayoutEffect(() => {
+    setEditingWithBot(false);
     submittingRef.current = false;
     setSubmitting(false);
     setError(null);
@@ -277,6 +284,22 @@ export default function ReviewSubmitModal({
     onClose();
   }
 
+  // Replace the upgrade dialog while forwarding; keep this component mounted
+  // so version/changelog state survives returning from the Bot prompt.
+  if (editingWithBot && target?.isUpgrade && target.editKind) {
+    return <ExpertBotPublishModal
+      visible
+      kind={target.editKind}
+      mode="update"
+      editingId={target.pluginId}
+      onClose={() => {
+        setEditingWithBot(false);
+        resolveTarget(target);
+      }}
+      onToast={message => Toast.success(message)}
+    />;
+  }
+
   return (
     <WKModal
       visible={Boolean(target)}
@@ -317,6 +340,17 @@ export default function ReviewSubmitModal({
               })
             : t("skillMarket.review.firstListingNotice")}
         </p>
+        {target?.isUpgrade && target.editKind && (
+          <div className="wk-mcp-review-submit__field">
+            <p>{t("mcp.review.draftEditHint")}</p>
+            <WKButton variant="secondary" disabled={submitting} onClick={() => setEditingWithBot(true)}>
+              {t(target.editKind === "squad" ? "mcp.expert.botUpdateTitle" : "mcp.expert.botUpdateTitleAgent")}
+            </WKButton>
+            <WKButton variant="secondary" disabled={submitting || resolving} onClick={() => resolveTarget(target)}>
+              {t("mcp.review.refreshDraft")}
+            </WKButton>
+          </div>
+        )}
         <label className="wk-mcp-review-submit__field">
           <span>{t("skillMarket.review.fieldVersion")}</span>
           <WKInput value={version} onChange={setVersion} maxLength={32} />

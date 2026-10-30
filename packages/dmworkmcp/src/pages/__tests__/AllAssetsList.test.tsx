@@ -258,29 +258,6 @@ describe("AllAssetsList parity with type tabs", () => {
     );
   });
 
-  it.each(["skill", "expert", "expert_team", "connector"])(
-    "offers owner draft editing for a published %s except connectors",
-    async pluginType => {
-      h.getMySkills.mockResolvedValue(page([
-        asset("listed", "Listed", { pluginType, visibility: "space", listingState: "published", displayStatus: "published" }),
-        asset("pending", "Pending", { pluginType, visibility: "space", listingState: "published", displayStatus: "pending_review" }),
-      ]));
-      const onRequestAction = vi.fn();
-      await act(async () => {
-        ReactDOM.render(React.createElement(AllAssetsList, { onOpenType: vi.fn(), onRequestAction }), container);
-      });
-      const buttons = Array.from(container.querySelectorAll("button"));
-      const edit = buttons.find(button => button.textContent === "edit-Listed");
-      expect(Boolean(edit)).toBe(pluginType !== "connector");
-      expect(buttons.some(button => button.textContent === "edit-Pending")).toBe(false);
-      expect(buttons.some(button => button.textContent === "upgrade-Listed")).toBe(true);
-      if (edit) {
-        act(() => edit.click());
-        expect(onRequestAction).toHaveBeenCalledWith(expect.objectContaining({ pluginId: "listed", action: "edit" }));
-      }
-    }
-  );
-
   it("requests edit and upgrade from the page-level modal host", async () => {
     const onRequestAction = vi.fn();
     h.getMySkills.mockResolvedValue(

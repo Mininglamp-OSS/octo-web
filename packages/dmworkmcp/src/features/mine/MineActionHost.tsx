@@ -5,7 +5,9 @@ import {
   EditSkillModal,
   DeleteConfirmModal,
   getCategories,
+  getSkill,
   getSkillDraft,
+  NewSkillModal,
   SkillDetailModal,
   type Category,
   type MineActionRequest,
@@ -44,6 +46,7 @@ export default function MineActionHost({
 }: MineActionHostProps) {
   useI18n();
   const [skill, setSkill] = useState<Skill | null>(null);
+  const [skillFlow, setSkillFlow] = useState<"edit" | "upgrade" | null>(null);
   const [skillDetailId, setSkillDetailId] = useState<string | null>(null);
   const [deletingSkill, setDeletingSkill] = useState<Skill | null>(null);
   const [skillCategories, setSkillCategories] = useState<Category[]>([]);
@@ -67,6 +70,7 @@ export default function MineActionHost({
 
   const clear = useCallback(() => {
     setSkill(null);
+    setSkillFlow(null);
     setSkillDetailId(null);
     setDeletingSkill(null);
     setSkillCategories([]);
@@ -119,11 +123,12 @@ export default function MineActionHost({
           return;
         }
         const [item, categories] = await Promise.all([
-          getSkillDraft(request.pluginId),
+          request.action === "edit" ? getSkillDraft(request.pluginId) : getSkill(request.pluginId),
           getCategories(),
         ]);
         if (!current()) return;
         setSkillCategories(categories);
+        setSkillFlow(request.action);
         setSkill(item);
         return;
       }
@@ -159,6 +164,7 @@ export default function MineActionHost({
           name: item.name,
           version: item.version,
           isUpgrade: true,
+          editKind: request.type === "squad" ? "squad" : "agent",
           loadSnapshot: () => loadExpertReviewSnapshot(item.id),
           needs: { relations: true, content: true },
         });
@@ -191,12 +197,15 @@ export default function MineActionHost({
             Toast.warning(t("skillMarket.review.pendingBlocksEdit"));
             return;
           }
+          const listedToOrg =
+            item.listingState === "published" && item.visibility === "space";
           const generation = ++loadGeneration.current;
           const session = sessionKey();
           try {
-            const editable = await getSkillDraft(item.id);
+            const editable = listedToOrg ? item : await getSkillDraft(item.id);
             if (generation !== loadGeneration.current || session !== sessionKey()) return;
             setSkillDetailId(null);
+            setSkillFlow(listedToOrg ? "upgrade" : "edit");
             setSkill(editable);
           } catch (error) {
             if (generation !== loadGeneration.current || session !== sessionKey()) return;
@@ -206,12 +215,23 @@ export default function MineActionHost({
         onDelete={(item) => setDeletingSkill(item)}
       />
       <EditSkillModal
-        skill={skill}
+        skill={skillFlow === "edit" ? skill : null}
         categories={skillCategories}
         onClose={close}
         onUpdated={notifyChanged}
         onPublished={(message) => {
           Toast.success(message);
+          notifyChanged();
+        }}
+      />
+      <NewSkillModal
+        visible={Boolean(skill) && skillFlow === "upgrade"}
+        categories={skillCategories}
+        reviewSkill={skill}
+        reviewInitial={null}
+        onClose={close}
+        onCreated={(message) => {
+          Toast.success(message ?? t("skillMarket.review.submittedToast"));
           notifyChanged();
         }}
       />

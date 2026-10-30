@@ -418,6 +418,8 @@
     "daysAgo": "{{count}} days ago"
   },
   "review": {
+    "draftEditHint": "To change content or dependencies, forward the prompt to a Bot. After the Bot saves the draft, reload it, confirm the version and changelog, then submit the upgrade.",
+    "refreshDraft": "Reload latest draft",
     "cancel": "Cancel",
     "relationsLoading": "Loading current items…",
     "relationsFrozen": "This submission freezes the current {{count}} item(s)",

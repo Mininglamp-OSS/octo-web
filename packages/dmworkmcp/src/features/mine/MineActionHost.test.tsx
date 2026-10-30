@@ -316,15 +316,6 @@ describe("MineActionHost", () => {
     ).toBe("true");
   });
 
-  it("opens a saved organization Skill draft for upgrade without rereading its release", async () => {
-    renderHost({ requestId: 1, pluginId: skill.id, type: "skill", action: "upgrade" });
-    await act(async () => undefined);
-    const editor = container.querySelector('[data-testid="skill-edit"]');
-    expect(editor?.getAttribute("data-name")).toBe("New draft");
-    expect(h.getSkillDraft).toHaveBeenCalledWith(skill.id);
-    expect(h.getSkill).not.toHaveBeenCalled();
-  });
-
   it("hydrates detail-to-edit from the draft, including notes and revision", async () => {
     renderHost({ requestId: 1, pluginId: skill.id, type: "skill", action: "view" });
     await act(async () => undefined);

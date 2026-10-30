@@ -8,6 +8,14 @@ const busHandlers = new Set<() => void>();
 const submitPluginReview = vi.fn();
 let modalCancel: () => void;
 
+vi.mock("../ExpertBotPublishModal", () => ({
+  default: ({ kind, editingId, onClose }: { kind: string; editingId: string; onClose: () => void }) => (
+    <div data-bot-kind={kind} data-plugin-id={editingId}>
+      <button onClick={onClose}>return-to-upgrade</button>
+    </div>
+  ),
+}));
+
 vi.mock("@dmwork/skillmarket", () => ({ versionErrorKey: () => undefined }));
 vi.mock("@octo/base", () => ({
   t: (key: string) => key,
@@ -313,6 +321,41 @@ describe("ReviewSubmitModal snapshot session", () => {
     await act(async () => { oldRead.resolve({ content, relations: [] }); });
     expect(button(PUBLISH).disabled).toBe(true);
     expect(container.textContent).not.toContain("mcp.review.relationsFrozen");
+    expect(submitPluginReview).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("Expert upgrade draft editing", () => {
+  it.each(["agent", "squad"] as const)("edits %s through the Bot prompt, reloads the draft and submits its exact pins", async kind => {
+    submitPluginReview.mockClear();
+    submitPluginReview.mockResolvedValue(undefined);
+    const loadSnapshot = vi.fn().mockResolvedValue({ version: "1.1.0", content: { manifestJson: { description: "before" }, pluginJson: {} }, relations: [] });
+    const item = { ...target("expert-1"), isUpgrade: true, editKind: kind, loadSnapshot, needs: { content: true, relations: true } };
+    await render(item);
+    editChangelog("Keep these review notes");
+    await click(kind === "squad" ? "mcp.expert.botUpdateTitle" : "mcp.expert.botUpdateTitleAgent");
+    expect(container.querySelector("[data-bot-kind]")?.getAttribute("data-bot-kind")).toBe(kind);
+    expect(container.querySelector("[data-plugin-id]")?.getAttribute("data-plugin-id")).toBe("expert-1");
+    expect(container.querySelector("textarea")).toBeNull();
+    expect(submitPluginReview).not.toHaveBeenCalled();
+    const relations = [{ relationId: "rel-1", targetPluginId: "skill-2", targetVersionId: "fixed-release", relationType: "expert_skill", sortOrder: 0, data: {} }];
+    loadSnapshot.mockResolvedValue({ version: "1.2.0", content: { manifestJson: { description: "repaired draft" }, pluginJson: {} }, relations });
+    await click("return-to-upgrade");
+    expect(container.querySelector("textarea")?.value).toBe("Keep these review notes");
+    expect(loadSnapshot).toHaveBeenCalledTimes(2);
+    await click("skillMarket.plugin.actionUpgrade");
+    expect(submitPluginReview).toHaveBeenCalledWith({ pluginId: "expert-1", version: "1.2.0", changelog: "Keep these review notes", manifestJson: { description: "repaired draft" }, pluginJson: {}, relations });
+  });
+
+  it("blocks submission when reloading the Bot draft fails", async () => {
+    submitPluginReview.mockClear();
+    const loadSnapshot = vi.fn().mockResolvedValue({ content: { manifestJson: {}, pluginJson: {} }, relations: [] });
+    await render({ ...target(), isUpgrade: true, editKind: "agent", loadSnapshot, needs: { content: true, relations: true } });
+    loadSnapshot.mockRejectedValue(new Error("draft unavailable"));
+    await click("mcp.review.refreshDraft");
+    expect(button("skillMarket.plugin.actionUpgrade").disabled).toBe(true);
+    expect(container.textContent).toContain("draft unavailable");
     expect(submitPluginReview).not.toHaveBeenCalled();
   });
 });
