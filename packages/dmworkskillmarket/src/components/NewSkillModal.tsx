@@ -7,7 +7,7 @@ import { MAX_SKILL_TAGS, validateSkillTag, validateSkillTags } from "../utils/fo
 import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 import IconCropModal from "./IconCropModal";
 import InlineConfirmBar from "./InlineConfirmBar";
-import { nextPatch, versionErrorKey } from "../utils/version";
+import { nextPatch, versionErrorKey, upgradeVersionErrorKey } from "../utils/version";
 
 /**
  * The visibility the author DECLARES on the plugin. It is stored as-is and lists
@@ -110,7 +110,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
   // new package: without it the reviewer would be approving something that
   // shipped before they ever saw it. A private draft is the other case — nobody
   // else can see it, so the row is legitimately the thing under review.
-  const isUpgrade = Boolean(reviewSkill && reviewSkill.visibility !== "private");
+  const isUpgrade = Boolean(reviewSkill && (reviewSkill.listingState === "published" || reviewSkill.visibility !== "private"));
   const busy = stage === "uploading" || stage === "parsing";
 
   const reviewDefaultVersion = useMemo(() => {
@@ -121,9 +121,15 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
     // last dot-part of `v1.2.3` or `2.0.0-beta.1` produced another label the
     // server refuses; `nextPatch` falls back to 1.0.0 instead, which — the
     // stored label being unorderable — the forward-only rule accepts.
-    if (reviewSkill) return nextPatch(reviewSkill.version);
+    if (reviewSkill) {
+      const suggested = nextPatch(reviewSkill.version);
+      const draft = reviewSkill.draftVersion;
+      if (isUpgrade && draft && !upgradeVersionErrorKey(reviewSkill.version, draft) &&
+        versionErrorKey(draft, suggested)) return draft;
+      return suggested;
+    }
     return DEFAULT_CREATE_VERSION;
-  }, [reviewSkill, reviewInitial]);
+  }, [reviewSkill, reviewInitial, isUpgrade]);
 
   const dirty = isReviewMode
     ? Boolean(
@@ -161,7 +167,10 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
   // writes through `POST /plugins/review_requests`, and SubmitReview gates on
   // `validVersion` with no stored-label grandfathering. Exempting the legacy
   // label here would move the refusal from the button to a 400.
-  const versionError = versionErrorKey(isReviewMode ? reviewSkill?.version : undefined, version);
+  const versionError = isUpgrade
+    ? upgradeVersionErrorKey(reviewSkill?.version, version) ||
+      versionErrorKey(reviewSkill?.draftVersion, version)
+    : versionErrorKey(isReviewMode ? reviewSkill?.version : undefined, version);
 
   const canCreate = isReviewMode
     ? Boolean(

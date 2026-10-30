@@ -587,6 +587,15 @@ describe("NewSkillModal", () => {
   });
 
   describe("review mode", () => {
+    it("seeds above the published version and rejects reusing that label", async () => {
+      render(<NewSkillModal visible categories={categories} onClose={vi.fn()} onCreated={vi.fn()} reviewSkill={reviewSkillFixture({ version: "1.0.3" })} />);
+      expect(screen.getByPlaceholderText(versionPlaceholder)).toHaveValue("1.0.4");
+      fireEvent.change(screen.getByPlaceholderText(versionPlaceholder), { target: { value: "1.0.3" } });
+      expect(screen.getByText(/新版本必须高于当前已发布版本|versionMustExceedPublished/)).toBeInTheDocument();
+      fireEvent.change(screen.getByPlaceholderText(versionPlaceholder), { target: { value: "1.0.4" } });
+      expect(screen.queryByText(/新版本必须高于当前已发布版本|versionMustExceedPublished/)).not.toBeInTheDocument();
+    });
+
     it("closes an untouched upgrade without showing a leave confirmation", async () => {
       const onClose = vi.fn();
       render(
@@ -783,6 +792,28 @@ describe("NewSkillModal", () => {
       expect(leave).toHaveClass("skill-market-leave-confirm__leave");
       fireEvent.click(leave);
       expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it("uses the draft lower bound when it is ahead of the published release", async () => {
+      render(<NewSkillModal visible categories={categories} onClose={vi.fn()} onCreated={vi.fn()}
+        reviewSkill={reviewSkillFixture({ version: "1.0.3", draftVersion: "1.0.5" })} />);
+      expect(screen.getByPlaceholderText(versionPlaceholder)).toHaveValue("1.0.5");
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText(selectNewZipLabel), { target: { files: [zipFile()] } });
+      });
+      await waitFor(() => expect(screen.getByText("skill-pack.zip")).toBeInTheDocument());
+      fireEvent.change(screen.getByPlaceholderText(changelogPlaceholder), { target: { value: "Upgrade" } });
+      const submit = screen.getByRole("button", { name: upgradeButton });
+      fireEvent.change(screen.getByPlaceholderText(versionPlaceholder), { target: { value: "1.0.4" } });
+      expect(submit).toBeDisabled();
+      fireEvent.click(submit);
+      expect(api.createReviewRequest).not.toHaveBeenCalled();
+      fireEvent.change(screen.getByPlaceholderText(versionPlaceholder), { target: { value: "1.0.5" } });
+      expect(submit).toBeEnabled();
+      fireEvent.click(submit);
+      await waitFor(() => expect(api.createReviewRequest).toHaveBeenCalledWith(
+        expect.objectContaining({ pluginId: "skill-pack", version: "1.0.5" }),
+      ));
     });
 
     it("submits an upgrade with the newly uploaded package as its content", async () => {

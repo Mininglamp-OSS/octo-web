@@ -304,6 +304,13 @@ describe("skillApiReal", () => {
     );
   });
 
+  it("uses the formal release for owner display and keeps draft reads independent", async () => {
+    mockFetch.mockReturnValueOnce(jsonResponse([pluginSkillWire({ current_version: "1.0.0", current_version_id: "draft-v0", published_version: "1.0.3", published_version_id: "release-v3" })], 200, { total: 1, page: 1, page_size: 20 }));
+    expect((await getMySkills()).items[0]).toMatchObject({ version: "1.0.3", draftVersion: "1.0.0" });
+    mockFetch.mockReturnValueOnce(jsonResponse({ plugin: pluginSkillWire({ current_version: "1.0.5", current_version_id: "draft-v5", published_version: "1.0.3", published_version_id: "release-v3" }), relations: [], draft_revision: "revision" }));
+    expect((await getSkillDraft("skill-1")).version).toBe("1.0.5");
+  });
+
   it("getMySkills scopes the unified list to mode=mine", async () => {
     mockFetch.mockReturnValueOnce(
       jsonResponse([], 200, { total: 0, page: 1, page_size: 20 })

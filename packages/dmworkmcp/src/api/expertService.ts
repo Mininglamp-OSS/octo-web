@@ -711,7 +711,14 @@ export async function getExpertEditMetadata(id: string): Promise<ExpertItem> {
   const item = detail.plugin.plugin_type === "expert_team"
     ? mapPluginSquadListItem(detail.plugin, "")
     : mapPluginAgentListItem(detail.plugin, "");
-  return { ...item, draftRevision: detail.draft_revision, draftChangelog: detail.draft_changelog ?? "" };
+  return {
+    ...item,
+    // The list mapper prefers releases; metadata editing must use the draft
+    // label for both experts and teams regardless of release metadata.
+    version: detail.plugin.current_version ?? "",
+    draftRevision: detail.draft_revision,
+    draftChangelog: detail.draft_changelog ?? "",
+  };
 }
 
 async function updateExpertVisibilityReal(

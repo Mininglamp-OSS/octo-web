@@ -390,7 +390,8 @@ function mapSkill(raw: PluginListItemWire): Skill {
       raw.visibility === "system"
         ? raw.visibility
         : "private",
-    version: raw.current_version ?? "1.0.0",
+    version: raw.published_version ?? raw.current_version ?? "1.0.0",
+    draftVersion: raw.current_version ?? undefined,
     readmeContent: "",
     iconUrl: raw.icon_url ?? raw.icon ?? "",
     fileName: "",
@@ -610,7 +611,14 @@ export function getSkill(id: string): Promise<Skill> {
 /** Owner edit forms must read saved drafts, rather than the released projection. */
 export function getSkillDraft(id: string): Promise<Skill> {
   return request<PluginDetailWire>(`/plugins/${encodeURIComponent(id)}/draft`)
-    .then((detail) => ({ ...mapSkillDetail(detail.plugin), draftRevision: detail.draft_revision, draftChangelog: detail.draft_changelog ?? "" }));
+    .then((detail) => ({
+      ...mapSkillDetail(detail.plugin),
+      // Edit forms always use the editable head, even if a response also
+      // contains release metadata consumed by owner-list projections.
+      version: detail.plugin.current_version ?? "1.0.0",
+      draftRevision: detail.draft_revision,
+      draftChangelog: detail.draft_changelog ?? "",
+    }));
 }
 
 export async function trackSkillView(id: string): Promise<void> {
