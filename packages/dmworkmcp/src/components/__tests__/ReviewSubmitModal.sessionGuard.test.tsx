@@ -16,7 +16,7 @@ vi.mock("../ExpertBotPublishModal", () => ({
   ),
 }));
 
-vi.mock("@dmwork/skillmarket", () => ({ versionErrorKey: () => undefined }));
+vi.mock("@dmwork/skillmarket", async () => import("../../../../dmworkskillmarket/src/utils/version"));
 vi.mock("@octo/base", () => ({
   t: (key: string) => key,
   useI18n: () => undefined,
@@ -355,5 +355,61 @@ describe("Expert upgrade draft editing", () => {
     expect(button("skillMarket.plugin.actionUpgrade").disabled).toBe(true);
     expect(container.textContent).toContain("draft unavailable");
     expect(submitPluginReview).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("Expert upgrade version selection", () => {
+  const content = { manifestJson: {}, pluginJson: {} };
+  function versionInput() { return container.querySelector("input") as HTMLInputElement; }
+  function editVersion(value: string) {
+    act(() => { versionInput().value = value; Simulate.change(versionInput()); });
+  }
+  it.each(["agent", "squad"] as const)("keeps a new version when the %s draft still has the released label", async editKind => {
+    const loadSnapshot = vi.fn().mockResolvedValue({ version: "1.0.0", content, relations: [] });
+    const item = { ...target(), isUpgrade: true, editKind, loadSnapshot, needs: { content: true, relations: true } };
+    await render(item);
+    expect(versionInput().value).toBe("1.0.1");
+    await click("mcp.review.refreshDraft");
+    expect(versionInput().value).toBe("1.0.1");
+    await click(editKind === "squad" ? "mcp.expert.botUpdateTitle" : "mcp.expert.botUpdateTitleAgent");
+    await click("return-to-upgrade");
+    await render(null);
+    await render(item);
+    expect(versionInput().value).toBe("1.0.1");
+  });
+  it.each(["agent", "squad"] as const)("preserves a manually selected %s version across refresh", async editKind => {
+    const loadSnapshot = vi.fn().mockResolvedValue({ version: "1.0.0", content, relations: [] });
+    await render({ ...target(), isUpgrade: true, editKind, loadSnapshot, needs: { content: true, relations: true } });
+    editVersion("1.2.0");
+    await click("mcp.review.refreshDraft");
+    expect(versionInput().value).toBe("1.2.0");
+    submitPluginReview.mockResolvedValue(undefined);
+    await click("skillMarket.plugin.actionUpgrade");
+    expect(submitPluginReview).toHaveBeenCalledWith(expect.objectContaining({ version: "1.2.0" }));
+  });
+  it("does not overwrite input typed while the initial draft read is pending", async () => {
+    const read = deferred<{version:string; content:typeof content; relations:[]}>();
+    await render({ ...target(), isUpgrade:true, editKind:"agent", loadSnapshot:()=>read.promise, needs:{content:true,relations:true} });
+    editVersion("1.2.0");
+    await act(async () => { read.resolve({version:"1.1.0",content,relations:[]}); });
+    expect(versionInput().value).toBe("1.2.0");
+  });
+  it("seeds an advanced draft label but blocks reusing the published label", async () => {
+    await render({ ...target(), isUpgrade:true, editKind:"agent", loadSnapshot:async()=>({version:"1.1.0",content,relations:[]}), needs:{content:true,relations:true} });
+    expect(versionInput().value).toBe("1.1.0");
+    editVersion("1.0.0");
+    expect(button("skillMarket.plugin.actionUpgrade").disabled).toBe(true);
+    await click("skillMarket.plugin.actionUpgrade");
+    expect(submitPluginReview).not.toHaveBeenCalled();
+  });
+  it("retains user input and blocks it when the refreshed draft advances past it", async () => {
+    const loadSnapshot=vi.fn().mockResolvedValue({version:"1.1.0",content,relations:[]});
+    await render({...target(),isUpgrade:true,editKind:"agent",loadSnapshot,needs:{content:true,relations:true}});
+    editVersion("1.2.0");
+    loadSnapshot.mockResolvedValue({version:"1.3.0",content,relations:[]});
+    await click("mcp.review.refreshDraft");
+    expect(versionInput().value).toBe("1.2.0");
+    expect(button("skillMarket.plugin.actionUpgrade").disabled).toBe(true);
   });
 });

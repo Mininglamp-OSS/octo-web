@@ -419,6 +419,7 @@
   },
   "review": {
     "draftEditHint": "Bot 会保存修改并提交发布，按组织审核策略生效。使用 Bot 后将关闭本窗口并刷新列表，请根据 Bot 的结果确认发布或审核状态，避免重复提交。",
+    "versionMustExceedPublished": "新版本号必须高于当前已发布版本",
     "refreshDraft": "读取最新草稿",
     "cancel": "取消",
     "relationsLoading": "正在读取当前子项…",

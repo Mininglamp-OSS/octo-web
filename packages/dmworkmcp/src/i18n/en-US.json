@@ -419,6 +419,7 @@
   },
   "review": {
     "draftEditHint": "The Bot saves changes and submits publication under the organization review policy. Returning closes this dialog and refreshes the list. Check the Bot result for publication or pending review before submitting again.",
+    "versionMustExceedPublished": "The new version must be higher than the published version",
     "refreshDraft": "Reload latest draft",
     "cancel": "Cancel",
     "relationsLoading": "Loading current items…",

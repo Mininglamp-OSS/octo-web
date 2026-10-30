@@ -142,19 +142,19 @@ ${step4Title}
      占位符（例如键 \`TOKEN\` 配 \`\${GITHUB_TOKEN}\`），也必须改为规范化键名占位 \`\${TOKEN}\`。
    - 向我展示${actionWord}预览${isUpdate ? "（包括新版本号、更新说明，以及保存后立即提交发布的动作）" : ""}，并在这里暂停，明确等待我回复“${confirmation}”；未收到这四个字，
      不得创建、更新、发布或提交审核。可先用 \`--dry-run\` 打印将要发送的请求核对。
-   - 在收到“${confirmation}”后，只使用 \`expert.md\` 记录的统一 \`octo-cli marketplace plugin ...\` 命令完成${actionWord}：
+   - 在收到“${confirmation}”后，${isUpdate ? "优先使用统一 CLI 命令，条件保存的兼容 HTTP 回退仅按下述规则执行" : "只使用 `expert.md` 记录的统一 `octo-cli marketplace plugin ...` 命令"}完成${actionWord}：
      如需附带或更新技能包，此时再按 \`expert.md\` / \`skills.md\` 的统一 skill upload / parse /
      \`plugin import\` 流程处理；取得预签名后不得输出 \`presigned_url\` / \`method\` / \`headers\`，
      也不得写入 payload 文件。
      ${
        isUpdate
-         ? `先使用 \`plugin upsert --data @${pluginJsonFile}\` 保存草稿，设置 \`plugin.plugin_id = "${targetId}"\` 和顶层 \`expected_draft_revision\`（原样使用读取的 draft_revision），提交完整回填后的 payload。保持原 visibility；未修改的关系必须保留 relation_id、target_version_id、sort_order 和 data，不得把固定版本自动换成最新版本。遇到失效依赖，先请我决定移除还是替换及目标版本，不得擅自删除。任何 409 都停止并返回错误摘要；草稿冲突需重新读取并核对修改，version_migration_required 需先完成正式版本基线迁移，不能取消审核、下架或绕过校验。保存成功后回读草稿，确认正文、关系及版本与本次保存一致；若发现其他并发修改则停止。随后立即按 \`expert.md\` 调用 \`plugin publish\`，传入当前 plugin_id、已确认的新版本号和更新说明，完成本次提交发布，不再等待用户另点按钮。只调用一次发布入口，不同时重复提交审核；不得绕过或修改组织审核策略，不得自动审批、取消已有审核或下架。发布失败时明确报告“草稿已保存，但发布失败”，保留 payload 并给出原因及可重试命令；不得伪造已上架。保存成功后的重试只处理发布，不重复保存或创建资源。若超时或返回 review_pending，先回读当前发布状态及对应审核请求，核对是否已经成功或正在审核，不得盲目重复提交。`
+         ? `准备 \`plugin upsert --data @${pluginJsonFile}\` 的条件保存请求，设置 \`plugin.plugin_id = "${targetId}"\` 和顶层 \`expected_draft_revision\`（原样使用读取的 draft_revision），提交完整回填后的 payload。先对这份完整 payload 执行 CLI 的 \`--dry-run\`；最低版本检查不代表支持条件保存字段；校验通过后才使用该命令保存。若本地 schema 明确拒绝 \`expected_draft_revision\`（例如 octo-cli v0.19.5），不得删除或忽略该字段：改用同一 API 地址的 \`POST /market/api/v1/plugins/upsert\`，发送同一完整 JSON body（包括原始 expected_draft_revision、plugin 和 relations），通过安全 HTTP 客户端在内存中注入同一 Bot 的 \`Authorization: Bearer\`、\`X-Space-Id\` 和 \`Content-Type: application/json\` 请求头。凭证只从当前 Channel 的安全环境或既有 Bot Profile 在进程内读取，不得输出、写入 payload、放入命令参数或启用请求调试日志；无法安全认证则停止。只有明确的本地 schema 不支持才切换保存方式；已发出的保存若超时或结果不明，先安全回读草稿核对，不得盲目跨接口重发。HTTP 回退同样保留修订校验，409 时停止，不得无条件覆盖。保持原 visibility；未修改的关系必须保留 relation_id、target_version_id、sort_order 和 data，不得把固定版本自动换成最新版本。遇到失效依赖，先请我决定移除还是替换及目标版本，不得擅自删除。任何 409 都停止并返回错误摘要；草稿冲突需重新读取并核对修改，version_migration_required 需先完成正式版本基线迁移，不能取消审核、下架或绕过校验。保存成功后回读草稿，确认正文、关系及版本与本次保存一致；若发现其他并发修改则停止。随后立即按 \`expert.md\` 调用 \`plugin publish\`，传入当前 plugin_id、已确认的新版本号和更新说明，完成本次提交发布，不再等待用户另点按钮。只调用一次发布入口，不同时重复提交审核；不得绕过或修改组织审核策略，不得自动审批、取消已有审核或下架。发布失败时明确报告“草稿已保存，但发布失败”，保留 payload 并给出原因及可重试命令；不得伪造已上架。保存成功后的重试只处理发布，不重复保存或创建资源。若超时或返回 review_pending，先回读当前发布状态及对应审核请求，核对是否已经成功或正在审核，不得盲目重复提交。`
          : `使用 \`plugin upsert --data @${pluginJsonFile}\` 保存草稿，再按 \`expert.md\` 的 \`plugin publish\` 或 \`plugin review-request create\` 发布 / 审核流程继续；只有在 \`expert.md\` 要求且版本来源明确时才传 \`--version\`。审核 payload 的文件名与结构以 \`expert.md\` 为准。`
      }
      ${isUpdate
        ? `发布调用后回读 \`plugin get\` 的正式版本与审核状态（有 review_id 时按 \`expert.md\` 查询审核请求），核对本次版本号。只有确认本次版本已发布才报告“新版本已发布并生效”；人工审批返回 pending 时报告“已提交审核，线上仍使用旧版本”；状态不明时报告待核实，不要声称已上架。`
        : `并用 \`octo-cli marketplace plugin get --plugin-id <plugin-id> --include-relations --profile <profile>\` 回读核验。`}
-     写入必须使用 Bot Profile，不需要也不要传 \`created_by_type\`；创建、更新、发布或审核失败时
+     写入必须使用 Bot Profile${isUpdate ? "（HTTP 条件保存回退使用同一 Bot 身份）" : ""}，不需要也不要传 \`created_by_type\`；创建、更新、发布或审核失败时
      不要伪造成功，保留本地 payload 文件，并返回可重试命令和错误摘要。不要使用旧的专家 / 专家团专用 create / update / get、分类或技能上传命令。
 
 以上 Space ID 和 API 地址是本次操作的权威输入。`;

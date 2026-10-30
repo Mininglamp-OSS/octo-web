@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { TextArea, Toast } from "@douyinfe/semi-ui";
-import { versionErrorKey } from "@dmwork/skillmarket";
+import { isValidVersion, isVersionForward, versionErrorKey } from "@dmwork/skillmarket";
 import { t, useI18n, WKApp, WKButton, WKInput, WKModal } from "@octo/base";
 import {
   submitPluginReview,
@@ -108,6 +108,8 @@ export default function ReviewSubmitModal({
   useI18n();
   const [editingWithBot, setEditingWithBot] = useState(false);
   const [version, setVersion] = useState("");
+  const [draftVersion, setDraftVersion] = useState<string>();
+  const versionEditedRef = useRef(false);
   const [changelog, setChangelog] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -171,10 +173,15 @@ export default function ReviewSubmitModal({
         if (generation !== generationRef.current) return;
         setRelations(snapshot.relations);
         setContent(snapshot.content);
-        if (snapshot.version) {
-          setVersion(versionErrorKey(item.version, snapshot.version)
-            ? bumpPatch(snapshot.version)
-            : snapshot.version);
+        setDraftVersion(snapshot.version);
+        // Refresh content and pins without replacing a version the user chose,
+        // including input typed while this asynchronous read was pending.
+        if (snapshot.version && !versionEditedRef.current) {
+          const draftIsNew = !item.isUpgrade || !isValidVersion(item.version ?? "") ||
+            isVersionForward(bumpPatch(item.version), snapshot.version);
+          setVersion(!versionErrorKey(item.version, snapshot.version) && draftIsNew
+            ? snapshot.version
+            : bumpPatch(item.version));
         }
       })
       .catch((err: unknown) => {
@@ -200,6 +207,8 @@ export default function ReviewSubmitModal({
   // changelog or error never leaks into the next one.
   useLayoutEffect(() => {
     setEditingWithBot(false);
+    versionEditedRef.current = false;
+    setDraftVersion(undefined);
     submittingRef.current = false;
     setSubmitting(false);
     setError(null);
@@ -224,7 +233,11 @@ export default function ReviewSubmitModal({
 
   // An upgrade must exceed the version currently listed, which is exactly what
   // the server compares against.
-  const versionError = versionErrorKey(target?.version, version);
+  const reusesPublishedVersion = target?.isUpgrade && version.trim() &&
+    isValidVersion(target.version ?? "") && !isVersionForward(bumpPatch(target.version), version);
+  const versionError = versionErrorKey(target?.version, version) ||
+    (reusesPublishedVersion ? "mcp.review.versionMustExceedPublished" : null) ||
+    (target?.isUpgrade ? versionErrorKey(draftVersion, version) : null);
   const blocked =
     submitting ||
     Boolean(versionError) ||
@@ -357,7 +370,7 @@ export default function ReviewSubmitModal({
         )}
         <label className="wk-mcp-review-submit__field">
           <span>{t("skillMarket.review.fieldVersion")}</span>
-          <WKInput value={version} onChange={setVersion} maxLength={32} />
+          <WKInput value={version} onChange={(value) => { versionEditedRef.current = true; setVersion(value); }} maxLength={32} />
           {versionError && <p className="skill-market-field-error">{t(versionError)}</p>}
         </label>
         <label className="wk-mcp-review-submit__field">
