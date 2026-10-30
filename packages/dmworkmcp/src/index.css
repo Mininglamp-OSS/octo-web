@@ -3383,7 +3383,7 @@
 
 .wk-mcp-expert-member-row {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
+  grid-template-columns: 36px minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--wk-sp-3);
   min-height: 60px;
@@ -3421,13 +3421,26 @@
   font-size: var(--wk-text-size-base);
 }
 
-.wk-mcp-expert-member-row__copy span {
+.wk-mcp-expert-member-row__copy > span {
   display: block;
   overflow: hidden;
   color: var(--wk-text-tertiary);
   font-size: var(--wk-text-size-sm);
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.wk-mcp-expert-member-row__name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.wk-mcp-expert-member-row__copy .wk-mcp-expert-tag--leader {
+  flex: 0 0 auto;
+  color: var(--wk-text-secondary);
+  background: var(--wk-bg-elevated);
 }
 
 /* Squad members are clickable buttons that drill into the member's detail. */

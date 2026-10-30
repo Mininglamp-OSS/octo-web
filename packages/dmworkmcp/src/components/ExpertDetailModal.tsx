@@ -297,13 +297,12 @@ export default function ExpertDetailModal({ item, onClose }: ExpertDetailModalPr
                       <MemberAvatar itemId={item.id} member={member} />
                       <div className="wk-mcp-expert-member-row__copy">
                         <strong>
-                          {member.name}
+                          <span className="wk-mcp-expert-member-row__name" title={member.name}>{member.name}</span>
                           {member.leader && (
                             <span className="wk-mcp-expert-tag wk-mcp-expert-tag--leader">
                               {t("mcp.expert.leader")}
                             </span>
                           )}
-
                         </strong>
                         <span>{member.role}</span>
                       </div>
