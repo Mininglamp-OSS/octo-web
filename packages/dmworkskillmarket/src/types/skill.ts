@@ -71,6 +71,8 @@ export interface Skill {
    *  "skill". */
   pluginType?: PluginType;
   version: string;
+  /** Editable head retained separately from the owner row's release label. */
+  draftVersion?: string;
   readmeContent: string;
   iconUrl: string;
   fileName: string;

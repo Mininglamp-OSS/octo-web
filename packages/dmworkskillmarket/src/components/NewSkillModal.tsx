@@ -121,9 +121,15 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
     // last dot-part of `v1.2.3` or `2.0.0-beta.1` produced another label the
     // server refuses; `nextPatch` falls back to 1.0.0 instead, which — the
     // stored label being unorderable — the forward-only rule accepts.
-    if (reviewSkill) return nextPatch(reviewSkill.version);
+    if (reviewSkill) {
+      const suggested = nextPatch(reviewSkill.version);
+      const draft = reviewSkill.draftVersion;
+      if (isUpgrade && draft && !upgradeVersionErrorKey(reviewSkill.version, draft) &&
+        versionErrorKey(draft, suggested)) return draft;
+      return suggested;
+    }
     return DEFAULT_CREATE_VERSION;
-  }, [reviewSkill, reviewInitial]);
+  }, [reviewSkill, reviewInitial, isUpgrade]);
 
   const dirty = isReviewMode
     ? Boolean(
@@ -162,7 +168,8 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
   // `validVersion` with no stored-label grandfathering. Exempting the legacy
   // label here would move the refusal from the button to a 400.
   const versionError = isUpgrade
-    ? upgradeVersionErrorKey(reviewSkill?.version, version)
+    ? upgradeVersionErrorKey(reviewSkill?.version, version) ||
+      versionErrorKey(reviewSkill?.draftVersion, version)
     : versionErrorKey(isReviewMode ? reviewSkill?.version : undefined, version);
 
   const canCreate = isReviewMode
