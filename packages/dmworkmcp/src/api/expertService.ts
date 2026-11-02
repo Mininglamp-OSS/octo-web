@@ -1454,12 +1454,13 @@ export async function listLoopWorkspaces(): Promise<LoopWorkspace[]> {
   }));
 }
 
-/** GET /fleet/api/v1/runtimes?workspace_id= — runtimes in the chosen workspace (runtime picker). */
+/** GET /fleet/api/v1/runtimes?workspace_id=&owner=me — owned runtimes in the chosen workspace. */
 export async function listLoopRuntimes(
   workspaceId: string
 ): Promise<LoopRuntime[]> {
   const data = await fleetGet<LoopRuntimeWire[] | null>("/runtimes", {
     workspace_id: workspaceId,
+    owner: "me",
   });
   return expectFleetList<LoopRuntimeWire>(data).map((rt) => ({
     id: rt.id,

@@ -122,7 +122,7 @@ describe("expertService add-to-loop wire contract", () => {
     expect(await getLoopWorkspaces()).toEqual([{ id: "w1", name: "w1" }]);
   });
 
-  it("listLoopRuntimes passes workspace_id as a query param and maps status", async () => {
+  it("listLoopRuntimes requests only owned runtimes in the workspace and maps status", async () => {
     mock.instance.get.mockResolvedValue({
       data: [{ id: "rt1", name: "Runtime One", status: "online" }],
     });
@@ -130,7 +130,7 @@ describe("expertService add-to-loop wire contract", () => {
     const res = await listLoopRuntimes("w1");
 
     expect(mock.instance.get).toHaveBeenCalledWith("/fleet/api/v1/runtimes", {
-      params: { workspace_id: "w1" },
+      params: { workspace_id: "w1", owner: "me" },
     });
     expect(res).toEqual([{ id: "rt1", name: "Runtime One", status: "online" }]);
   });
