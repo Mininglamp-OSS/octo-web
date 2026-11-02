@@ -1259,3 +1259,53 @@ describe("ConversationList pinned-row CSS class", () => {
     ).toBe(0);
   });
 });
+
+it("inserts folded entry among recent rows by activity, below pinned rows", () => {
+ const newer = makeConversation({unread:0}), older = makeConversation({unread:0}), pinned = makeConversation({unread:0})
+ newer.channel=makeChannel("newer"); newer.channelInfo.orgData.displayName="Newer"; newer.timestamp=30
+ older.channel=makeChannel("older"); older.channelInfo.orgData.displayName="Older"; older.timestamp=10
+ pinned.channel=makeChannel("pin"); pinned.channelInfo.orgData.displayName="Pinned"; pinned.channelInfo.top=true
+ const render = (timestamp: number) => act(() => { ReactDOM.render(<ConversationList conversations={[newer,older,pinned] as any} recentEntry={{timestamp,node:<button>Folded</button>}} />,container) })
+ render(20)
+ const labels=() => Array.from(container.querySelectorAll("h3, button")).map(n=>n.textContent)
+ expect(labels()).toEqual(["Pinned","Newer","Folded","Older"])
+ render(40)
+ expect(labels()).toEqual(["Pinned","Folded","Newer","Older"])
+})
+
+// Exercise the real list cursor and lifecycle across parent-controlled scopes.
+describe("unread navigation across list scopes", () => {
+  it.each([false, true])("visits both lists without looping at the boundary (remove last target: %s)", (removeLast) => {
+    const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation(cb => { cb(0); return 0; });
+    const a = makeConversation({ channelID: "recent-a", unread: 1 });
+    const b = makeConversation({ channelID: "recent-b", unread: 1 });
+    const folded = makeConversation({ channelID: "folded", unread: 2 });
+    function Harness() {
+      const [scope, setScope] = React.useState("recent");
+      const [token, setToken] = React.useState(0);
+      const other = scope === "recent" ? [folded] : [a, b];
+      return <><button onClick={() => setToken(n => n + 1)}>next</button>
+        <ConversationList conversations={(scope === "recent" ? [a, b] : [folded]) as any}
+          scrollToUnreadToken={token} unreadNavigationScope={scope}
+          shouldScrollToUnreadTarget={c => c.unread > 0}
+          onUnreadNavigationWrap={() => {
+            if (!other.some(c => c.unread > 0)) return false;
+            setScope(scope === "recent" ? "folded" : "recent"); return true;
+          }} />
+      </>;
+    }
+    try {
+      act(() => { ReactDOM.render(<Harness />, container); });
+      const next = () => act(() => { container.querySelector("button")!.click(); });
+      const target = () => container.querySelector('[class*="wk-conv-unread-num--nudge-"]')?.closest('[data-object-id]')?.getAttribute('data-object-id');
+      next(); expect(target()).toBe("recent-a");
+      next(); expect(target()).toBe("recent-b");
+      if (removeLast) b.unread = 0;
+      next(); expect(target()).toBe("folded");
+      // Even if the folded list has no remaining unread, continue in Recent.
+      folded.unread = 0;
+      next(); expect(target()).toBe("recent-a");
+      next(); expect(target()).toBe(removeLast ? "recent-a" : "recent-b");
+    } finally { raf.mockRestore(); }
+  });
+});

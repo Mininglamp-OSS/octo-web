@@ -1833,11 +1833,7 @@
   "navRail.settingsCenter.page.fallback.title": "设置",
   "navRail.settingsCenter.page.fallback.description": "管理你的 Octo 使用偏好",
   "navRail.settingsCenter.row.placeholder": "设置项",
-  "navRail.settingsCenter.value.unsupported": "当前环境不支持",
-  "navRail.settingsCenter.value.granted": "已允许",
   "navRail.settingsCenter.value.systemManaged": "由系统管理",
-  "navRail.settingsCenter.value.denied": "已拒绝",
-  "navRail.settingsCenter.value.unauthorized": "尚未授权",
   "globalSearch.tab.drive": "网盘",
   "globalSearch.drive.emptyHint": "输入关键词搜索网盘文件",
   "globalSearch.drive.noResults": "未找到匹配的网盘文件",
@@ -1860,5 +1856,14 @@
   "messageInput.draft.restoreFailed": "暂时无法读取已保存的草稿。可以重试，或使用临时草稿；原有草稿将保留。",
   "messageInput.draft.retryRestore": "重新读取",
   "messageInput.draft.useTemporary": "使用临时草稿",
-  "messageInput.draft.temporaryNotice": "正在使用临时草稿：离开后不会保存新内容，原有草稿不受影响。"
+  "messageInput.draft.temporaryNotice": "正在使用临时草稿：离开后不会保存新内容，原有草稿不受影响。",
+  "foldChats.fold": "折叠聊天",
+  "foldChats.unfold": "取消折叠",
+  "foldChats.title": "折叠的聊天",
+  "foldChats.back": "返回最近",
+  "foldChats.success": "已折叠",
+  "foldChats.undo": "撤销",
+  "foldChats.loadError": "折叠设置加载失败",
+  "foldChats.retry": "重试",
+  "foldChats.saveError": "操作失败，请重试"
 }

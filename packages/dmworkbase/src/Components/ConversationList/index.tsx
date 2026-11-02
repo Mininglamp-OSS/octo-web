@@ -361,6 +361,8 @@ export interface ConversationListProps {
   /** 点击 "+N 个子区" 时的回调，传入父群组 ID */
   onThreadOverflowClick?: (groupNo: string) => void;
   /** 状态类菜单项：插入在“清除未读”之后、免打扰之前 */
+  /** 外部注入的额外右键菜单项，追加到内置菜单之后 */
+  recentEntry?: { timestamp: number; node: React.ReactNode };
   extraContextMenus?: (
     conversation: ConversationWrap | undefined
   ) => ContextMenusData[];
@@ -380,6 +382,10 @@ export interface ConversationListProps {
   hidePin?: boolean;
   /** 递增 token：变化时循环定位下一条目标；手动滚动后优先定位视口下方目标 */
   scrollToUnreadToken?: number;
+  /** Changing list scope restarts navigation at its first target. */
+  unreadNavigationScope?: string;
+  /** Return true when a parent continues navigation in another list. */
+  onUnreadNavigationWrap?: () => boolean;
   /** 外部提供导航目标口径，避免列表层重复理解具体业务规则 */
   shouldScrollToUnreadTarget?: (conversation: ConversationWrap) => boolean;
   /**
@@ -501,9 +507,16 @@ export default class ConversationList extends Component<
 
   componentDidUpdate(prevProps: ConversationListProps) {
     this.loadDraftPreviews();
+    const unreadScopeChanged = this.props.unreadNavigationScope !== prevProps.unreadNavigationScope;
+    if (unreadScopeChanged) {
+      this.lastUnreadTargetKey = undefined;
+      this.lastUnreadCandidateSnapshot = [];
+      this.lastUnreadCommittedIndex = -1;
+      this.manuallyScrolledSinceUnreadJump = false;
+    }
     if (
-      this.props.scrollToUnreadToken !== undefined &&
-      this.props.scrollToUnreadToken !== prevProps.scrollToUnreadToken
+      unreadScopeChanged || (this.props.scrollToUnreadToken !== undefined &&
+      this.props.scrollToUnreadToken !== prevProps.scrollToUnreadToken)
     ) {
       this.scheduleScrollToNextUnreadTarget();
     }
@@ -595,7 +608,10 @@ export default class ConversationList extends Component<
     if (!shouldTarget) return;
 
     const candidates = this.lastRenderableItems.filter(shouldTarget);
-    if (candidates.length === 0) return;
+    if (candidates.length === 0) {
+      this.props.onUnreadNavigationWrap?.();
+      return;
+    }
 
     // The cursor must not depend on scrollTop: bottom rows cannot always reach the top.
     //
@@ -622,7 +638,9 @@ export default class ConversationList extends Component<
       (conv) => conv.channel.getChannelKey() === this.lastUnreadTargetKey
     );
     let target: ConversationWrap;
+    let wrapped = false;
     if (previousIndex !== -1) {
+      wrapped = previousIndex === candidates.length - 1;
       // Target is still a candidate — advance normally.
       target = candidates[(previousIndex + 1) % candidates.length];
     } else if (this.lastUnreadCandidateSnapshot.length > 0) {
@@ -638,10 +656,12 @@ export default class ConversationList extends Component<
             (this.lastUnreadCommittedIndex + offset) % snapshotLen
           ];
         if (currentKeys.has(key)) {
+          wrapped = this.lastUnreadCommittedIndex + offset >= snapshotLen;
           resumeKey = key;
           break;
         }
       }
+      if (!resumeKey) wrapped = true;
       const resumeIndex = resumeKey
         ? candidates.findIndex(
             (conv) => conv.channel.getChannelKey() === resumeKey
@@ -651,6 +671,8 @@ export default class ConversationList extends Component<
     } else {
       target = candidates[0];
     }
+    // Let the parent advance into another list before wrapping locally.
+    if (wrapped && !this.manuallyScrolledSinceUnreadJump && this.props.onUnreadNavigationWrap?.()) return;
     const root = this.listRef.current;
     if (this.manuallyScrolledSinceUnreadJump && root) {
       const viewportBottom =
@@ -1674,7 +1696,15 @@ export default class ConversationList extends Component<
         {temporaryPinned.map((conversation) =>
           this.conversationItem(conversation)
         )}
-        {finalRecent.map(renderItem)}
+        {(() => {
+          const entry = this.props.recentEntry;
+          const rows = finalRecent.map(renderItem);
+          if (entry) {
+            const index = finalRecent.findIndex(item => !("type" in item) && item.timestamp <= entry.timestamp);
+            rows.splice(index < 0 ? rows.length : index, 0, <React.Fragment key="folded-chats">{entry.node}</React.Fragment>);
+          }
+          return rows;
+        })()}
 
         <ContextMenus
           onContext={(ctx) => {

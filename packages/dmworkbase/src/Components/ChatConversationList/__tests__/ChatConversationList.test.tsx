@@ -12,8 +12,14 @@ let isMutedForRecentConversation: typeof import("../index").isMutedForRecentConv
 let container: HTMLDivElement
 let mockCategories: Array<any> = []
 let latestExtraContextMenus: ((conversation: any) => Array<any>) | undefined
+const listFolded = vi.fn(async () => [])
+const saveFolded = vi.fn(async () => {})
+let listProps: any
+let groupedProps: any
 
 beforeAll(async () => {
+    vi.doMock("@douyinfe/semi-ui", () => ({ Toast: { error: vi.fn() } }))
+    vi.doMock("../../../Service/FoldChatService", () => ({ default: { list: listFolded, set: saveFolded }, foldKey: (c: any) => `${c.channel_type}::${c.channel_id}` }))
     vi.doMock("wukongimjssdk", () => ({
         Channel: class {
             channelID: string
@@ -37,7 +43,7 @@ beforeAll(async () => {
 
     vi.doMock("../../../App", () => ({
         default: {
-            endpoints: {},
+            endpoints: {}, shared: { currentSpaceId: "s" }, loginInfo: { uid: "u" },
         },
     }))
 
@@ -85,7 +91,7 @@ beforeAll(async () => {
     }))
 
     vi.doMock("../../ConversationListGrouped", () => ({
-        default: () => null,
+        default: (props: any) => { groupedProps = props; return null },
         isValidCategoryItem: () => true,
     }))
 
@@ -94,22 +100,7 @@ beforeAll(async () => {
     }))
 
     vi.doMock("../../ConversationList", () => ({
-        default: ({
-            conversations,
-            extraContextMenus,
-        }: {
-            conversations: Array<any>
-            extraContextMenus?: (conversation: any) => Array<any>
-        }) => {
-            latestExtraContextMenus = extraContextMenus
-            return (
-                <div data-testid="conversation-list">
-                    {conversations.map((conv) => (
-                        <span key={conv.channel.channelID}>{conv.channel.channelID}</span>
-                    ))}
-                </div>
-            )
-        },
+        default: (props: any) => { listProps = props; latestExtraContextMenus = props.extraContextMenus; return <div data-testid="conversation-list">{props.conversations.map((conv: any) => <span key={conv.channel.channelID}>{conv.channel.channelID}</span>)}{props.recentEntry?.node}</div> },
     }))
 
     const module = await import("../index")
@@ -121,6 +112,8 @@ beforeEach(() => {
     vi.clearAllMocks()
     mockCategories = []
     latestExtraContextMenus = undefined
+    listFolded.mockResolvedValue([])
+    saveFolded.mockResolvedValue(undefined)
     container = document.createElement("div")
     document.body.appendChild(container)
 })
@@ -264,4 +257,72 @@ describe("ChatConversationList", () => {
         expect(isMutedForRecentConversation({ channel: { channelID: "dm", channelType: 1 }, channelInfo: {} } as any)).toBe(false)
         expect(isMutedForRecentConversation({ channel: { channelID: "thread", channelType: 5 }, channelInfo: { orgData: {} } } as any)).toBe(false)
     })
+})
+
+async function renderChats(conversations: any[], filter = "all") {
+ await act(async () => { ReactDOM.render(<ChatConversationList conversations={conversations as any} filter={filter as any} onConversationClick={() => {}} onClearMessages={() => {}} onThreadOverflowClick={() => {}} />, container) })
+}
+it("folds only the chosen group, opens nested list, restores its pin and returns after last unfold", async () => {
+ const group = { ...makeGroupConversation("parent", 20), channelInfo: { top: true }, unread: 3, isMentionMe: true }
+ const thread = { ...makeGroupConversation("child", 10), channel: { channelID: "child", channelType: 5 } }
+ await renderChats([group, thread])
+ await act(async () => { await listProps.extraContextMenus(group).find((m: any) => m.title === "base.foldChats.fold").onClick() })
+ expect(saveFolded).toHaveBeenCalledWith("s", { channel_id: "parent", channel_type: 2 }, true)
+ expect(listProps.conversations).toEqual([thread])
+ expect(listProps.recentEntry.timestamp).toBe(20)
+ expect(container.textContent).toContain("base.conversationList.mentionMarker")
+ await act(async () => { (container.querySelector(".wk-folded-entry") as HTMLButtonElement).click() })
+ expect(listProps.conversations).toEqual([group])
+ expect(listProps.conversations[0].channelInfo.top).toBe(true)
+ expect(saveFolded).toHaveBeenCalledTimes(1)
+ await act(async () => { await listProps.extraContextMenus(group).find((m: any) => m.title === "base.foldChats.unfold").onClick() })
+ expect(listProps.conversations).toEqual([group, thread])
+ expect(listProps.recentEntry).toBeUndefined()
+ expect(container.textContent).not.toContain("base.foldChats.back")
+})
+it("offers the same fold action in Follow without hiding its rows", async () => {
+ const group = makeGroupConversation("g", 1)
+ await renderChats([group], "group")
+ await act(async () => { await groupedProps.foldMenus(group)[0].onClick() })
+ expect(groupedProps.conversations).toEqual([group])
+ expect(groupedProps.foldMenus(group)[0].title).toBe("base.foldChats.unfold")
+})
+it("keeps rows on failed save and supports undo", async () => {
+ const group = makeGroupConversation("g", 1)
+ await renderChats([group])
+ saveFolded.mockRejectedValueOnce(new Error("network"))
+ await act(async () => { await listProps.extraContextMenus(group)[0].onClick() })
+ expect(listProps.conversations).toEqual([group])
+ await act(async () => { await listProps.extraContextMenus(group)[0].onClick() })
+ const undo = Array.from(container.querySelectorAll("button")).find(b => b.textContent === "base.foldChats.undo")!
+ await act(async () => { undo.click() })
+ expect(listProps.conversations).toEqual([group])
+})
+
+it("keeps search temporary conversations within their folded destination", async () => {
+ const group = makeGroupConversation("search-group", 100)
+ listFolded.mockResolvedValue([{channel_id:"search-group",channel_type:2}] as any)
+ await act(async () => { ReactDOM.render(<ChatConversationList conversations={[] as any} filter="all" temporaryConversationPresentation={{ conversations: [group as any], virtualChannelKeys: new Set<string>() }} onConversationClick={() => {}} onClearMessages={() => {}} onThreadOverflowClick={() => {}} />,container) })
+ expect(listProps.temporarilyPinnedConversations).toEqual([])
+ expect(listProps.recentEntry.timestamp).toBe(100)
+ await act(async () => { (container.querySelector(".wk-folded-entry") as HTMLButtonElement).click() })
+ expect(listProps.conversations).toEqual([group])
+})
+
+it("continues unread navigation in either direction and stops switching when the other list is read", async () => {
+ const recent = {...makeGroupConversation("recent", 20), unread: 1}
+ const folded = {...makeGroupConversation("folded", 10), unread: 2}
+ listFolded.mockResolvedValue([{channel_id:"folded",channel_type:2}] as any)
+ await renderChats([recent, folded])
+ expect(listProps.unreadNavigationScope).toBe("recent")
+ act(() => { expect(listProps.onUnreadNavigationWrap()).toBe(true) })
+ expect(listProps.unreadNavigationScope).toBe("folded")
+ expect(listProps.conversations).toEqual([folded])
+ folded.unread = 0
+ await renderChats([recent, folded])
+ act(() => { expect(listProps.onUnreadNavigationWrap()).toBe(true) })
+ expect(listProps.unreadNavigationScope).toBe("recent")
+ expect(listProps.conversations).toEqual([recent])
+ act(() => { expect(listProps.onUnreadNavigationWrap()).toBe(false) })
+ expect(listProps.unreadNavigationScope).toBe("recent")
 })
