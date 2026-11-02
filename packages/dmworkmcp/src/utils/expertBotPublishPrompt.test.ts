@@ -5,6 +5,31 @@ import { getExpertBotPublishPrompt } from "./expertBotPublishPrompt";
 const SLUG = "minglue_default";
 const API = "https://example.com";
 
+describe("Expert marketplace naming contract", () => {
+  it.each([
+    ["agent", "create"], ["agent", "update"],
+    ["squad", "create"], ["squad", "update"],
+  ] as const)("keeps display and internal names distinct for %s %s", (kind, mode) => {
+    const prompt = getExpertBotPublishPrompt({ kind, mode, id: "expert-1", spaceId: SLUG, apiBaseUrl: API });
+    expect(prompt).toContain("市场列表与详情标题读取 `plugin.plugin_name`");
+    expect(prompt).toContain("`plugin.manifest_json.plugin_name` 必须与它完全一致");
+    expect(prompt).toContain("用户说“改名”或“修改显示名”时，修改这两处");
+    expect(prompt).toContain("`plugin.manifest_json.name` 是清单内部名称");
+    expect(prompt).toContain("更新时保留原值");
+    expect(prompt).toContain("不要额外创建 `display_name` 字段");
+    expect(prompt).toContain("市场展示名称（plugin_name）");
+    expect(prompt).toContain("清单内部名称（manifest_json.name）");
+    expect(prompt).toContain("回读结果的 `plugin_name` 与 `manifest_json.plugin_name`");
+    expect(prompt).toContain("不能用 `manifest_json.name` 的变化证明市场改名成功");
+    expect(prompt).toContain("人工审核 pending 时核对提交审核的快照名称");
+    expect(prompt).toContain("审核通过并回读正式版本后才报告市场名称已生效");
+    expect(prompt).toContain(mode === "update"
+      ? "保存成功后回读草稿，确认外层及清单中的 plugin_name"
+      : "不一致时停止发布并报告");
+    if (mode === "update") expect(prompt).toContain("改名保留原 plugin_id 和未修改的内容、依赖及版本绑定");
+  });
+});
+
 describe("getExpertBotPublishPrompt — command surface", () => {
   it("agent prompt targets the unified expert plugin workflow", () => {
     const p = getExpertBotPublishPrompt({
