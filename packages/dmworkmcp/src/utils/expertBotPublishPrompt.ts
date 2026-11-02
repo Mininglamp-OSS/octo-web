@@ -147,16 +147,20 @@ ${step4Title}
      写 \`\${AUTHORIZATION}\`、\`X-Api-Secret\` 写 \`\${X_API_SECRET}\`、\`GITHUB_TOKEN\`
      写 \`\${GITHUB_TOKEN}\`，不要写泛化的 \`\${VAR}\`。即使 \`mcp.md\` 示例使用了与键名不一致的
      占位符（例如键 \`TOKEN\` 配 \`\${GITHUB_TOKEN}\`），也必须改为规范化键名占位 \`\${TOKEN}\`。
-   - 向我展示${actionWord}预览${isUpdate ? "（包括新版本号、更新说明，以及保存后立即提交发布的动作）" : ""}，并在这里暂停，明确等待我回复“${confirmation}”；未收到这四个字，
+   - 发布预览必须包含已确认的版本号，使用合法 MAJOR.MINOR.PATCH；首次发布也不能省略或擅自猜测，尚未确认时先向我确认。
+     向我展示${actionWord}预览${isUpdate ? "（包括新版本号、更新说明，以及保存后立即提交发布的动作）" : ""}，并在这里暂停，明确等待我回复“${confirmation}”；未收到这四个字，
      不得创建、更新、发布或提交审核。可先用 \`--dry-run\` 打印将要发送的请求核对。
    - 在收到“${confirmation}”后，${isUpdate ? "优先使用统一 CLI 命令，条件保存的兼容 HTTP 回退仅按下述规则执行" : "只使用 `expert.md` 记录的统一 `octo-cli marketplace plugin ...` 命令"}完成${actionWord}：
      如需附带或更新技能包，此时再按 \`expert.md\` / \`skills.md\` 的统一 skill upload / parse /
      \`plugin import\` 流程处理；取得预签名后不得输出 \`presigned_url\` / \`method\` / \`headers\`，
      也不得写入 payload 文件。
+     发布时必须显式传入已确认的版本号：调用 \`plugin publish\` 必须带 \`--version\`，与已保存草稿的 version 一致；
+     审核请求体中的 \`version\` 也必须明确填写，不能依赖服务端默认值。最低 CLI 版本检查不代表命令参数兼容，
+     按当前命令帮助核对参数；不支持版本参数时停止并提示升级 CLI，不得省略版本号重试。
      ${
        isUpdate
          ? `准备 \`plugin upsert --data @${pluginJsonFile}\` 的条件保存请求，设置 \`plugin.plugin_id = "${targetId}"\` 和顶层 \`expected_draft_revision\`（原样使用读取的 draft_revision），提交完整回填后的 payload。先对这份完整 payload 执行 CLI 的 \`--dry-run\`；最低版本检查不代表支持条件保存字段；校验通过后才使用该命令保存。若本地 schema 明确拒绝 \`expected_draft_revision\`（例如 octo-cli v0.19.5），不得删除或忽略该字段：改用同一 API 地址的 \`POST /market/api/v1/plugins/upsert\`，发送同一完整 JSON body（包括原始 expected_draft_revision、plugin 和 relations），通过安全 HTTP 客户端在内存中注入同一 Bot 的 \`Authorization: Bearer\`、\`X-Space-Id\` 和 \`Content-Type: application/json\` 请求头。凭证只从当前 Channel 的安全环境或既有 Bot Profile 在进程内读取，不得输出、写入 payload、放入命令参数或启用请求调试日志；无法安全认证则停止。只有明确的本地 schema 不支持才切换保存方式；已发出的保存若超时或结果不明，先安全回读草稿核对，不得盲目跨接口重发。HTTP 回退同样保留修订校验，409 时停止，不得无条件覆盖。保持原 visibility；未修改的关系必须保留 relation_id、target_version_id、sort_order 和 data，不得把固定版本自动换成最新版本。遇到失效依赖，先请我决定移除还是替换及目标版本，不得擅自删除。任何 409 都停止并返回错误摘要；草稿冲突需重新读取并核对修改，version_migration_required 需先完成正式版本基线迁移，不能取消审核、下架或绕过校验。保存成功后回读草稿，确认外层及清单中的 plugin_name 都是用户确认的市场展示名称，且正文、关系及版本与本次保存一致；若发现其他并发修改则停止。随后立即按 \`expert.md\` 调用 \`plugin publish\`，传入当前 plugin_id、已确认的新版本号和更新说明，完成本次提交发布，不再等待用户另点按钮。只调用一次发布入口，不同时重复提交审核；不得绕过或修改组织审核策略，不得自动审批、取消已有审核或下架。发布失败时明确报告“草稿已保存，但发布失败”，保留 payload 并给出原因及可重试命令；不得伪造已上架。保存成功后的重试只处理发布，不重复保存或创建资源。若超时或返回 review_pending，先回读当前发布状态及对应审核请求，核对是否已经成功或正在审核，不得盲目重复提交。`
-         : `使用 \`plugin upsert --data @${pluginJsonFile}\` 保存草稿，回读核对外层及清单中的 plugin_name 都等于用户确认的市场展示名称；不一致时停止发布并报告。名称核对一致后，再按 \`expert.md\` 的 \`plugin publish\` 或 \`plugin review-request create\` 发布 / 审核流程继续；只有在 \`expert.md\` 要求且版本来源明确时才传 \`--version\`。审核 payload 的文件名与结构以 \`expert.md\` 为准。`
+         : `使用 \`plugin upsert --data @${pluginJsonFile}\` 保存草稿，回读核对外层及清单中的 plugin_name 都等于用户确认的市场展示名称，且草稿 version 与已确认的发布版本一致；不一致时停止发布并报告。名称和版本核对一致后，再按 \`expert.md\` 的 \`plugin publish\` 或 \`plugin review-request create\` 发布 / 审核流程继续，并按上述要求显式携带版本号。审核 payload 的文件名与结构以 \`expert.md\` 为准。`
      }
      ${isUpdate
        ? `发布调用后回读 \`plugin get\` 的正式版本与审核状态（有 review_id 时按 \`expert.md\` 查询审核请求），核对本次版本号。只有确认本次版本已发布才报告“新版本已发布并生效”；人工审批返回 pending 时报告“已提交审核，线上仍使用旧版本”；状态不明时报告待核实，不要声称已上架。`

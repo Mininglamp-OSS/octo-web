@@ -31,6 +31,20 @@ describe("Expert marketplace naming contract", () => {
 });
 
 describe("getExpertBotPublishPrompt — command surface", () => {
+  it.each([
+    ["agent", "create"], ["agent", "update"],
+    ["squad", "create"], ["squad", "update"],
+  ] as const)("requires an explicit confirmed release version for %s %s", (kind, mode) => {
+    const p = getExpertBotPublishPrompt({ kind, mode, id: "expert-1", spaceId: SLUG, apiBaseUrl: API });
+    expect(p).toContain("发布预览必须包含已确认的版本号");
+    expect(p).toContain("发布时必须显式传入已确认的版本号");
+    expect(p).toContain("调用 `plugin publish` 必须带 `--version`");
+    expect(p).toContain("与已保存草稿的 version 一致");
+    expect(p).toContain("审核请求体中的 `version` 也必须明确填写");
+    expect(p).toContain("不支持版本参数时停止并提示升级 CLI");
+    expect(p).toContain("不得省略版本号重试");
+    expect(p).not.toContain("只有在 `expert.md` 要求且版本来源明确时才传 `--version`");
+  });
   it("agent prompt targets the unified expert plugin workflow", () => {
     const p = getExpertBotPublishPrompt({
       kind: "agent",
@@ -333,9 +347,7 @@ describe("getExpertBotPublishPrompt — update mode", () => {
     });
     expect(p).toContain("将指定专家上架");
     expect(p).toContain("plugin upsert --data @expert-plugin.json");
-    expect(p).toContain(
-      "只有在 `expert.md` 要求且版本来源明确时才传 `--version`"
-    );
+    expect(p).toContain("调用 `plugin publish` 必须带 `--version`");
     expect(p).not.toContain("octo-cli marketplace expert update");
     expect(p).not.toContain("确认更新");
   });
