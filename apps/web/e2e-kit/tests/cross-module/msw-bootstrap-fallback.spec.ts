@@ -8,6 +8,21 @@ test.use({ serviceWorkers: "block" });
 const categoriesRoute = "**/api/v1/spaces/*/categories*";
 const categoriesUrl = "/api/v1/spaces/e2e-space-001/categories";
 
+for (const ready of [false, true]) {
+  test(`@p1 @cross-module @infra folded preferences fallback respects MSW readiness (${ready})`, async ({ pagePlain }) => {
+    await pagePlain.context().route("**/api/v1/conversation/folded", route =>
+      route.fulfill({status: 418, body: "unhandled"}));
+    await pagePlain.evaluate((isReady) => {
+      Object.assign(globalThis, {__MSW_READY__: isReady, __MSW_READY_AT__: isReady ? 1 : undefined});
+    }, ready);
+    const response = await pagePlain.evaluate(async () => {
+      const result = await fetch("/api/v1/conversation/folded");
+      return {status: result.status, body: await result.text()};
+    });
+    expect(response).toEqual(ready ? {status: 418, body: "unhandled"} : {status: 200, body: "[]"});
+  });
+}
+
 test.beforeEach(async ({ pagePlain }) => {
   // Exercise the real pagePlain fallback routes without booting the SPA or
   // stopping its worker (which could leak unrelated requests to the dead proxy).

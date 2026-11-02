@@ -25,17 +25,21 @@ import ConversationListGrouped, { ValidCategoryItem, isValidCategoryItem } from 
 import CreateCategoryModal from "../CreateCategoryModal"
 import { ContextMenusData } from "../ContextMenus"
 import { useI18n } from "../../i18n"
-import { getImChannelInfo } from "../../im-runtime/channelRuntime"
+import { addImChannelInfoListener, getImChannelInfo } from "../../im-runtime/channelRuntime"
 import { FolderPlus, Star, StarOff } from "lucide-react"
 import type { TemporaryConversationScrollRequest } from "../../features/temporaryConversation/presentation"
+
+function parentGroupNoForRecentConversation(conv: ConversationWrap): string | undefined {
+    if (conv.channel.channelType !== ChannelTypeCommunityTopic) return undefined
+    return (conv.channelInfo?.orgData?.parentGroupNo as string | undefined) ||
+        parseThreadChannelId(conv.channel.channelID)?.groupNo
+}
 
 export function isMutedForRecentConversation(conv: ConversationWrap): boolean {
     const isThread = conv.channel.channelType === ChannelTypeCommunityTopic
     let parentChannelInfo: any | undefined
     if (isThread) {
-        const parentGroupNo =
-            (conv.channelInfo?.orgData?.parentGroupNo as string | undefined) ||
-            parseThreadChannelId(conv.channel.channelID)?.groupNo
+        const parentGroupNo = parentGroupNoForRecentConversation(conv)
         if (parentGroupNo) {
             parentChannelInfo = getImChannelInfo(
                 WKSDK.shared(),
@@ -104,6 +108,19 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
     const spaceId = WKApp.shared.currentSpaceId || ""
     const scope = `${WKApp.loginInfo.uid}:${spaceId}`
     const folding = useFoldChats(scope, spaceId)
+    const [, refreshMetadata] = React.useReducer((revision: number) => revision + 1, 0)
+    React.useEffect(() => {
+        const chats = [...conversations, ...(temporaryConversationPresentation?.conversations || [])]
+        // Parent groups may have no conversation of their own, so their mute
+        // changes need not publish a new conversation array from the store.
+        return addImChannelInfoListener(WKSDK.shared(), info => {
+            if (chats.some(chat =>
+                (chat.channel.channelType === info.channel.channelType && chat.channel.channelID === info.channel.channelID) ||
+                (info.channel.channelType === ChannelTypeGroup && parentGroupNoForRecentConversation(chat) === info.channel.channelID))) {
+                refreshMetadata()
+            }
+        })
+    }, [scope, conversations, temporaryConversationPresentation?.conversations])
     const [foldedOpen, setFoldedOpen] = useState(false)
     const [unreadContinuation, setUnreadContinuation] = useState(0)
     const [undo, setUndo] = useState<ConversationWrap | null>(null)

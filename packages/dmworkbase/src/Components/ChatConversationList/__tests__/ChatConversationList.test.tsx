@@ -36,6 +36,8 @@ beforeAll(async () => {
             shared: () => ({
                 channelManager: {
                     getChannelInfo: () => undefined,
+                    addListener: vi.fn(),
+                    removeListener: vi.fn(),
                 },
             }),
         },

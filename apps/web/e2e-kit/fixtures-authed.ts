@@ -110,6 +110,16 @@ async function installGlobalMockFallbackRoutes(page: Page): Promise<void> {
     fulfilledBootstrapRequests.add(route.request());
   });
 
+  await registerFallback("**/api/v1/conversation/folded", async (route) => {
+    if (route.request().method() !== "GET" ||
+        !(await isPreMswReadyRequest(page, requestStartedAt.get(route.request())))) {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+    fulfilledBootstrapRequests.add(route.request());
+  });
+
   await registerFallback("**/api/v1/spaces/*/categories*", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();

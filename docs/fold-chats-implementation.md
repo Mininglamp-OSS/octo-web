@@ -34,3 +34,10 @@ Search routing uses the visible Recent fallback when fold preferences fail to lo
 The aggregate mention marker follows ConversationWrap.isMentionMe independently of unread counts and mute settings, matching ordinary rows. An unresolved reminder remains visible after unread reaches zero and clears when the reminder is done.
 
 Five regression cases reproduce the previous failures using real parent/list components and SDK conversations: group and Person searches after a rejected preference request, Person search during loading, and zero-unread unresolved reminders in muted and unmuted folded chats.
+
+## PR review: live mute aggregation and E2E bootstrap
+The aggregate owner now subscribes to metadata changes for its conversations and their parent groups, including temporary search conversations. Subscriptions are cleaned up on scope/list changes and unmount. Parent mute/unmute therefore updates the number/dot even when the parent has no Recent or SDK conversation. Three regressions send real SDK metadata notifications without manually rerendering the component, covering group changes and both parent-ID sources.
+
+The E2E chat baseline now handles GET `/conversation/folded`. Its startup fallback is limited to requests begun before MSW readiness, preserving the existing missing-mock failure gate. Browser regression cases cover the pre-ready and post-ready boundary.
+
+Validation: 146 tests across eleven unit/component suites, production and E2E builds, i18n and diff checks passed. Seven browser checks passed (six bootstrap-boundary cases and global-search recovery), with zero proxy errors in the attempted run. The extended local browser run encountered page crashes/timeouts and was stopped; a full-Chromium comparison also crashed during page creation. Full browser E2E validation remains pending in CI, not reported as passing locally.

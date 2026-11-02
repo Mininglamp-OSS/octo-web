@@ -26,7 +26,7 @@ let frameId = 0
 beforeEach(() => {
  frames.clear()
  vi.spyOn(WKApp.shared, "currentSpaceId", "get").mockReturnValue("fold-navigation-space")
- vi.mocked(FoldChatService.list).mockResolvedValue([{channel_id: "folded", channel_type: 2}])
+ vi.mocked(FoldChatService.list).mockReset().mockResolvedValue([{channel_id: "folded", channel_type: 2}])
  vi.mocked(FoldChatService.set).mockClear()
  vi.spyOn(window, "requestAnimationFrame").mockImplementation(callback => { frames.set(++frameId, callback); return frameId })
  vi.spyOn(window, "cancelAnimationFrame").mockImplementation(id => { frames.delete(id) })
@@ -51,6 +51,33 @@ const row = (root: HTMLElement, id: string) => root.querySelector(`[data-object-
 const target = (root: HTMLElement) => root.querySelector('[class*="wk-conv-unread-num--nudge-"]')?.closest('[data-object-id]')?.getAttribute('data-object-id')
 
 describe("real folded parent/list navigation", () => {
+ it.each(['group', 'parsed parent', 'metadata parent'])("refreshes folded unread on %s metadata events without a parent conversation", async source => {
+  const isThread = source !== 'group'
+  const chat = conversation(isThread ? 'parent____thread' : 'folded', 3, false, isThread ? 5 : 2)
+  const parentID = source === 'metadata parent' ? 'metadata-parent' : 'parent'
+  if (source === 'metadata parent') chat.channelInfo!.orgData.parentGroupNo = parentID
+  vi.mocked(FoldChatService.list).mockResolvedValueOnce([{channel_id:chat.channel.channelID,channel_type:chat.channel.channelType}])
+  const sdk = WKSDK.shared(), previous = sdk.conversationManager.conversations
+  sdk.conversationManager.conversations = [chat.conversation]
+  const info = isThread ? new ChannelInfo() : chat.channelInfo!
+  info.channel = isThread ? new Channel(parentID, 2) : chat.channel; info.mute = false; info.orgData ??= {}
+  sdk.channelManager.setChannleInfoForCache(info)
+  const screen = render(<ChatConversationList {...actions} conversations={[chat]} filter="all" select={new Channel('other', 1)} />)
+  try {
+   await waitFor(() => expect(screen.container.querySelector('.wk-folded-badge')?.textContent).toBe('3'))
+   const updateMute = (mute: boolean) => act(() => {
+    info.mute = mute
+    sdk.channelManager.setChannleInfoForCache(info)
+    sdk.channelManager.notifyListeners(info)
+   })
+   updateMute(true)
+   expect(screen.container.querySelector('.wk-folded-badge')).toBeNull()
+   expect(screen.container.querySelector('.wk-folded-dot')).not.toBeNull()
+   updateMute(false)
+   expect(screen.container.querySelector('.wk-folded-badge')?.textContent).toBe('3')
+   expect(screen.container.querySelector('.wk-folded-dot')).toBeNull()
+  } finally { screen.unmount(); sdk.conversationManager.conversations = previous }
+ })
  it.each([2, 1])("scrolls and acknowledges search after preferences fail (channel type: %s)", async channelType => {
   vi.mocked(FoldChatService.list).mockRejectedValueOnce(new Error('offline'))
   const chat = conversation('search-result', 0, false, channelType), onScrolled = vi.fn()
