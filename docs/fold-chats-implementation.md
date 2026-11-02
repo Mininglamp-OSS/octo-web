@@ -27,3 +27,10 @@ Post-review validation: 109 frontend tests in nine suites passed, backend Fold/F
 Manual open/back resets the unread cursor but does not start navigation. Only an explicit unread activation or cross-list continuation advances the unread token. Search scroll requests wait for fold preferences, select the matching list once per request, then scroll and acknowledge after that row renders. Neither path changes saved fold preferences.
 
 Real ChatConversationList + ConversationList integration regressions cover manual read/muted-only collection opening, Back to an all-read Recent list, explicit unread handoffs, repeated searches in both directions, initial delayed preference loading, and manual navigation after a search has completed.
+
+## PR review: failure fallback and unresolved mentions
+Search routing uses the visible Recent fallback when fold preferences fail to load; Person conversations can be located even while those preferences are pending. Loading successful preferences is still required before routing a foldable channel to its saved destination. Fold/unfold writes remain disabled until preferences load successfully.
+
+The aggregate mention marker follows ConversationWrap.isMentionMe independently of unread counts and mute settings, matching ordinary rows. An unresolved reminder remains visible after unread reaches zero and clears when the reminder is done.
+
+Five regression cases reproduce the previous failures using real parent/list components and SDK conversations: group and Person searches after a rejected preference request, Person search during loading, and zero-unread unresolved reminders in muted and unmuted folded chats.

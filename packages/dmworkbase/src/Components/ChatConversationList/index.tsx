@@ -135,17 +135,21 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
     const searchRequest = temporaryConversationPresentation?.scrollRequest
     const searchKey = searchRequest ? `${searchRequest.channel.channelType}::${searchRequest.channel.channelID}` : undefined
     const searchFolded = !!searchKey && folding.keys.has(searchKey)
+    // A failed load already displays the complete Recent fallback. Searches
+    // may use it; non-foldable channels never depend on these preferences.
+    const searchCanRoute = folding.ready || folding.error || (!!searchRequest &&
+        ![ChannelTypeGroup, ChannelTypeCommunityTopic].includes(searchRequest.channel.channelType))
     const routedSearch = React.useRef<string>()
     React.useEffect(() => {
-        if (!searchRequest || !folding.ready || filter === 'group') return
+        if (!searchRequest || !searchCanRoute || filter === 'group') return
         const requestKey = JSON.stringify([scope, searchRequest.token, searchKey])
         if (routedSearch.current === requestKey) return
         routedSearch.current = requestKey
         setFoldedOpen(searchFolded)
-    }, [scope, filter, folding.ready, searchRequest?.token, searchKey, searchFolded])
-    // Wait for preferences and the destination list before attempting the
-    // scroll; the child acknowledges only after the target row is rendered.
-    const visibleSearchRequest = folding.ready && searchFolded === foldedOpen ? searchRequest : undefined
+    }, [scope, filter, searchCanRoute, searchRequest?.token, searchKey, searchFolded])
+    // Wait for the destination list before attempting the scroll; the child
+    // acknowledges only after the target row is rendered.
+    const visibleSearchRequest = searchCanRoute && searchFolded === foldedOpen ? searchRequest : undefined
 
     const foldEntry = view.folded.length ? { timestamp: view.timestamp, node: <FoldedChatsEntry title={t("base.foldChats.title")} mentionLabel={t("base.conversationList.mentionMarker")} unread={view.unread} hasUnread={view.hasUnread} mention={view.mention} onClick={() => setFoldedOpen(true)} /> } : undefined
 

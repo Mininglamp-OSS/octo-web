@@ -2,7 +2,7 @@
 import React from "react"
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import WKSDK, { Channel, ChannelInfo, Conversation, ConversationExtra } from "wukongimjssdk"
+import WKSDK, { Channel, ChannelInfo, Conversation, ConversationExtra, Reminder, ReminderType } from "wukongimjssdk"
 import ChatConversationList from "../index"
 import WKApp from "../../../App"
 import { ConversationWrap } from "../../../Service/Model"
@@ -39,8 +39,8 @@ function flushFrames() {
  }
  expect(frames.size).toBe(0)
 }
-function conversation(id: string, unread: number, muted = false) {
- const channel = new Channel(id, 2)
+function conversation(id: string, unread: number, muted = false, channelType = 2) {
+ const channel = new Channel(id, channelType)
  const info = new ChannelInfo(); info.channel = channel; info.title = id; info.mute = muted; info.orgData = {displayName: id}
  WKSDK.shared().channelManager.setChannleInfoForCache(info)
  const raw = new Conversation(); raw.channel = channel; raw.unread = unread; raw.timestamp = 1; raw.remoteExtra = new ConversationExtra()
@@ -51,6 +51,48 @@ const row = (root: HTMLElement, id: string) => root.querySelector(`[data-object-
 const target = (root: HTMLElement) => root.querySelector('[class*="wk-conv-unread-num--nudge-"]')?.closest('[data-object-id]')?.getAttribute('data-object-id')
 
 describe("real folded parent/list navigation", () => {
+ it.each([2, 1])("scrolls and acknowledges search after preferences fail (channel type: %s)", async channelType => {
+  vi.mocked(FoldChatService.list).mockRejectedValueOnce(new Error('offline'))
+  const chat = conversation('search-result', 0, false, channelType), onScrolled = vi.fn()
+  const view = (token?: number) => <ChatConversationList {...actions} conversations={[chat]} filter="all"
+   temporaryConversationPresentation={{conversations:[chat], virtualChannelKeys:new Set<string>(), onScrolled,
+    scrollRequest:token === undefined ? undefined : {token, channel:chat.channel}}} />
+  const screen = render(view())
+  await waitFor(() => expect(screen.getByText(t('base.foldChats.loadError'))).toBeTruthy())
+  const scrollTo = vi.fn()
+  Object.defineProperty(row(screen.container, 'search-result')!.closest('.wk-conversationlist'), 'scrollTo', {value:scrollTo, configurable:true})
+  screen.rerender(view(1)); flushFrames()
+  expect(scrollTo).toHaveBeenCalledWith({top:0, behavior:'auto'})
+  expect(onScrolled).toHaveBeenCalledExactlyOnceWith(1)
+  screen.rerender(view(2)); flushFrames()
+  expect(onScrolled.mock.calls).toEqual([[1],[2]])
+  expect(FoldChatService.set).not.toHaveBeenCalled()
+ })
+ it("does not wait for fold preferences to locate a Person conversation", () => {
+  vi.mocked(FoldChatService.list).mockReturnValueOnce(new Promise(() => {}))
+  const chat = conversation('person', 0, false, 1), onScrolled = vi.fn()
+  const screen = render(<ChatConversationList {...actions} conversations={[chat]} filter="all"
+   temporaryConversationPresentation={{conversations:[chat], virtualChannelKeys:new Set<string>(), onScrolled, scrollRequest:{token:1, channel:chat.channel}}} />)
+  flushFrames()
+  expect(row(screen.container,'person')).not.toBeNull()
+  expect(onScrolled).toHaveBeenCalledExactlyOnceWith(1)
+ })
+ it.each([false, true])("keeps an unresolved mention visible after unread clears (muted: %s)", async muted => {
+  const folded = conversation('folded', 0, muted)
+  const reminder = new Reminder()
+  reminder.reminderType = ReminderType.ReminderTypeMentionMe; reminder.done = false; reminder.messageSeq = 1
+  folded.conversation.reminders = [reminder]
+  expect(folded.isMentionMe).toBe(true)
+  const view = () => <ChatConversationList {...actions} conversations={[folded]} filter="all" />
+  const screen = render(view())
+  await waitFor(() => expect(screen.container.querySelector('.wk-folded-entry')).not.toBeNull())
+  const entry = screen.container.querySelector('.wk-folded-entry')!
+  expect(entry.querySelector('.wk-folded-mention')?.textContent).toBe(t('base.conversationList.mentionMarker'))
+  expect(entry.querySelector('.wk-folded-badge, .wk-folded-dot')).toBeNull()
+  reminder.done = true
+  screen.rerender(view())
+  expect(entry.querySelector('.wk-folded-mention')).toBeNull()
+ })
  it.each([false, true])("keeps a manually opened read or muted-only collection visible (muted: %s)", async muted => {
   const chats = [conversation("recent", 1), conversation("folded", muted ? 2 : 0, muted)]
   const screen = render(<ChatConversationList {...actions} conversations={chats} filter="all" scrollToUnreadToken={0} />)

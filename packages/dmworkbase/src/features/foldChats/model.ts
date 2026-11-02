@@ -8,6 +8,6 @@ export function partitionFolded(conversations: ConversationWrap[], keys: Set<str
   timestamp: folded.reduce((max, c) => Math.max(max, c.timestamp), 0),
   unread: folded.reduce((n, c) => n + (isMuted(c) ? 0 : c.unread), 0),
   hasUnread: folded.some(c => c.unread > 0),
-  mention: folded.some(c => c.unread > 0 && c.isMentionMe),
+  mention: folded.some(c => c.isMentionMe),
  }
 }
