@@ -22,3 +22,8 @@ Unread navigation now hands off at a list boundary and resets its cursor on scop
 The backend distinguishes wrapped group/thread permission sentinels from infrastructure errors; query failures are logged and use the registered internal error envelope. Malformed thread IDs are rejected before authorization. Six handler scenarios verify semantic status, no writes, and no internal error disclosure.
 
 Post-review validation: 109 frontend tests in nine suites passed, backend Fold/Follow tests passed, both builds and i18n checks passed. The updated local production deployment passed real browser cross-list navigation and read-cleared fallback checks.
+
+## PR review: navigation intent
+Manual open/back resets the unread cursor but does not start navigation. Only an explicit unread activation or cross-list continuation advances the unread token. Search scroll requests wait for fold preferences, select the matching list once per request, then scroll and acknowledge after that row renders. Neither path changes saved fold preferences.
+
+Real ChatConversationList + ConversationList integration regressions cover manual read/muted-only collection opening, Back to an all-read Recent list, explicit unread handoffs, repeated searches in both directions, initial delayed preference loading, and manual navigation after a search has completed.

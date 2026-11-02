@@ -515,8 +515,8 @@ export default class ConversationList extends Component<
       this.manuallyScrolledSinceUnreadJump = false;
     }
     if (
-      unreadScopeChanged || (this.props.scrollToUnreadToken !== undefined &&
-      this.props.scrollToUnreadToken !== prevProps.scrollToUnreadToken)
+      this.props.scrollToUnreadToken !== undefined &&
+      this.props.scrollToUnreadToken !== prevProps.scrollToUnreadToken
     ) {
       this.scheduleScrollToNextUnreadTarget();
     }

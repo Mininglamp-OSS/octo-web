@@ -105,6 +105,7 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
     const scope = `${WKApp.loginInfo.uid}:${spaceId}`
     const folding = useFoldChats(scope, spaceId)
     const [foldedOpen, setFoldedOpen] = useState(false)
+    const [unreadContinuation, setUnreadContinuation] = useState(0)
     const [undo, setUndo] = useState<ConversationWrap | null>(null)
     const foldedTemporary = (temporaryConversationPresentation?.conversations || []).filter(c =>
         folding.keys.has(conversationFoldKey(c)) && !conversations.some(existing => conversationFoldKey(existing) === conversationFoldKey(c)))
@@ -126,8 +127,26 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
         const otherList = foldedOpen ? view.recent : view.folded
         if (filter === 'group' || !otherList.some(c => c.unread > 0 && !isMutedForRecentConversation(c))) return false
         setFoldedOpen(!foldedOpen)
+        // Only an explicit unread handoff continues navigation after a scope
+        // change. Manual open/back and search routing must not start a jump.
+        setUnreadContinuation(n => n + 1)
         return true
     }
+    const searchRequest = temporaryConversationPresentation?.scrollRequest
+    const searchKey = searchRequest ? `${searchRequest.channel.channelType}::${searchRequest.channel.channelID}` : undefined
+    const searchFolded = !!searchKey && folding.keys.has(searchKey)
+    const routedSearch = React.useRef<string>()
+    React.useEffect(() => {
+        if (!searchRequest || !folding.ready || filter === 'group') return
+        const requestKey = JSON.stringify([scope, searchRequest.token, searchKey])
+        if (routedSearch.current === requestKey) return
+        routedSearch.current = requestKey
+        setFoldedOpen(searchFolded)
+    }, [scope, filter, folding.ready, searchRequest?.token, searchKey, searchFolded])
+    // Wait for preferences and the destination list before attempting the
+    // scroll; the child acknowledges only after the target row is rendered.
+    const visibleSearchRequest = folding.ready && searchFolded === foldedOpen ? searchRequest : undefined
+
     const foldEntry = view.folded.length ? { timestamp: view.timestamp, node: <FoldedChatsEntry title={t("base.foldChats.title")} mentionLabel={t("base.conversationList.mentionMarker")} unread={view.unread} hasUnread={view.hasUnread} mention={view.mention} onClick={() => setFoldedOpen(true)} /> } : undefined
 
     const {
@@ -490,12 +509,12 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                     onClearMessages={onClearMessages}
                     onThreadOverflowClick={onThreadOverflowClick}
                     extraContextMenus={buildExtraMenus}
-                    scrollToUnreadToken={scrollToUnreadToken}
+                    scrollToUnreadToken={(scrollToUnreadToken || 0) + unreadContinuation}
                     unreadNavigationScope={foldedOpen ? 'folded' : 'recent'}
                     onUnreadNavigationWrap={continueUnreadNavigation}
                     shouldScrollToUnreadTarget={shouldScrollToRecentUnreadTarget}
                     temporarilyPinnedConversations={temporaryConversationPresentation?.conversations.filter(c => folding.keys.has(conversationFoldKey(c)) === foldedOpen)}
-                    scrollToTemporaryConversation={temporaryConversationPresentation?.scrollRequest}
+                    scrollToTemporaryConversation={visibleSearchRequest}
                     onTemporaryConversationScrolled={temporaryConversationPresentation?.onScrolled}
                     temporaryVirtualChannelKeys={temporaryConversationPresentation?.virtualChannelKeys}
                     onDismissTemporaryConversation={temporaryConversationPresentation?.onDismiss}

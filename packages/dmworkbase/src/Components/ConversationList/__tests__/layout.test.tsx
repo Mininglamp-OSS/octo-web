@@ -1290,7 +1290,8 @@ describe("unread navigation across list scopes", () => {
           shouldScrollToUnreadTarget={c => c.unread > 0}
           onUnreadNavigationWrap={() => {
             if (!other.some(c => c.unread > 0)) return false;
-            setScope(scope === "recent" ? "folded" : "recent"); return true;
+            setScope(scope === "recent" ? "folded" : "recent");
+            setToken(n => n + 1); return true;
           }} />
       </>;
     }
