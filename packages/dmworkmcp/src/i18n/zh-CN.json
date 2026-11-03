@@ -32,7 +32,7 @@
     "typeSquad": "专家团",
     "typeAgent": "专家",
     "navAriaLabel": "专家类型",
-    "loopIntro": "专家与专家团是可安装到「回路」的 AI 智能体,添加到回路后即可在回路中自动替你完成任务。",
+    "loopIntro": "专家与专家团是可安装到「回路」的 AI 智能体，添加到回路后即可在回路中自动替你完成任务。",
     "searchPlaceholder": "搜索专家或专家团",
     "searchPlaceholderAgent": "搜索专家",
     "searchPlaceholderSquad": "搜索专家团",
