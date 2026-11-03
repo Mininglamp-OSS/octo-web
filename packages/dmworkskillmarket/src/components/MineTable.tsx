@@ -2,6 +2,7 @@ import React from "react";
 import {
   ArrowDownFromLine,
   Building2,
+  ChevronDown,
   Check,
   Clock,
   Globe,
@@ -299,6 +300,8 @@ export default function MineTable({ rows, ariaLabel }: MineTableProps) {
             >
               {r.onVisibility &&
               (r.visibility === "private" || r.visibility === "space") ? (
+                <span className={`wk-mine-table__scope-control wk-mine-table__vis--${vis?.cls}`}>
+                <span className="wk-mine-table__scope-icon" aria-hidden="true">{vis?.icon}</span>
                 <select
                   className="wk-mine-table__scope-select"
                   aria-label={`${r.name} ${t(
@@ -313,6 +316,8 @@ export default function MineTable({ rows, ariaLabel }: MineTableProps) {
                   <option value="private">{visibilityLabel("private")}</option>
                   <option value="space">{visibilityLabel("space")}</option>
                 </select>
+                <ChevronDown className="wk-mine-table__scope-chevron" size={12} aria-hidden="true" />
+                </span>
               ) : vis && r.visibility ? (
                 <span
                   className={`wk-mine-table__vis wk-mine-table__vis--${vis.cls}`}

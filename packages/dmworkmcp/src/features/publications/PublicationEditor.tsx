@@ -239,14 +239,16 @@ export function PublicationEditor({
     <>
       <WKModal
         size="lg"
-        bodyStyle={{ maxHeight: "65vh", overflowY: "auto" }}
+        width="min(720px, calc(100vw - var(--wk-sp-8)))"
+        className="publication-editor-modal"
         visible={!!item}
         onCancel={() => {
           if (!busy) onClose();
         }}
-        title={t("skillMarket.form.editTitle", {
-          values: { name: item?.name ?? "" },
-        })}
+        title={<div className="publication-editor-heading">
+          <span>{t("skillMarket.form.editTitle", { values: { name: t(item?.kind === "squad" ? "mcp.expert.typeSquad" : "mcp.expert.typeAgent") } })}</span>
+          {draft?.plugin.published_version && <span className="wk-mine-table__version">v{draft.plugin.published_version}</span>}
+        </div>}
         footer={
           <>
             <WKButton variant="secondary" onClick={onClose} disabled={busy}>

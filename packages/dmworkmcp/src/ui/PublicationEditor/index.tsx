@@ -1,4 +1,6 @@
 import React from "react";
+import { Bot, Users } from "lucide-react";
+import { visibilityLabel } from "@dmwork/skillmarket/src/utils/labels";
 import { t, useI18n, WKButton, WKInput } from "@octo/base";
 import type { PluginDetailWire } from "@dmwork/skillmarket/src/api/pluginWire";
 import type { PublicationFields } from "@dmwork/skillmarket/src/features/publications/publicationDraft";
@@ -61,18 +63,12 @@ export function PublicationEditorFields({
       {!draft && !error && <p>{t("skillMarket.common.loading")}</p>}
       {draft && (
         <>
-          <div className="skill-market-form__row">
-            <strong>
-              {item?.kind === "squad"
-                ? t("mcp.expert.typeSquad")
-                : t("mcp.expert.typeAgent")}{" "}
-              · {item?.name}
-            </strong>
-            <span>
-              {draft.plugin.published_version
-                ? `v${draft.plugin.published_version}`
-                : t("skillMarket.plugin.statusDraft")}
-            </span>
+          <div className="publication-editor-identity">
+            <span className="publication-editor-identity__icon" aria-hidden="true">{item?.kind === "squad" ? <Users size={22} /> : <Bot size={22} />}</span>
+            <div>
+              <strong>{item?.name}</strong>
+              <span>{t(item?.kind === "squad" ? "mcp.expert.typeSquad" : "mcp.expert.typeAgent")} · {visibilityLabel(draft.plugin.published_version_id ? draft.plugin.visibility : initialVisibility)}</span>
+            </div>
           </div>
           <label>
             <span>{t("skillMarket.form.displayName")}</span>
@@ -119,8 +115,9 @@ export function PublicationEditorFields({
           {!draft.plugin.published_version_id &&
             draft.plugin.listing_state === "draft" && (
               <div className="skill-market-scope-options">
+                <h3 className="skill-market-form__section-title">{t("skillMarket.plugin.columnVisibility")}</h3>
                 {(["private", "space"] as const).map((scope) => (
-                  <label key={scope}>
+                  <label key={scope} className={initialVisibility === scope ? "is-selected" : ""}>
                     <input
                       type="radio"
                       name="initial-publication-visibility"
@@ -141,7 +138,7 @@ export function PublicationEditorFields({
               </div>
             )}
           {deps.map((dep) => (
-            <label key={dep.id}>
+            <label key={dep.id} className="publication-editor-dependency">
               <span>
                 {dep.name || t("skillMarket.publication.unavailableDependency")}
                 {alerts.some((u) => u.plugin_id === dep.id) && (
@@ -186,6 +183,7 @@ export function PublicationEditorFields({
           <WKButton variant="ghost" onClick={onShowUpdates} disabled={busy}>
             {t("skillMarket.publication.viewUpdates")}
           </WKButton>
+          <h3 className="skill-market-form__section-title">{t("skillMarket.form.versionSection")}</h3>
           <div className="skill-market-form__row">
             <label>
               <span>{t("skillMarket.form.versionLabel")}</span>
