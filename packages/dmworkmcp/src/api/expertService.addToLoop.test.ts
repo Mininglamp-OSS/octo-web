@@ -300,6 +300,29 @@ describe("expertService add-to-loop wire contract", () => {
     expect(mock.instance.get).toHaveBeenCalledTimes(2);
   });
 
+  it("refreshes cached runtime status and retains the fresh result", async () => {
+    mock.instance.get.mockResolvedValueOnce({ data: [{ id: "rt1", status: "offline" }] });
+    expect((await getLoopRuntimes("w1"))[0].status).toBe("offline");
+    mock.instance.get.mockResolvedValueOnce({ data: [{ id: "rt1", status: "online" }] });
+    const fresh = await getLoopRuntimes("w1", { refresh: true });
+    expect(fresh[0].status).toBe("online");
+    expect(await getLoopRuntimes("w1")).toBe(fresh);
+    expect(mock.instance.get).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not let a superseded request rejection evict a refreshed runtime list", async () => {
+    let rejectOld!: (error: Error) => void;
+    mock.instance.get.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectOld = reject; }));
+    const old = getLoopRuntimes("w1");
+    const rejected = expect(old).rejects.toThrow("old request failed");
+    mock.instance.get.mockResolvedValueOnce({ data: [{ id: "rt1", status: "online" }] });
+    const fresh = await getLoopRuntimes("w1", { refresh: true });
+    rejectOld(new Error("old request failed"));
+    await rejected;
+    expect(await getLoopRuntimes("w1")).toBe(fresh);
+    expect(mock.instance.get).toHaveBeenCalledTimes(2);
+  });
+
   it("prefetchLoopTargets warms workspaces + the first workspace's runtimes", async () => {
     mock.instance.get.mockImplementation((url: string) =>
       url === "/fleet/api/v1/workspaces"

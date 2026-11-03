@@ -58,12 +58,12 @@ export default function ExpertAddToLoopModal({
   // Load workspaces when the dialog opens; reset all selection state so a
   // second open (possibly for a different expert) starts clean.
   useEffect(() => {
-    if (!item) return;
-    let cancelled = false;
     setWorkspaceId("");
     setRuntimeId("");
     setRuntimes([]);
-    setLoadingWorkspaces(true);
+    setLoadingWorkspaces(Boolean(item));
+    if (!item) return;
+    let cancelled = false;
     getLoopWorkspaces()
       .then((list) => {
         if (cancelled) return;
@@ -99,7 +99,9 @@ export default function ExpertAddToLoopModal({
     let cancelled = false;
     setRuntimeId("");
     setLoadingRuntimes(true);
-    getLoopRuntimes(workspaceId)
+    // Readiness gates installation, so refresh even if market prefetch or a
+    // previous dialog session already cached this workspace's runtimes.
+    getLoopRuntimes(workspaceId, { refresh: true })
       .then((list) => {
         if (cancelled) return;
         setRuntimes(list);

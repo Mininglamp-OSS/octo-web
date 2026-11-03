@@ -4,7 +4,21 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({ workspaces: vi.fn(), runtimes: vi.fn(), install: vi.fn() }));
+// Keep the production runtime getter/cache. Only replace the HTTP boundary so
+// reopen tests catch stale prefetch/session data rather than bypassing it.
+vi.mock("axios", () => ({
+  default: {
+    create: () => ({
+      interceptors: { request: { use: vi.fn() }, response: { use: vi.fn() } },
+      get: (_url: string, config: any) => api.runtimes(config.params.workspace_id)
+        .then((data: unknown) => ({ data })),
+    }),
+  },
+}));
 vi.mock("@octo/base", () => ({
+  WKApp: { shared: { currentSpaceId: "space" } },
+  buildAcceptLanguage: () => "en-US",
+  DEFAULT_REQUEST_TIMEOUT_MS: 20000,
   useI18n: () => undefined,
   t: (key: string) => key,
   WKModal: ({ visible, children, footer }: any) => visible ? <div>{children}{footer}</div> : null,
@@ -19,26 +33,61 @@ vi.mock("@douyinfe/semi-ui", () => ({
     </select>
   ),
 }));
-vi.mock("../../api/expertService", () => ({
+vi.mock("../../api/expertService", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../api/expertService")>(),
   getLoopWorkspaces: () => api.workspaces(),
-  getLoopRuntimes: (id: string) => api.runtimes(id),
   installExpertToLoop: (...args: unknown[]) => api.install(...args),
   installSquadToLoop: (...args: unknown[]) => api.install(...args),
   createLoopInstallationKey: () => "install-key",
 }));
 import ExpertAddToLoopModal from "../ExpertAddToLoopModal";
+import { clearLoopCache, getLoopRuntimes } from "../../api/expertService";
 const item = { id: "expert", name: "Expert", kind: "expert" } as never;
 const confirm = () => screen.getByRole("button", { name: "mcp.expert.confirmInstall" });
 const runtime = () => screen.getByRole("combobox", { name: "mcp.expert.selectRuntimePlaceholder" }) as HTMLSelectElement;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  clearLoopCache();
   api.workspaces.mockResolvedValue([{ id: "w1", name: "One" }, { id: "w2", name: "Two" }]);
   api.install.mockResolvedValue({ agentId: "installed" });
 });
 afterEach(cleanup);
 
 describe("market installation runtime selection", () => {
+  it.each([
+    ["offline", "online", "mine", false],
+    ["online", "offline", "", true],
+  ])("refreshes cached %s status to %s on reopen", async (initial, next, selected, disabled) => {
+    api.runtimes.mockResolvedValue([{ id: "mine", name: "Mine", status: initial }]);
+    // Seed the same real cache that marketplace prefetch populates.
+    await getLoopRuntimes("w1");
+    const view = render(<ExpertAddToLoopModal item={item} onClose={vi.fn()} />);
+    await waitFor(() => expect(api.runtimes).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(runtime().value).toBe(initial === "online" ? "mine" : ""));
+    view.rerender(<ExpertAddToLoopModal item={null} onClose={vi.fn()} />);
+
+    let resolveRefresh!: (rows: unknown[]) => void;
+    api.runtimes.mockImplementationOnce(() => new Promise((resolve) => { resolveRefresh = resolve; }));
+    view.rerender(<ExpertAddToLoopModal item={item} onClose={vi.fn()} />);
+    await waitFor(() => expect(api.runtimes).toHaveBeenCalledTimes(3));
+    expect((confirm() as HTMLButtonElement).disabled).toBe(true);
+    resolveRefresh([{ id: "mine", name: "Mine", status: next }]);
+    await waitFor(() => {
+      expect((confirm() as HTMLButtonElement).disabled).toBe(disabled);
+      expect(runtime().value).toBe(selected);
+      expect(runtime().querySelector('option[value="mine"]')?.hasAttribute("disabled")).toBe(disabled);
+    });
+    fireEvent.click(confirm());
+    if (disabled) {
+      expect(api.install).not.toHaveBeenCalled();
+    } else {
+      await waitFor(() => expect(api.install).toHaveBeenCalledWith("expert", {
+        workspaceId: "w1", runtimeId: "mine", idempotencyKey: "install-key",
+      }));
+    }
+  });
+
   it("defaults to a ready owned runtime and installs with its exact ID", async () => {
     api.runtimes.mockResolvedValue([
       { id: "offline", name: "My offline runtime", status: "offline" },
