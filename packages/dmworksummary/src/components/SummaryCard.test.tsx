@@ -510,7 +510,7 @@ describe('SummaryCard completed actions', () => {
         expect(screen.queryByText('继续优化')).not.toBeInTheDocument();
     });
 
-    it('hides continue refining when an Agent summary is not referenceable', () => {
+    it('routes non-referenceable summaries through the legacy generation fallback', () => {
         const onRegenerate = vi.fn();
         render(
             <SummaryCard
@@ -524,12 +524,13 @@ describe('SummaryCard completed actions', () => {
         );
 
         openCardMenu();
-        expect(screen.queryByText('继续优化')).not.toBeInTheDocument();
+        expect(screen.getByText('继续优化')).toBeInTheDocument();
         expect(screen.queryByText('重新生成')).not.toBeInTheDocument();
         expect(screen.getByText('编辑')).toBeInTheDocument();
         expect(screen.getByText('删除')).toBeInTheDocument();
 
-        expect(onRegenerate).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByText('继续优化'));
+        expect(onRegenerate).toHaveBeenCalledTimes(1);
     });
 
     it('hides action items whose handlers are not provided', () => {
@@ -547,7 +548,7 @@ describe('SummaryCard completed actions', () => {
         expect(screen.getByText('删除')).toBeInTheDocument();
     });
 
-    it('Workflow summary keeps edit and delete without regenerate', () => {
+    it('Workflow summary retains the unified optimization entry', () => {
         render(
             <SummaryCard
                 task={makeItem({ status: TaskStatus.COMPLETED, trigger_type: TriggerType.MANUAL }) as any}
@@ -562,6 +563,6 @@ describe('SummaryCard completed actions', () => {
         expect(screen.queryByText('重新生成')).not.toBeInTheDocument();
         expect(screen.getByText('编辑')).toBeInTheDocument();
         expect(screen.getByText('删除')).toBeInTheDocument();
-        expect(screen.queryByText('继续优化')).not.toBeInTheDocument();
+        expect(screen.getByText('继续优化')).toBeInTheDocument();
     });
 });

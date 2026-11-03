@@ -292,6 +292,7 @@ export default function SummaryWorkbenchFeature({
     taskId: derivedFromTask?.task_id, sessionId: workbench.sessionId,
     userId: storageScope.userId ?? undefined, spaceId,
     hasMessages: workbench.viewState.messages.length > 0,
+    canCaptureBase: workbench.canCaptureOptimizationBase,
   });
   const canSaveVersion = Boolean(optimization?.can_save_version &&
     workbench.scope.referencedTaskIds.includes(optimization.target.task_id));

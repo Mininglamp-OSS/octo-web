@@ -431,6 +431,7 @@ function controller(overrides: Record<string, unknown> = {}) {
     progressEvents: [],
     latestProgress: null,
     isHydrating: false,
+    canCaptureOptimizationBase: true,
     isConfirming: false,
     isSaving: false,
     error: null,

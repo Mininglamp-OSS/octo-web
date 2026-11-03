@@ -11,12 +11,14 @@ export function useOptimizationTarget({
   userId,
   spaceId,
   hasMessages,
+  canCaptureBase,
 }: {
   taskId?: number;
   sessionId: string;
   userId?: string;
   spaceId?: string;
   hasMessages: boolean;
+  canCaptureBase: boolean;
 }) {
   const [optimization, setOptimization] =
     useState<SummaryOptimizationContext | null>(null);
@@ -36,7 +38,7 @@ export function useOptimizationTarget({
     } catch {
       /* A recovered session without its base can only save a copy. */
     }
-    if (!taskId || hasMessages) {
+    if (!taskId || hasMessages || !canCaptureBase) {
       setLoading(false);
       return;
     }
@@ -60,6 +62,6 @@ export function useOptimizationTarget({
       active = false;
     };
     // hasMessages intentionally excluded: generation never changes the base.
-  }, [taskId, sessionId, userId, spaceId]);
+  }, [taskId, sessionId, userId, spaceId, canCaptureBase]);
   return { optimization, loading };
 }

@@ -69,7 +69,7 @@ function getStatusColor(status: number): string | null {
     }
 }
 
-const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDelete, onRespond, onLeave, onRetry, onContinueOptimize, onEdit, onSchedule, onCancel }) => {
+const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDelete, onRespond, onLeave, onRetry, onRegenerate, onContinueOptimize, onEdit, onSchedule, onCancel }) => {
     const { t } = useI18n();
     const [confirmType, setConfirmType] = useState<'delete' | 'leave' | null>(null);
     const [menuVisible, setMenuVisible] = useState(false);
@@ -240,8 +240,8 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                                         {/* Both engines share the personal action set. */}
                                         {task.status === TaskStatus.COMPLETED && (
                                             <>
-                                                {isReferenceable(task) && onContinueOptimize && (
-                                                    <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onContinueOptimize(task.task_id); }}>
+                                                {(isReferenceable(task) ? onContinueOptimize : onRegenerate) && (
+                                                    <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); (isReferenceable(task) ? onContinueOptimize : onRegenerate)?.(task.task_id); }}>
                                                         {t("summary.detail.continueRefine")}
                                                     </Dropdown.Item>
                                                 )}

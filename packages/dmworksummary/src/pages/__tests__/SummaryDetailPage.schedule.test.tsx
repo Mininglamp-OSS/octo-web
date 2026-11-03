@@ -3914,3 +3914,11 @@ describe('DAP-271 finding 5 — 异步成功事件归因入口快照(切 task �
         track.mockRestore();
     });
 });
+
+it.each([false, undefined])("keeps generation reachable for a legacy completed summary with referenceable=%s", (referenceable) => {
+  const page = makePage(1);
+  page.state.detail = {task_id:1,status:TaskStatus.COMPLETED,trigger_type:TriggerType.MANUAL,referenceable} as any;
+  const fallback = vi.spyOn(page, "handleRegenerate").mockImplementation(() => {});
+  page.handleContinueRefine();
+  expect(fallback).toHaveBeenCalledTimes(1);
+});

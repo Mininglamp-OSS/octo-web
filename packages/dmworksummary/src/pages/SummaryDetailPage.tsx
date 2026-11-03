@@ -2558,7 +2558,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     handleContinueRefine = () => {
         const { detail } = this.state;
         if (!detail) return;
-        if (!this.canRefineCurrentDetail()) return;
+        if (!this.canRefineCurrentDetail()) {
+            this.handleRegenerate();
+            return;
+        }
         // DAP-218 M11：点击「继续优化」手势。
         // DAP-266：补 summary_id（detail.task_id 就近）。
         Dap.shared.track("smart_summary_continue_refine_clicked", { summary_id: detail.task_id });
@@ -4558,7 +4561,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     )}
                 </div>
                 <div className="summary-detail-header-actions">
-                    {detail && detail.status === TaskStatus.COMPLETED && this.canRefineCurrentDetail() && (
+                    {detail && detail.status === TaskStatus.COMPLETED && (
                         <Button
                             data-testid={summaryTestIds.detailContinueRefineBtn}
                             theme="solid"

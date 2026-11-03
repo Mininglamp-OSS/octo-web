@@ -1,3 +1,5 @@
+import * as workbenchService from "../../Service/SummaryWorkbenchService";
+import { useOptimizationTarget } from "./useOptimizationTarget";
 // @vitest-environment jsdom
 
 import React from "react";
@@ -344,6 +346,45 @@ describe("useSummaryWorkbench", () => {
       streamCallbacks = callbacks;
       return { close: closeStream };
     });
+  });
+
+  it("never refreshes an uncached base during delayed preview recovery", async () => {
+    localStorage.clear();
+    const target = vi.spyOn(workbenchService, "getSummaryOptimizationTarget").mockResolvedValue({
+      target: {task_id: 7, result_kind: "team", expected_revision: "R1"},
+      title: "Original", can_save_version: true,
+    });
+    const hydration = deferred<ReturnType<typeof previewHydration>>();
+    loadSession.mockReturnValueOnce(hydration.promise);
+    const { result, unmount } = renderHook(() => {
+      const controller = useSummaryWorkbench({initialScope, autoHydrate: false, service});
+      const optimization = useOptimizationTarget({
+        taskId: 7, sessionId: controller.sessionId, userId: "user", spaceId: "space",
+        hasMessages: controller.viewState.messages.length > 0,
+        canCaptureBase: controller.canCaptureOptimizationBase,
+      });
+      return {controller, ...optimization};
+    });
+    await waitFor(() => expect(result.current.optimization?.target.expected_revision).toBe("R1"));
+    const originalSession = result.current.controller.sessionId;
+    act(() => { result.current.controller.resetSession(); });
+    await waitFor(() => expect(result.current.optimization).not.toBeNull());
+    localStorage.clear();
+    target.mockResolvedValue({
+      target: {task_id: 7, result_kind: "team", expected_revision: "R2"},
+      title: "Edited", can_save_version: true,
+    });
+    const calls = target.mock.calls.length;
+    let pending!: ReturnType<typeof result.current.controller.hydrateSession>;
+    act(() => { pending = result.current.controller.hydrateSession(originalSession); });
+    await waitFor(() => expect(result.current.optimization).toBeNull());
+    expect(target).toHaveBeenCalledTimes(calls);
+    await act(async () => { hydration.resolve(previewHydration(serverScope)); await pending; });
+    expect(result.current.optimization).toBeNull();
+    expect(result.current.controller.canCaptureOptimizationBase).toBe(false);
+    expect(target).toHaveBeenCalledTimes(calls);
+    unmount();
+    target.mockRestore();
   });
 
   it("sends the complete scope once and adopts server-authoritative state", async () => {
