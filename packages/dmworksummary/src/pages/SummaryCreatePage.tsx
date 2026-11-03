@@ -1,3 +1,4 @@
+import AiGeneratedNotice from "../ui/AiGeneratedNotice";
 import { FileText, Sparkles, X, Plus } from "lucide-react";
 import React, { Component, createRef } from "react";
 import {
@@ -1476,6 +1477,9 @@ export default class SummaryCreatePage extends Component<
                     })}
                             </div>
                         )}
+                    </div>
+                    <div className="summary-workbench-ai-notice">
+                        <AiGeneratedNotice text={translate("summary.common.aiGeneratedNotice")} />
                     </div>
                     {topic.trim() && appliedTemplateLabel && (
                         <div className="summary-template-applied-bar">

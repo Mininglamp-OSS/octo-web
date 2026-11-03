@@ -1,0 +1,17 @@
+.summary-ai-notice {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--wk-sp-1);
+    min-width: 0;
+    max-width: 100%;
+    color: var(--wk-text-secondary);
+    font-size: var(--wk-text-size-sm);
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+.summary-ai-notice svg {
+    align-self: flex-start;
+    flex: none;
+    margin-block-start: 0.2em;
+}
