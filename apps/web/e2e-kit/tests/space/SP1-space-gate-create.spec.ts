@@ -13,6 +13,20 @@ test("@SP1 @p0 @space @space-gate 无 Space 后创建组织进入主界面", asy
   await pagePlain.route("**/api/v1/space/my**", (route) => route.fulfill({ json: created ? [space] : [] }));
   await pagePlain.route("**/api/v1/users/e2e-user-1/avatar**", (route) => route.fulfill({ status: 200, contentType: "image/png", body: Buffer.from([]) }));
   await pagePlain.route("**/api/v1/sidebar/sync", (route) => route.fulfill({ json: { conversations: [], groups: [], users: [] } }));
+  // Switching into the created space can retire the document while MSW is
+  // handling its initial reads. Only the worker's forwarded GETs reach this route.
+  const bootstrapReads = new Map<string, { status: number; json: unknown }>([
+    ["/api/v1/user/pinned", { status: 200, json: [] }],
+    ["/api/v1/space/sp1-created-space/members", { status: 200, json: [ { uid: space.owner, name: "E2E Tester", role: 2, robot: 0 } ] }],
+    ["/api/v1/message/prohibit_words/sync", { status: 200, json: { version: 0, words: [] } }],
+  ]);
+  const devicePath = /^\/api\/v1\/user\/devices\/[^/]+$/;
+  await pagePlain.context().route(url => bootstrapReads.has(url.pathname) || devicePath.test(url.pathname), async route => {
+    const request = route.request();
+    if (!created || !request.serviceWorker() || request.method() !== "GET") return route.fallback();
+    const path = new URL(request.url()).pathname;
+    await route.fulfill(bootstrapReads.get(path) ?? { status: 400, json: { msg: "device not found" } });
+  });
   await pagePlain.addInitScript(({ sid, suffixed, locale }: { sid: string; suffixed: Record<string, string>; locale: string }) => {
     const ls = localStorage;
     const ss = sessionStorage;
