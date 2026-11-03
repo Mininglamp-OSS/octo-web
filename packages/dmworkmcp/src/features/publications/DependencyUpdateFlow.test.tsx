@@ -165,7 +165,8 @@ it("keeps input after a failed atomic submit", async () => {
     )
   );
   await click("skillMarket.publication.confirmUpdate");
-  expect(container.textContent).toContain("stale target");
+  expect(container.textContent).toContain("skillMarket.form.saveFailed");
+  expect(container.textContent).not.toContain("stale target");
   expect(
     (
       container.querySelectorAll(
@@ -243,4 +244,36 @@ it("finishes adoption when the editor's initial reminder request completes durin
   await act(async () => { finishAdoption({ display_status: "published" }); });
   expect(onSaved).toHaveBeenCalledOnce();
   expect(onClose).toHaveBeenCalledOnce();
+});
+
+it("routes a delisted resource to editing instead of calling the published-only update endpoint", async () => {
+  const edit = vi.fn();
+  await mount({ listingState: "delisted", onEdit: edit });
+  expect(api.getUpdates).not.toHaveBeenCalled();
+  expect(container.textContent).toContain("skillMarket.publication.editBeforeUpdates");
+  await click("skillMarket.publication.editResource");
+  expect(edit).toHaveBeenCalledOnce();
+});
+it("explains a stale list state without showing the raw conflict message", async () => {
+  api.getUpdates.mockRejectedValue({ status: 409, msg: "plugin state conflicts with an existing resource" });
+  await mount();
+  expect(container.textContent).toContain("skillMarket.publication.updatesConflict");
+  expect(container.textContent).not.toContain("plugin state conflicts");
+});
+
+it("reloads a conflict while keeping version, notes and dependency choices", async () => {
+  api.getUpdates.mockResolvedValue({ plugin_id: "expert", published_version_id: "e1", draft_revision: "current", updates: [...updates, { ...updates[0], plugin_id: "other", name: "Other" }] });
+  api.adoptUpdates.mockRejectedValueOnce({ status: 409, msg: "stale target" });
+  await mount();
+  await act(async () => {
+    Simulate.change(container.querySelectorAll('input:not([type="checkbox"])')[0], { target: { value: "1.0.2" } } as any);
+    Simulate.change(container.querySelectorAll('input:not([type="checkbox"])')[1], { target: { value: "Keep my notes" } } as any);
+    Simulate.change(container.querySelectorAll('input[type="checkbox"]')[1], { target: { checked: false } } as any);
+  });
+  await click("skillMarket.publication.confirmUpdate");
+  await click("skillMarket.list.retry");
+  expect(api.getUpdates).toHaveBeenCalledTimes(2);
+  expect((container.querySelectorAll('input:not([type="checkbox"])')[0] as HTMLInputElement).value).toBe("1.0.2");
+  expect((container.querySelectorAll('input:not([type="checkbox"])')[1] as HTMLInputElement).value).toBe("Keep my notes");
+  expect((container.querySelectorAll('input[type="checkbox"]')[1] as HTMLInputElement).checked).toBe(false);
 });

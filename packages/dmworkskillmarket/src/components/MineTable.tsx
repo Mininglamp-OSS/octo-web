@@ -34,6 +34,9 @@ export interface MineActionRequest {
   pluginId: string;
   type: MineAssetType;
   action: "view" | "edit" | "upgrade";
+  /** Preserve owner-list diagnostics when the draft projection omits them. */
+  dependencyIssues?: MineRow["dependencyIssues"];
+  dependencySuspended?: boolean;
 }
 
 const WIRE_TYPE: Record<MineAssetType, string> = {
@@ -89,8 +92,7 @@ export interface MineRow {
   statusTone?: string;
   /** Rejection reason, surfaced under the name and as the status tooltip. */
   rejectReason?: string;
-  /** Unavailable published dependencies; surfaced under the name so an owner
-   *  sees why the market hides this asset. */
+  /** Unavailable dependencies; the status action opens the repair editor. */
   dependencyIssues?: Array<{
     targetPluginId: string;
     targetName?: string;
@@ -213,35 +215,14 @@ export default function MineTable({ rows, ariaLabel }: MineTableProps) {
               >
                 <span className="wk-mine-table__avatar">
                   {r.icon}
-                  {r.dependencyUpdates?.some((u) => !u.is_skipped) && (
+                  {(r.dependencyIssues?.length || r.dependencyUpdates?.some((u) => !u.is_skipped)) && (
                     <span
                       className="wk-mine-table__dependency-dot"
-                      aria-label={t("skillMarket.publication.hasUpdates")}
+                      aria-label={t(r.dependencyIssues?.length ? "skillMarket.publication.invalidDependencies" : "skillMarket.publication.hasUpdates")}
                     />
                   )}
                 </span>
                 <span className="wk-mine-table__namecol">
-                  {r.dependencyIssues?.length ? (
-                    <span className="wk-mine-table__dependency-warning">
-                      {t("skillMarket.plugin.dependencyWarning")}
-                      {": "}
-                      {r.dependencyIssues
-                        .map((issue) => {
-                          const target =
-                            issue.targetName || issue.targetPluginId;
-                          const reason = issue.reason
-                            ? t(
-                                `skillMarket.plugin.dependencyIssue.${dependencyIssueReasonKey(
-                                  issue.reason
-                                )}`
-                              )
-                            : "";
-                          return reason ? `${target} · ${reason}` : target;
-                        })
-                        .filter(Boolean)
-                        .join(", ")}
-                    </span>
-                  ) : null}
                   <span className="wk-mine-table__namerow" title={r.name}>
                     <span className="wk-mine-table__name">{r.name}</span>
                     {/* The type is spelled out, not only shown as the avatar
@@ -366,10 +347,21 @@ export default function MineTable({ rows, ariaLabel }: MineTableProps) {
               ) : (
                 "—"
               )}
+              {!!r.dependencyIssues?.length && (
+                <button
+                  type="button"
+                  className="wk-mine-table__dependency-invalid"
+                  title={r.dependencyIssues.map(issue => `${issue.targetName || t("skillMarket.publication.unavailableDependency")} · ${t(`skillMarket.plugin.dependencyIssue.${dependencyIssueReasonKey(issue.reason)}`)}`).join("; ")}
+                  onClick={r.onEdit}
+                  disabled={r.busy || !r.onEdit}
+                >
+                  {t("skillMarket.publication.invalidDependencies")}
+                </button>
+              )}
               {r.dependencySuspended && !r.dependencyIssues?.length && (
-                <span className="wk-mine-table__dependency-warning">
+                <button type="button" className="wk-mine-table__dependency-invalid" onClick={r.onEdit} disabled={r.busy || !r.onEdit}>
                   {t("skillMarket.publication.dependencyRecovered")}
-                </span>
+                </button>
               )}
               {r.dependencyUpdates?.some((u) => !u.is_skipped) && (
                 <button
@@ -449,11 +441,12 @@ export default function MineTable({ rows, ariaLabel }: MineTableProps) {
               <RowAction
                 show={!!r.onEdit}
                 busy={r.busy}
-                iconOnly
+                primary
                 aria={r.editAria}
                 title={t("skillMarket.plugin.actionEdit")}
                 onClick={r.onEdit}
-                label={<Pencil size={14} aria-hidden="true" />}
+                leading={<Pencil size={14} aria-hidden="true" />}
+                label={t("skillMarket.plugin.actionEdit")}
               />
               <RowAction
                 show={!!r.onDelete}

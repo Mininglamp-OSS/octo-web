@@ -421,7 +421,7 @@ export default function ExpertMarketListPage({
     const generation = ++editGeneration.current;
     try {
       const draft = await getExpertEditMetadata(item.id);
-      if (generation === editGeneration.current) setEditItem(draft);
+      if (generation === editGeneration.current) setEditItem({ ...draft, dependencyIssues: draft.dependencyIssues ?? item.dependencyIssues, dependencySuspended: draft.dependencySuspended ?? item.dependencySuspended });
     } catch (err) {
       if (generation === editGeneration.current) showToast(err instanceof Error ? err.message : t("mcp.expert.loadError"));
     }
@@ -938,7 +938,7 @@ export default function ExpertMarketListPage({
         onClose={() => setBotEditTarget(null)}
         onToast={showToast}
       />
-      {dependencyTarget&&<DependencyUpdateFlow pluginId={dependencyTarget.id} pending={dependencyTarget.displayStatus==="pending_review"} onClose={()=>setDependencyTarget(null)} onSaved={message=>{showToast(message);reload()}}/>}
+      {dependencyTarget&&<DependencyUpdateFlow pluginId={dependencyTarget.id} listingState={dependencyTarget.listingState} onEdit={()=>void handleEdit(dependencyTarget)} pending={dependencyTarget.displayStatus==="pending_review"} onClose={()=>setDependencyTarget(null)} onSaved={message=>{showToast(message);reload()}}/>}
       <VisibilityModal target={visibilityTarget} pluginId={visibilityId} onClose={() => setVisibilityId(null)} onSaved={handleListingChanged} />
       <ExpertEditModal
         item={editItem}

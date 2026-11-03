@@ -1,6 +1,6 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import MineTable, { type MineRow } from "../MineTable";
 
 const row: MineRow = {
@@ -16,9 +16,14 @@ const row: MineRow = {
 };
 
 describe("MineTable dependency warning", () => {
-  it("renders known and unknown reasons without throwing", () => {
-    render(<MineTable rows={[row]} />);
-    expect(screen.getByText(/合同清单/)).toBeInTheDocument();
-    expect(screen.getByText(/skill-2/)).toBeInTheDocument();
+  it("puts actionable dependency warnings in the status cell without exposing reference IDs in the name", () => {
+    const edit = vi.fn();
+    render(<MineTable rows={[{ ...row, onEdit: edit }]} />);
+    const warning = screen.getByRole("button", { name: /依赖失效|skillMarket.publication.invalidDependencies/ });
+    expect(warning.closest('[role="cell"]')).toHaveTextContent(/已发布|published/);
+    expect(warning).toHaveAttribute("title", expect.stringContaining("合同清单"));
+    expect(screen.getByRole("button", { name: row.name })).not.toHaveTextContent("skill-2");
+    fireEvent.click(warning);
+    expect(edit).toHaveBeenCalledOnce();
   });
 });

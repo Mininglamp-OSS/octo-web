@@ -1,3 +1,4 @@
+import { dependencyIssueReasonKey } from "@dmwork/skillmarket/src/components/dependencyIssueReason";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Toast } from "@douyinfe/semi-ui";
 import { t, useI18n, WKApp } from "@octo/base";
@@ -148,7 +149,11 @@ export default function MineActionHost({
 
       if (request.action === "edit") {
         const draft = await getExpertEditMetadata(request.pluginId);
-        if (current()) setExpert(draft);
+        if (current()) setExpert({
+          ...draft,
+          dependencyIssues: draft.dependencyIssues ?? request.dependencyIssues?.map(issue => ({ ...issue, relationType: "", reason: dependencyIssueReasonKey(issue.reason) })),
+          dependencySuspended: draft.dependencySuspended ?? request.dependencySuspended,
+        });
         return;
       }
 

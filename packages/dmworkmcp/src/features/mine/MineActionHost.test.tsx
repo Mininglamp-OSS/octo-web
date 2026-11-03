@@ -161,7 +161,7 @@ vi.mock("../../components/McpDetailModal", () => ({
 
 vi.mock("../../components/ExpertEditModal", () => ({
   default: ({ item }: { item: typeof expert | null }) =>
-    item ? <div data-testid="expert-edit" data-id={item.id} /> : null,
+    item ? <div data-testid="expert-edit" data-id={item.id} data-issues={JSON.stringify((item as any).dependencyIssues)} data-suspended={String((item as any).dependencySuspended ?? false)} /> : null,
 }));
 vi.mock("../../components/ExpertDetailModal", () => ({
   default: ({ item }: { item: typeof expert | typeof squad | null }) =>
@@ -402,4 +402,14 @@ describe("MineActionHost", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(container.querySelector('[data-testid="expert-edit"]')).toBeNull();
   });
+});
+
+it("carries owner-list diagnostics into the editor when draft metadata omits them", async () => {
+  renderHost({ requestId: 100, pluginId: expert.id, type: "expert", action: "edit", dependencySuspended: true,
+    dependencyIssues: [{ targetPluginId: "skill", targetName: "内容创作规范", reason: "delisted" }],
+  });
+  await act(async () => undefined);
+  const editor = container.querySelector('[data-testid="expert-edit"]');
+  expect(editor?.getAttribute("data-issues")).toContain("内容创作规范");
+  expect(editor?.getAttribute("data-suspended")).toBe("true");
 });

@@ -365,7 +365,7 @@ export default function AllAssetsList({
       onVisibility: (item.listingState === "published"||item.listingState === "delisted") && !pending && (item.visibility === "private" || item.visibility === "space") ? (target?:"private"|"space") => {setVisibilityTarget(target);setVisibilityId(item.id)} : undefined,
       onEdit:
         onRequestAction && !pending
-          ? () => onRequestAction({ pluginId: item.id, type: rowType, action: rowType === "connector" && listedToOrg ? "upgrade" : "edit" })
+          ? () => onRequestAction({ pluginId: item.id, type: rowType, action: rowType === "connector" && listedToOrg ? "upgrade" : "edit", dependencyIssues: item.dependencyIssues, dependencySuspended: item.dependencySuspended })
           : undefined,
       editAria: t("skillMarket.plugin.ariaEdit", { values: { name: item.name } }),
       onPublish:
@@ -412,7 +412,7 @@ export default function AllAssetsList({
 
   return (
     <div className="wk-mcp-mine__all">
-      {dependencyTarget&&<DependencyUpdateFlow pluginId={dependencyTarget.id} pending={dependencyTarget.displayStatus==="pending_review"} onClose={()=>setDependencyTarget(null)} onSaved={message=>{Toast.success(message);void load()}}/>}
+      {dependencyTarget&&<DependencyUpdateFlow pluginId={dependencyTarget.id} listingState={dependencyTarget.listingState} onEdit={()=>onRequestAction?.({pluginId: dependencyTarget.id, type: dependencyTarget.pluginType === "expert_team" ? "squad" : "expert", action: "edit", dependencyIssues: dependencyTarget.dependencyIssues, dependencySuspended: dependencyTarget.dependencySuspended})} pending={dependencyTarget.displayStatus==="pending_review"} onClose={()=>setDependencyTarget(null)} onSaved={message=>{Toast.success(message);void load()}}/>}
       <VisibilityModal target={visibilityTarget} pluginId={visibilityId} onClose={() => setVisibilityId(null)} onSaved={message => { Toast.success(message); void load(); }} />
       <MineTable rows={rows} ariaLabel={t("mcp.mine.allAriaLabel")} />
       {(cursor || loadingMore || moreError) && (

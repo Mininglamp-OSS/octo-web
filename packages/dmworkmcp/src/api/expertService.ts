@@ -717,6 +717,7 @@ export async function getExpertEditMetadata(id: string): Promise<ExpertItem> {
     version: detail.plugin.current_version ?? "",
     draftRevision: detail.draft_revision,
     draftChangelog: detail.draft_changelog ?? "",
+    dependencyIssues: mapDependencyIssues(detail.dependency_issues ?? detail.plugin.dependency_issues),
   };
 }
 

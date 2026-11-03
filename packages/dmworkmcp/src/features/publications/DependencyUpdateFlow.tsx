@@ -1,6 +1,6 @@
+import { publicationErrorMessage } from "@dmwork/skillmarket/src/utils/publicationError";
 import React, { useEffect, useRef, useState } from "react";
 import {
-  extractErrorMsg,
   t,
   useI18n,
   WKApp,
@@ -24,6 +24,8 @@ import { notifyReviewsChanged } from "@dmwork/skillmarket/src/api/reviewSignal";
 interface Props {
   pluginId: string;
   pending?: boolean;
+  listingState?: string;
+  onEdit?: () => void;
   draft?: PublicationWrite;
   onClose: () => void;
   onSaved: (message: string) => void;
@@ -32,6 +34,8 @@ interface Props {
 export function DependencyUpdateFlow({
   pluginId,
   pending = false,
+  listingState,
+  onEdit,
   draft: edited,
   onClose,
   onSaved,
@@ -45,6 +49,8 @@ export function DependencyUpdateFlow({
   const [notes, setNotes] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const reloadEdits = useRef<{ pluginId: string; version: string; notes: string; selected: Record<string, boolean>; draft: PublicationWrite } | null>(null);
   const generation = useRef(0);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
@@ -63,6 +69,11 @@ export function DependencyUpdateFlow({
     const token = ++generation.current;
     setError("");
     setSource(null);
+    setDraft(null);
+    if (listingState && listingState !== "published") {
+      setError(t("skillMarket.publication.editBeforeUpdates"));
+      return;
+    }
     const base = resolveSkillMarketApiBaseURL();
     void Promise.all([
       PublicationService.getUpdates(base, pluginId),
@@ -71,7 +82,8 @@ export function DependencyUpdateFlow({
         : PublicationService.getDraft(base, pluginId),
     ])
       .then(async ([updates, value]) => {
-        let payload = edited;
+        const preserved = reloadEdits.current?.pluginId === pluginId ? reloadEdits.current : null;
+        let payload = preserved?.draft ?? edited;
         if (!payload && value) {
           const instruction = await PublicationService.getInstruction(
             base,
@@ -92,28 +104,26 @@ export function DependencyUpdateFlow({
         if (token !== generation.current) return;
         setSource(updates);
         setDraft(payload ?? null);
-        setVersion(payload?.plugin.version ?? "1.0.0");
+        setVersion(preserved?.version ?? payload?.plugin.version ?? "1.0.0");
         setNotes(
-          payload?.changelog || t("skillMarket.publication.updateNotes")
+          preserved?.notes ?? (payload?.changelog || t("skillMarket.publication.updateNotes"))
         );
         setSelected(
           Object.fromEntries(
-            updates.updates.map((u) => [u.plugin_id, !u.is_skipped])
+            updates.updates.map((u) => [u.plugin_id, preserved && u.plugin_id in preserved.selected ? preserved.selected[u.plugin_id] : !u.is_skipped])
           )
         );
       })
       .catch((err) => {
         if (token === generation.current)
           setError(
-            err instanceof Error
-              ? err.message
-              : extractErrorMsg(err) || t("skillMarket.common.loadFailed")
+            publicationErrorMessage(err, "skillMarket.common.loadFailed")
           );
       });
     return () => {
       generation.current++;
     };
-  }, [pluginId, edited]);
+  }, [pluginId, edited, listingState, attempt]);
   const changes = source?.updates.filter((u) => selected[u.plugin_id]) ?? [];
   async function run(skip: boolean) {
     if (!source || busy) return;
@@ -174,9 +184,7 @@ export function DependencyUpdateFlow({
     } catch (err) {
       if (token === generation.current)
         setError(
-          err instanceof Error
-            ? err.message
-            : extractErrorMsg(err) || t("skillMarket.form.saveFailed")
+          publicationErrorMessage(err, "skillMarket.form.saveFailed")
         );
     } finally {
       if (token === generation.current) setBusy(false);
@@ -185,23 +193,35 @@ export function DependencyUpdateFlow({
   return (
     <WKModal
       visible
+      size="lg"
+      width="min(720px, calc(100vw - var(--wk-sp-8)))"
+      className="publication-editor-modal publication-updates-modal"
       title={t("skillMarket.publication.viewUpdates")}
       onCancel={() => {
         if (!busy) onClose();
       }}
       footer={
         <>
-          <WKButton
+          {source && !error && <WKButton
             variant="ghost"
-            disabled={busy || !source?.updates.some((u) => !u.is_skipped)}
+            disabled={busy || !source.updates.some((u) => !u.is_skipped)}
             onClick={() => void run(true)}
           >
             {t("skillMarket.publication.skip")}
-          </WKButton>
+          </WKButton>}
           <WKButton variant="secondary" onClick={onClose} disabled={busy}>
             {t("skillMarket.common.cancel")}
           </WKButton>
-          {!pending && (
+          {error && onEdit && <WKButton variant="primary" onClick={() => { onEdit(); onClose(); }}>
+            {t("skillMarket.publication.editResource")}
+          </WKButton>}
+          {error && (!listingState || listingState === "published") && <WKButton variant="secondary" onClick={() => {
+            if (source && draft) reloadEdits.current = { pluginId, version, notes, selected, draft };
+            setAttempt(value => value + 1);
+          }}>
+            {t("skillMarket.list.retry")}
+          </WKButton>}
+          {!pending && source && source.updates.length > 0 && (
             <WKButton
               variant="primary"
               disabled={
@@ -234,7 +254,7 @@ export function DependencyUpdateFlow({
               <p>{t("skillMarket.publication.noUpdates")}</p>
             )}
             {source.updates.map((u: DependencyUpdate) => (
-              <label key={u.plugin_id}>
+              <label key={u.plugin_id} className="publication-update-option">
                 <input
                   type="checkbox"
                   checked={!!selected[u.plugin_id]}
@@ -253,7 +273,7 @@ export function DependencyUpdateFlow({
                 </span>
               </label>
             ))}
-            {!pending && (
+            {!pending && source.updates.length > 0 && (
               <>
                 <p className="skill-market-form__hint">
                   {t("skillMarket.publication.includesDraft")}

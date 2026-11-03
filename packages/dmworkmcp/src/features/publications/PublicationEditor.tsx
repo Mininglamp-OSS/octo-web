@@ -1,7 +1,8 @@
+import { mapDependencyIssues } from "../../api/expertWire";
+import { publicationErrorMessage } from "@dmwork/skillmarket/src/utils/publicationError";
 import { PublicationEditorFields } from "../../ui/PublicationEditor";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  extractErrorMsg,
   t,
   useI18n,
   WKApp,
@@ -133,9 +134,7 @@ export function PublicationEditor({
       .catch((err) => {
         if (token === generation.current)
           setError(
-            err instanceof Error
-              ? err.message
-              : extractErrorMsg(err) || t("skillMarket.common.loadFailed")
+            publicationErrorMessage(err, "skillMarket.common.loadFailed")
           );
       });
     return () => {
@@ -227,9 +226,7 @@ export function PublicationEditor({
     } catch (err) {
       if (token === generation.current)
         setError(
-          err instanceof Error
-            ? err.message
-            : extractErrorMsg(err) || t("skillMarket.form.saveFailed")
+          publicationErrorMessage(err, "skillMarket.form.saveFailed")
         );
     } finally {
       if (token === generation.current) setBusy(false);
@@ -247,7 +244,7 @@ export function PublicationEditor({
         }}
         title={<div className="publication-editor-heading">
           <span>{t("skillMarket.form.editTitle", { values: { name: t(item?.kind === "squad" ? "mcp.expert.typeSquad" : "mcp.expert.typeAgent") } })}</span>
-          {draft?.plugin.published_version && <span className="wk-mine-table__version">v{draft.plugin.published_version}</span>}
+          {draft?.plugin.published_version && <span className="wk-mine-table__version">{t("skillMarket.publication.currentVersionLabel", { values: { version: draft.plugin.published_version } })}</span>}
         </div>}
         footer={
           <>
@@ -274,6 +271,8 @@ export function PublicationEditor({
       >
         <PublicationEditorFields
           item={item}
+          dependencyIssues={mapDependencyIssues(draft?.dependency_issues ?? draft?.plugin.dependency_issues) ?? item?.dependencyIssues}
+          dependencySuspended={item?.dependencySuspended}
           draft={draft}
           fields={fields}
           deps={deps}
@@ -295,6 +294,8 @@ export function PublicationEditor({
       {item && updateDraft && (
         <DependencyUpdateFlow
           pluginId={item.id}
+          listingState={draft?.plugin.listing_state}
+          onEdit={() => setUpdatesOpen(false)}
           pending={blocked}
           draft={updateDraft}
           onClose={() => setUpdatesOpen(false)}

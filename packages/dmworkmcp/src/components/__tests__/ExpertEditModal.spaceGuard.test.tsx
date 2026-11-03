@@ -12,6 +12,15 @@ const api = vi.hoisted(() => ({
   publishDraft: vi.fn(),
 }));
 const handlers: Record<string, Array<() => void>> = {};
+// The editor uses the shared Semi Select. Native rendering keeps these
+// service/space lifecycle tests independent of Semi's canvas animation runtime.
+vi.mock("@douyinfe/semi-ui", () => ({
+  Select: ({ value, onChange, optionList, disabled, "aria-label": label }: any) => (
+    <select aria-label={label} value={value} onChange={event => onChange(event.target.value)} disabled={disabled}>
+      {optionList.map((option: any) => <option key={option.value} value={option.value}>{option.label}</option>)}
+    </select>
+  ),
+}));
 vi.mock("@octo/base", () => ({
   t: (key: string) => key,
   useI18n: () => undefined,
@@ -70,6 +79,8 @@ const makeDraft = () => ({
     visibility: "space",
     current_version: "1.0.0",
     published_version: "1.0.0",
+    published_version_id: "released",
+    listing_state: "published",
     manifest_json: { plugin_name: "Expert", description: "Description" },
     plugin_json: {
       attachments: [
@@ -198,12 +209,12 @@ describe("unified expert editor", () => {
     );
   });
   it("retains input and does not publish after a save conflict", async () => {
-    api.saveDraft.mockRejectedValueOnce(new Error("conflict"));
+    api.saveDraft.mockRejectedValueOnce({ status: 409, msg: "conflict" });
     const callbacks = await mount();
     await edit(0, "Edited");
     await edit(2, "Notes");
     await click("skillMarket.publication.publishNewVersion");
-    expect(container.textContent).toContain("conflict");
+    expect(container.textContent).toContain("skillMarket.publication.updatesConflict");
     expect(container.querySelector("input")!.value).toBe("Edited");
     expect(api.publishDraft).not.toHaveBeenCalled();
     expect(callbacks.onClose).not.toHaveBeenCalled();
@@ -213,7 +224,7 @@ describe("unified expert editor", () => {
     const callbacks = await mount();
     await edit(2, "Notes");
     await click("skillMarket.publication.publishNewVersion");
-    expect(container.textContent).toContain("publication failed");
+    expect(container.textContent).toContain("skillMarket.form.saveFailed");
     expect(callbacks.onClose).not.toHaveBeenCalled();
     await click("skillMarket.publication.publishNewVersion");
     expect(api.saveDraft.mock.calls[1][1].expected_draft_revision).toBe(
@@ -236,7 +247,7 @@ describe("unified expert editor", () => {
     const callbacks = await mount();
     await click("mcp.expert.botUpdateTitleAgent");
     expect(callbacks.onEditContent).not.toHaveBeenCalled();
-    expect(container.textContent).toContain("save failed");
+    expect(container.textContent).toContain("skillMarket.form.saveFailed");
   });
   it("ignores a save settling after a Space switch", async () => {
     let resolve: (value: any) => void = () => {};
@@ -315,6 +326,13 @@ describe("unified expert editor", () => {
       complete(makeDraft());
     });
     expect(callbacks.onSaved).toHaveBeenCalled();
+  });
+
+  it("shows current dependency reasons from the draft even when the original item has no diagnostics", async () => {
+    api.getDraft.mockResolvedValueOnce({ ...makeDraft(), dependency_issues: [{ target_plugin_id: "skill", target_name: "内容创作规范", relation_type: "expert_skill", reason: "delisted" }] });
+    await mount();
+    expect(container.textContent).toContain("内容创作规范");
+    expect(container.textContent).toContain("skillMarket.plugin.dependencyIssue.delisted");
   });
 
   it("keeps own fields editable and the Bot handoff usable with an unavailable dependency", async () => {
