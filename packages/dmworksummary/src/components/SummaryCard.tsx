@@ -310,7 +310,7 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                                         {/* Failed summaries retain retry and personal editing actions. */}
                                         {task.status === TaskStatus.FAILED && (
                                             <>
-                                                {onRetry && (
+                                                {onRetry && task.failure_code !== "gateway_quota" && (
                                                     <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onRetry(task.task_id); }}>
                                                         {t("summary.summaryCard.retry")}
                                                     </Dropdown.Item>

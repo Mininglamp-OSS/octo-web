@@ -1,3 +1,4 @@
+import type { WorkflowStatus } from "../../bridge/summaryWorkbench/useWorkflowTaskStatus";
 import type { ReactNode } from "react";
 import type {
   SummaryWorkspaceAction,
@@ -132,6 +133,9 @@ export interface SummaryWorkbenchActions {
 }
 
 export interface SummaryWorkbenchProps {
+  workflowStatus?: WorkflowStatus;
+  onOpenWorkflow?: (taskId: number) => void;
+  onRetryWorkflow?: () => void;
   state: SummaryWorkbenchViewState;
   actions: SummaryWorkbenchActions;
   className?: string;

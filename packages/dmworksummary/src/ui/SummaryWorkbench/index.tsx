@@ -1,6 +1,8 @@
 import React from "react";
 import { useI18n, WKButton } from "@octo/base";
 import AiGeneratedNotice from "../AiGeneratedNotice";
+import { getStatusLabel, workflowFailureLabel } from "../../utils/summaryHelpers";
+import { TaskStatus } from "../../types/summary";
 import { summaryTestIds } from "../../utils/testIds";
 import type {
   SummaryWorkbenchAction,
@@ -53,6 +55,9 @@ const SummaryWorkbench = ({
   actions,
   className,
   contextPanel,
+  workflowStatus,
+  onRetryWorkflow,
+  onOpenWorkflow,
 }: SummaryWorkbenchProps) => {
   const { t } = useI18n();
   const composerRef = React.useRef<HTMLTextAreaElement>(null);
@@ -207,6 +212,10 @@ const SummaryWorkbench = ({
     );
     const isWorkflowStarted = card.kind === "workflow_started";
     const isWorkflowCompleted = card.kind === "workflow_completed";
+    const live = (isWorkflowStarted || isWorkflowCompleted) && card.taskId === workflowStatus?.taskId ? workflowStatus : undefined;
+    const liveTitle = live?.status === TaskStatus.FAILED ? t("summary.detail.failedTitle")
+      : live?.status === TaskStatus.COMPLETED ? t("summary.workbench.card.workflowCompletedTitle")
+      : live ? getStatusLabel(live.status) : undefined;
     const isPreview =
       card.kind === "agent_preview" || card.kind === "agent_revision";
     const titleKey =
@@ -249,7 +258,7 @@ const SummaryWorkbench = ({
         <header className="wk-summary-workbench-card__header">
           <div>
             <span className="wk-summary-workbench-card__badge">
-              {t(badgeKey)}
+              {live ? getStatusLabel(live.status) : t(badgeKey)}
             </span>
             {card.isStale && (
               <span className="wk-summary-workbench-card__badge wk-summary-workbench-card__badge--stale">
@@ -267,7 +276,7 @@ const SummaryWorkbench = ({
             )}
           </div>
           <h2 id={titleId}>
-            {t(
+            {liveTitle ?? t(
               titleKey,
               isPreview ? { values: { version: card.version } } : undefined
             )}
@@ -316,6 +325,15 @@ const SummaryWorkbench = ({
                 </div>
               )}
             </dl>
+            {live?.status === TaskStatus.COMPLETED && !cardActions.length && (
+              <WKButton type="button" size="sm" onClick={() => onOpenWorkflow?.(live.taskId)}>{t("summary.workbench.actions.viewSummary")}</WKButton>
+            )}
+            {live?.status === TaskStatus.FAILED && (
+              <div role="status">
+                <span>{workflowFailureLabel(live.failureCode, live.reason)}</span>
+                {live.canRetry && <WKButton type="button" size="sm" onClick={onRetryWorkflow}>{t("summary.summaryCard.retry")}</WKButton>}
+              </div>
+            )}
           </div>
         )}
 
@@ -353,7 +371,7 @@ const SummaryWorkbench = ({
                   if (action === "continue_chat") composerRef.current?.focus();
                 }}
               >
-                {t(ACTION_LABEL_KEYS[action])}
+                {t(ACTION_LABEL_KEYS[live?.status === TaskStatus.COMPLETED && action === "view_progress" ? "view_summary" : action])}
               </WKButton>
             ))}
           </div>

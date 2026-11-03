@@ -314,8 +314,10 @@
     "card": {
       "teamConfirmationTitle": "Confirm team summary task",
       "teamConfirmationBadge": "Team summary",
-      "workflowStartedTitle": "Summary task started",
-      "workflowStartedBadge": "Generating",
+      "workflowStartedTitle": "Summary task submitted",
+      "timeoutFailure": "Generation timed out. Please try again.",
+      "quotaFailure": "The AI service is out of quota. Contact your administrator.",
+      "workflowStartedBadge": "Submitted",
       "workflowCompletedTitle": "Summary generated",
       "workflowCompletedBadge": "Saved",
       "previewTitle": "Summary preview · Version {{version}}",

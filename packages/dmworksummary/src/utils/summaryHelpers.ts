@@ -212,6 +212,12 @@ export function getStatusLabel(status: TaskStatusType): string {
     }
 }
 
+export function workflowFailureLabel(code: string | undefined, fallback?: string | null): string {
+    if (code === "gateway_quota") return t("summary.workbench.card.quotaFailure");
+    if (code === "gateway_timeout") return t("summary.workbench.card.timeoutFailure");
+    return fallback ?? "";
+}
+
 /** 任务状态 → Semi Tag 颜色 */
 export function getStatusColor(status: TaskStatusType): string {
     switch (status) {

@@ -259,6 +259,8 @@ export function adaptSummaryWorkspaceHistory(
           isStale: false,
           actions: [...workflow.available_actions],
         }
+      : message.role === "assistant" && resultType === "workflow_started" && message.workflow_task_id
+      ? { kind: "workflow_started", taskId: message.workflow_task_id, taskTitle: "", isStale: false, actions: [] }
       : undefined;
     const workbenchMessage: SummaryWorkbenchMessage = {
       id: String(message.id),
@@ -456,6 +458,7 @@ function decodeHistoryMessage(
   }
   return {
     id: requirePositiveInteger(record.id, `${path}.id`),
+    workflow_task_id: optionalPositiveInteger(record.workflow_task_id, `${path}.workflow_task_id`),
     role,
     content: requireString(record.content, `${path}.content`, true),
     result_type:

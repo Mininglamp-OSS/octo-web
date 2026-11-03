@@ -212,6 +212,7 @@ export interface SummaryWorkspaceTurnDTO {
 }
 
 export interface SummaryWorkspaceHistoryMessageDTO {
+  workflow_task_id?: number;
   id: number;
   role: "user" | "assistant";
   content: string;

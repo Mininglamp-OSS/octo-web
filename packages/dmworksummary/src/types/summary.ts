@@ -185,6 +185,7 @@ export interface SummarySearchMatch {
 }
 
 export interface SummaryListItem {
+    failure_code?: string;
     search_match?: SummarySearchMatch;
     is_historical_match?: boolean;
     task_id: number;
@@ -266,6 +267,7 @@ export interface SummaryDetail {
     sources: SourceItem[];
     participants: Participant[];
     result: SummaryResult | null;
+    failure_code?: string;
     error_message: string | null;
     schedule_id?: number | null;
     /** 任务创建者 user_id。详情页区分 creator/participant 视角的移除/退出按钮。 */

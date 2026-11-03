@@ -1,3 +1,4 @@
+import { workflowFailureLabel } from "../utils/summaryHelpers";
 import AiGeneratedNotice from "../ui/AiGeneratedNotice";
 import React, { Component } from "react";
 import {
@@ -1592,7 +1593,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
     handleRetry = async () => {
         const { detail } = this.state;
-        if (!detail || this.taskId == null) return;
+        if (!detail || this.taskId == null || detail.failure_code === "gateway_quota" || this.state.regenerateSubmitting) return;
         // DAP-218 M11：点击「重试」手势;与底层 regenerate 漏斗事件语义不同,独立计数。
         // DAP-266：补 summary_id（this.taskId,上方已 guard 非空）+ prev_status（重试前的失败/未完成状态,detail.status 就近）。
         //   source（触发来源）无就近枚举变量（详情页单入口,无 source 参数）→ DEFER。
@@ -2848,7 +2849,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     <h3>{t("summary.detail.failedTitle")}</h3>
                     {detail.error_message && (
                         <div className="summary-detail-failed-reason">
-                            {detail.error_message}
+                            {workflowFailureLabel(detail.failure_code, detail.error_message)}
                         </div>
                     )}
                 </div>
@@ -4535,7 +4536,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
         const showForwardToChat = !!detail && detail.status === TaskStatus.COMPLETED;
         const showRegenerate = !!detail && canRegenerate(detail.status) && (isCreator || this.isMultiCollab());
-        const showRetry = !!detail && detail.status === TaskStatus.FAILED;
+        const showRetry = !!detail && detail.status === TaskStatus.FAILED && detail.failure_code !== "gateway_quota";
         const showCancel = !!detail && canCancel(detail.status);
         const showDelete = !!detail && isCreator;
         const showLeave = !!detail && isParticipant && !isCreator;

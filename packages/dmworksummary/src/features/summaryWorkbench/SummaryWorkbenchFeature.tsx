@@ -39,6 +39,7 @@ import {
   type SummaryWorkbenchTimeRangeScope,
   type SummaryWorkspaceInputOrigin,
 } from "../../bridge/summaryWorkbench/protocol";
+import { useWorkflowTaskStatus } from "../../bridge/summaryWorkbench/useWorkflowTaskStatus";
 import useSummaryWorkbench, {
   sameSummaryWorkbenchScope,
 } from "../../bridge/summaryWorkbench/useSummaryWorkbench";
@@ -697,6 +698,10 @@ export default function SummaryWorkbenchFeature({
           "participant",
           "time_range",
         ];
+  const lastCard = [...workbench.viewState.messages].reverse().find(message => message.card)?.card;
+  const workflowTaskId = workbench.model.workflow?.taskId ??
+    (lastCard?.kind === "workflow_started" ? lastCard.taskId : undefined);
+  const workflowStatus = useWorkflowTaskStatus(workflowTaskId, storageScope.userId ?? "");
   const viewState = {
     ...workbench.viewState,
     contextItems,
@@ -1250,6 +1255,9 @@ export default function SummaryWorkbenchFeature({
     >
       <div className="wk-summary-workbench-feature__main">
         <SummaryWorkbench
+          onOpenWorkflow={openTask}
+          workflowStatus={workflowStatus.current}
+          onRetryWorkflow={() => { void workflowStatus.retry().catch(() => Toast.error(t("summary.common.operationFailed"))); }}
           state={viewState}
           actions={{
             onInputChange: (value) => {
