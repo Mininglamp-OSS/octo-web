@@ -58,12 +58,12 @@ export default function ExpertAddToLoopModal({
   // Load workspaces when the dialog opens; reset all selection state so a
   // second open (possibly for a different expert) starts clean.
   useEffect(() => {
-    if (!item) return;
-    let cancelled = false;
     setWorkspaceId("");
     setRuntimeId("");
     setRuntimes([]);
-    setLoadingWorkspaces(true);
+    setLoadingWorkspaces(Boolean(item));
+    if (!item) return;
+    let cancelled = false;
     getLoopWorkspaces()
       .then((list) => {
         if (cancelled) return;
@@ -99,18 +99,15 @@ export default function ExpertAddToLoopModal({
     let cancelled = false;
     setRuntimeId("");
     setLoadingRuntimes(true);
-    getLoopRuntimes(workspaceId)
+    // Readiness gates installation, so refresh even if market prefetch or a
+    // previous dialog session already cached this workspace's runtimes.
+    getLoopRuntimes(workspaceId, { refresh: true })
       .then((list) => {
         if (cancelled) return;
         setRuntimes(list);
-        // Default-select the first READY runtime so the dialog is confirmable in
-        // one click without picking a runtime that can't actually run the agent;
-        // fall back to the first runtime if none report ready. The user can
-        // still switch before confirming.
-        if (list.length > 0) {
-          const firstReady = list.find(isRuntimeReady) ?? list[0];
-          setRuntimeId(firstReady.id);
-        }
+        // The service requests owner=me. Never fall back to an unavailable
+        // runtime when none of the current user's machines are ready.
+        setRuntimeId(list.find(isRuntimeReady)?.id ?? "");
       })
       .catch((err) => {
         if (cancelled) return;
@@ -133,7 +130,8 @@ export default function ExpertAddToLoopModal({
   };
 
   const handleConfirm = async () => {
-    if (!item || !workspaceId || !runtimeId || inFlight.current) return;
+    if (!item || !workspaceId || loadingWorkspaces || loadingRuntimes ||
+      !runtimes.some((rt) => rt.id === runtimeId && isRuntimeReady(rt)) || inFlight.current) return;
     inFlight.current = true;
     setSubmitting(true);
     try {
@@ -187,8 +185,11 @@ export default function ExpertAddToLoopModal({
           values: { name: rt.name, status: rt.status ?? "" },
         }),
     value: rt.id,
+    disabled: !isRuntimeReady(rt),
   }));
-  const canSubmit = Boolean(workspaceId && runtimeId) && !submitting;
+  const canSubmit = Boolean(workspaceId) &&
+    runtimes.some((rt) => rt.id === runtimeId && isRuntimeReady(rt)) &&
+    !loadingWorkspaces && !loadingRuntimes && !submitting;
 
   return (
     <WKModal
@@ -234,7 +235,12 @@ export default function ExpertAddToLoopModal({
           disabled={submitting}
           placeholder={t("mcp.expert.selectWorkspacePlaceholder")}
           emptyContent={t("mcp.expert.noWorkspaces")}
-          onChange={(v) => setWorkspaceId(v as string)}
+          onChange={(v) => {
+            setRuntimeId("");
+            setRuntimes([]);
+            setLoadingRuntimes(true);
+            setWorkspaceId(v as string);
+          }}
         />
 
         <label className="wk-mcp-add-to-loop__label">

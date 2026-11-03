@@ -1454,12 +1454,13 @@ export async function listLoopWorkspaces(): Promise<LoopWorkspace[]> {
   }));
 }
 
-/** GET /fleet/api/v1/runtimes?workspace_id= — runtimes in the chosen workspace (runtime picker). */
+/** GET /fleet/api/v1/runtimes?workspace_id=&owner=me — owned runtimes in the chosen workspace. */
 export async function listLoopRuntimes(
   workspaceId: string
 ): Promise<LoopRuntime[]> {
   const data = await fleetGet<LoopRuntimeWire[] | null>("/runtimes", {
     workspace_id: workspaceId,
+    owner: "me",
   });
   return expectFleetList<LoopRuntimeWire>(data).map((rt) => ({
     id: rt.id,
@@ -1525,11 +1526,16 @@ export function getLoopWorkspaces(): Promise<LoopWorkspace[]> {
   return cachedWorkspaces;
 }
 
-/** Cached listLoopRuntimes for one workspace (keyed within the current Space). */
-export function getLoopRuntimes(workspaceId: string): Promise<LoopRuntime[]> {
+/** Cached listLoopRuntimes for one workspace (keyed within the current Space).
+ *  Refresh before using runtime readiness to gate installation; prefetch data
+ *  may no longer reflect whether the user's machine is online. */
+export function getLoopRuntimes(
+  workspaceId: string,
+  { refresh = false }: { refresh?: boolean } = {}
+): Promise<LoopRuntime[]> {
   syncLoopCacheSpace();
   const hit = cachedRuntimes.get(workspaceId);
-  if (hit) return hit;
+  if (hit && !refresh) return hit;
   const pending: Promise<LoopRuntime[]> = listLoopRuntimes(workspaceId).catch(
     (err) => {
       // Only evict if this promise is still the cached one (see getLoopWorkspaces).
