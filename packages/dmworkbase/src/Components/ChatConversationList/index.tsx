@@ -6,6 +6,10 @@
  * - 其他 filter：渲染 ConversationList，右键群聊有「移到分组」子菜单
  * - CreateCategoryModal 在此层管理，不依赖子组件挂载
  */
+import { Toast } from "@douyinfe/semi-ui"
+import { useFoldChats } from "../../bridge/foldChats/useFoldChats"
+import { partitionFolded, conversationFoldKey } from "../../features/foldChats/model"
+import FoldedChatsEntry from "../../ui/FoldedChatsEntry"
 import React, { useState } from "react"
 import { Channel, ChannelTypeGroup, ChannelTypePerson, WKSDK } from "wukongimjssdk"
 import { ChannelTypeCommunityTopic } from "../../Service/Const"
@@ -21,17 +25,21 @@ import ConversationListGrouped, { ValidCategoryItem, isValidCategoryItem } from 
 import CreateCategoryModal from "../CreateCategoryModal"
 import { ContextMenusData } from "../ContextMenus"
 import { useI18n } from "../../i18n"
-import { getImChannelInfo } from "../../im-runtime/channelRuntime"
+import { addImChannelInfoListener, getImChannelInfo } from "../../im-runtime/channelRuntime"
 import { FolderPlus, Star, StarOff } from "lucide-react"
 import type { TemporaryConversationScrollRequest } from "../../features/temporaryConversation/presentation"
+
+function parentGroupNoForRecentConversation(conv: ConversationWrap): string | undefined {
+    if (conv.channel.channelType !== ChannelTypeCommunityTopic) return undefined
+    return (conv.channelInfo?.orgData?.parentGroupNo as string | undefined) ||
+        parseThreadChannelId(conv.channel.channelID)?.groupNo
+}
 
 export function isMutedForRecentConversation(conv: ConversationWrap): boolean {
     const isThread = conv.channel.channelType === ChannelTypeCommunityTopic
     let parentChannelInfo: any | undefined
     if (isThread) {
-        const parentGroupNo =
-            (conv.channelInfo?.orgData?.parentGroupNo as string | undefined) ||
-            parseThreadChannelId(conv.channel.channelID)?.groupNo
+        const parentGroupNo = parentGroupNoForRecentConversation(conv)
         if (parentGroupNo) {
             parentChannelInfo = getImChannelInfo(
                 WKSDK.shared(),
@@ -97,6 +105,71 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
     temporaryConversationPresentation,
 }) => {
     const { t } = useI18n()
+    const spaceId = WKApp.shared.currentSpaceId || ""
+    const scope = `${WKApp.loginInfo.uid}:${spaceId}`
+    const folding = useFoldChats(scope, spaceId)
+    const [, refreshMetadata] = React.useReducer((revision: number) => revision + 1, 0)
+    React.useEffect(() => {
+        const chats = [...conversations, ...(temporaryConversationPresentation?.conversations || [])]
+        // Parent groups may have no conversation of their own, so their mute
+        // changes need not publish a new conversation array from the store.
+        return addImChannelInfoListener(WKSDK.shared(), info => {
+            if (chats.some(chat =>
+                (chat.channel.channelType === info.channel.channelType && chat.channel.channelID === info.channel.channelID) ||
+                (info.channel.channelType === ChannelTypeGroup && parentGroupNoForRecentConversation(chat) === info.channel.channelID))) {
+                refreshMetadata()
+            }
+        })
+    }, [scope, conversations, temporaryConversationPresentation?.conversations])
+    const [foldedOpen, setFoldedOpen] = useState(false)
+    const [unreadContinuation, setUnreadContinuation] = useState(0)
+    const [undo, setUndo] = useState<ConversationWrap | null>(null)
+    const foldedTemporary = (temporaryConversationPresentation?.conversations || []).filter(c =>
+        folding.keys.has(conversationFoldKey(c)) && !conversations.some(existing => conversationFoldKey(existing) === conversationFoldKey(c)))
+    const view = partitionFolded([...conversations, ...foldedTemporary], folding.keys, isMutedForRecentConversation)
+    React.useEffect(() => { setFoldedOpen(false); setUndo(null) }, [scope, filter])
+    React.useEffect(() => { if (view.folded.length === 0) setFoldedOpen(false) }, [view.folded.length])
+    const changeFold = async (conv: ConversationWrap, folded: boolean) => {
+        try {
+            const changed = await folding.setFolded({ channel_id: conv.channel.channelID, channel_type: conv.channel.channelType }, folded)
+            if (changed) setUndo(folded ? conv : null)
+        } catch { Toast.error(t("base.foldChats.saveError")) }
+    }
+    const foldMenus = (conv: ConversationWrap | undefined): ContextMenusData[] => {
+        if (!conv || ![ChannelTypeGroup, ChannelTypeCommunityTopic].includes(conv.channel.channelType) || !folding.ready) return []
+        const folded = folding.keys.has(conversationFoldKey(conv))
+        return [{ title: t(folded ? "base.foldChats.unfold" : "base.foldChats.fold"), onClick: () => changeFold(conv, !folded) }]
+    }
+    const continueUnreadNavigation = () => {
+        const otherList = foldedOpen ? view.recent : view.folded
+        if (filter === 'group' || !otherList.some(c => c.unread > 0 && !isMutedForRecentConversation(c))) return false
+        setFoldedOpen(!foldedOpen)
+        // Only an explicit unread handoff continues navigation after a scope
+        // change. Manual open/back and search routing must not start a jump.
+        setUnreadContinuation(n => n + 1)
+        return true
+    }
+    const searchRequest = temporaryConversationPresentation?.scrollRequest
+    const searchKey = searchRequest ? `${searchRequest.channel.channelType}::${searchRequest.channel.channelID}` : undefined
+    const searchFolded = !!searchKey && folding.keys.has(searchKey)
+    // A failed load already displays the complete Recent fallback. Searches
+    // may use it; non-foldable channels never depend on these preferences.
+    const searchCanRoute = folding.ready || folding.error || (!!searchRequest &&
+        ![ChannelTypeGroup, ChannelTypeCommunityTopic].includes(searchRequest.channel.channelType))
+    const routedSearch = React.useRef<string>()
+    React.useEffect(() => {
+        if (!searchRequest || !searchCanRoute || filter === 'group') return
+        const requestKey = JSON.stringify([scope, searchRequest.token, searchKey])
+        if (routedSearch.current === requestKey) return
+        routedSearch.current = requestKey
+        setFoldedOpen(searchFolded)
+    }, [scope, filter, searchCanRoute, searchRequest?.token, searchKey, searchFolded])
+    // Wait for the destination list before attempting the scroll; the child
+    // acknowledges only after the target row is rendered.
+    const visibleSearchRequest = searchCanRoute && searchFolded === foldedOpen ? searchRequest : undefined
+
+    const foldEntry = view.folded.length ? { timestamp: view.timestamp, node: <FoldedChatsEntry title={t("base.foldChats.title")} mentionLabel={t("base.conversationList.mentionMarker")} unread={view.unread} hasUnread={view.hasUnread} mention={view.mention} onClick={() => setFoldedOpen(true)} /> } : undefined
+
     const {
         categories,
         isLoading: catLoading,
@@ -262,7 +335,7 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
     const buildExtraMenus = (conv: ConversationWrap | undefined): ContextMenusData[] => {
         if (!conv) return []
 
-        const menus: ContextMenusData[] = []
+        const menus: ContextMenusData[] = foldMenus(conv)
         const channel = conv.channel
         // sidebar 是 follow 状态的唯一权威源。channelInfo.orgData.is_followed 是 IM 同步
         // 缓存，删分组级联取关 / 取消关注后不会立即清空，回退到它会让取关后的项继续显示
@@ -395,8 +468,12 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
 
     return (
         <>
+            {folding.error && <div className="wk-folded-toolbar" role="alert">{t("base.foldChats.loadError")}<button onClick={folding.reload}>{t("base.foldChats.retry")}</button></div>}
+            {undo && <div className="wk-folded-toolbar" role="status">{t("base.foldChats.success")}<button onClick={() => changeFold(undo, false)}>{t("base.foldChats.undo")}</button></div>}
+            {filter !== 'group' && foldedOpen && <div className="wk-folded-toolbar"><button onClick={() => setFoldedOpen(false)}>← {t("base.foldChats.back")}</button><span>{t("base.foldChats.title")}</span></div>}
             {filter === 'group' ? (
                 <ConversationListGrouped
+                    foldMenus={foldMenus}
                     conversations={conversations}
                     select={select}
                     onConversationClick={onConversationClick}
@@ -445,17 +522,20 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                 />
             ) : (
                 <ConversationList
-                    conversations={conversations}
+                    recentEntry={foldedOpen ? undefined : foldEntry}
+                    conversations={foldedOpen ? view.folded : view.recent}
                     select={select}
                     filter={filter}
                     onClick={onConversationClick}
                     onClearMessages={onClearMessages}
                     onThreadOverflowClick={onThreadOverflowClick}
                     extraContextMenus={buildExtraMenus}
-                    scrollToUnreadToken={scrollToUnreadToken}
+                    scrollToUnreadToken={(scrollToUnreadToken || 0) + unreadContinuation}
+                    unreadNavigationScope={foldedOpen ? 'folded' : 'recent'}
+                    onUnreadNavigationWrap={continueUnreadNavigation}
                     shouldScrollToUnreadTarget={shouldScrollToRecentUnreadTarget}
-                    temporarilyPinnedConversations={temporaryConversationPresentation?.conversations}
-                    scrollToTemporaryConversation={temporaryConversationPresentation?.scrollRequest}
+                    temporarilyPinnedConversations={temporaryConversationPresentation?.conversations.filter(c => folding.keys.has(conversationFoldKey(c)) === foldedOpen)}
+                    scrollToTemporaryConversation={visibleSearchRequest}
                     onTemporaryConversationScrolled={temporaryConversationPresentation?.onScrolled}
                     temporaryVirtualChannelKeys={temporaryConversationPresentation?.virtualChannelKeys}
                     onDismissTemporaryConversation={temporaryConversationPresentation?.onDismiss}

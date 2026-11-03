@@ -1,0 +1,12 @@
+.wk-folded-entry { display: flex; align-items: center; gap: var(--wk-sp-2); width: 100%; padding: var(--wk-sp-3); border: none; background: var(--wk-bg-surface); color: var(--wk-text-primary); cursor: pointer; text-align: left; font: inherit; }
+.wk-folded-entry:hover { background: var(--wk-bg-hover); }
+.wk-folded-entry-icon { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: var(--wk-sp-8); height: var(--wk-sp-8); border-radius: var(--wk-avatar-radius); background: var(--wk-bg-hover); color: var(--wk-text-secondary); }
+.wk-folded-entry:focus-visible { outline: 2px solid var(--wk-brand-primary); outline-offset: -2px; }
+.wk-folded-entry-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wk-folded-mention { color: var(--wk-color-danger); }
+.wk-folded-badge { border-radius: var(--wk-r-xs); padding: 0 var(--wk-sp-1); background: var(--wk-color-danger); color: var(--wk-text-on-brand); }
+.wk-folded-dot { width: var(--wk-sp-2); height: var(--wk-sp-2); border-radius: 50%; background: var(--wk-color-danger); }
+.wk-folded-toolbar { display: flex; align-items: center; gap: var(--wk-sp-2); padding: var(--wk-sp-2); color: var(--wk-text-primary); }
+.wk-folded-toolbar button { border: none; border-radius: var(--wk-r-xs); padding: var(--wk-sp-1) var(--wk-sp-2); background: transparent; color: var(--wk-brand-primary); cursor: pointer; font: inherit; }
+.wk-folded-toolbar button:hover { background: var(--wk-bg-hover); }
+.wk-folded-toolbar button:focus-visible { outline: 2px solid var(--wk-brand-primary); outline-offset: -2px; }

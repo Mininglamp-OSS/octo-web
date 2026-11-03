@@ -114,6 +114,8 @@ function chatFollowFixtureItems(request?: Request) {
 const followScenarioState = new Map<string, { unfollowed?: boolean; order: string[] }>();
 
 export const chatBaselineHandlers = [
+  // Fold preferences are part of every chat sidebar bootstrap.
+  http.get("*/conversation/folded", () => HttpResponse.json([])),
   // === Common / config ===
   http.get("*/api/v1/common/appconfig", () => HttpResponse.json(appConfig())),
   http.get("*/common/appconfig", () => HttpResponse.json(appConfig())),

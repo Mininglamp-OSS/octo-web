@@ -1833,11 +1833,7 @@
   "navRail.settingsCenter.page.fallback.title": "Settings",
   "navRail.settingsCenter.page.fallback.description": "Manage your Octo preferences",
   "navRail.settingsCenter.row.placeholder": "Setting",
-  "navRail.settingsCenter.value.unsupported": "Not supported in this environment",
-  "navRail.settingsCenter.value.granted": "Allowed",
   "navRail.settingsCenter.value.systemManaged": "Managed by system",
-  "navRail.settingsCenter.value.denied": "Denied",
-  "navRail.settingsCenter.value.unauthorized": "Not authorized yet",
   "globalSearch.tab.drive": "Drive",
   "globalSearch.drive.emptyHint": "Type a keyword to search drive files",
   "globalSearch.drive.noResults": "No matching drive files found",
@@ -1860,5 +1856,14 @@
   "messageInput.draft.restoreFailed": "Saved drafts could not be loaded. Retry, or use a temporary draft without changing the saved draft.",
   "messageInput.draft.retryRestore": "Retry loading",
   "messageInput.draft.useTemporary": "Use temporary draft",
-  "messageInput.draft.temporaryNotice": "Temporary draft: new content will not be saved when you leave. Your previously saved draft is unchanged."
+  "messageInput.draft.temporaryNotice": "Temporary draft: new content will not be saved when you leave. Your previously saved draft is unchanged.",
+  "foldChats.fold": "Fold chat",
+  "foldChats.unfold": "Unfold chat",
+  "foldChats.title": "Folded chats",
+  "foldChats.back": "Back to Recent",
+  "foldChats.success": "Chat folded",
+  "foldChats.undo": "Undo",
+  "foldChats.loadError": "Could not load folded chats",
+  "foldChats.retry": "Retry",
+  "foldChats.saveError": "Could not save. Please retry."
 }
