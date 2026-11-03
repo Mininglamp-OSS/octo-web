@@ -363,6 +363,7 @@
   "skillMarket.publication.skip": "跳过本次提醒",
   "skillMarket.publication.skipped": "已跳过本次提醒，引用版本未改变",
   "skillMarket.publication.confirmUpdate": "确认更新并发布",
+  "skillMarket.publication.connectorConfigChanged": "配置有更新",
   "skillMarket.publication.noUpdates": "暂无可用的依赖更新",
   "skillMarket.publication.includesDraft": "本次将一并提交当前草稿的修改，新版本生效前仍使用原版本和引用。",
   "skillMarket.publication.scopeNotice": "调整统一可见范围，对所有已发布版本生效；内容、版本号和固定引用保持不变。扩大范围按组织规则审核，审核通过前保留原范围。",

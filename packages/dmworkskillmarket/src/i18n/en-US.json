@@ -363,6 +363,7 @@
   "skillMarket.publication.skip": "Skip these reminders",
   "skillMarket.publication.skipped": "Reminders skipped; referenced versions are unchanged",
   "skillMarket.publication.confirmUpdate": "Confirm update and publish",
+  "skillMarket.publication.connectorConfigChanged": "Configuration updated",
   "skillMarket.publication.noUpdates": "No dependency updates available",
   "skillMarket.publication.includesDraft": "This also submits the current draft changes. The previous version and references remain active until the new release takes effect.",
   "skillMarket.publication.scopeNotice": "Audience changes apply to every released version without changing content or pinned references. Widening follows organization review policy; the previous audience remains effective until approval.",

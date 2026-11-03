@@ -6,6 +6,8 @@ export interface DependencyUpdate {
   plugin_id: string;
   name: string;
   plugin_type: string;
+  from_config_revision?: string;
+  target_config_revision?: string;
   from_version_id: string;
   from_version: string;
   target_version_id: string;
@@ -51,6 +53,9 @@ const unwrap = <T>(value: T | { data: T }): T =>
   value && typeof value === "object" && "data" in value
     ? (value as { data: T }).data
     : (value as T);
+const target = (u: DependencyUpdate) => u.plugin_type === "connector"
+  ? { plugin_id: u.plugin_id, target_config_revision: u.target_config_revision }
+  : { plugin_id: u.plugin_id, target_version_id: u.target_version_id };
 const path = (id: string) => `/plugins/${encodeURIComponent(id)}`;
 export const PublicationService = {
   async publishDraft(
@@ -97,10 +102,7 @@ export const PublicationService = {
     await APIClient.shared.post(
       `${path(id)}/dependency_updates/_skip`,
       {
-        targets: updates.map((u) => ({
-          plugin_id: u.plugin_id,
-          target_version_id: u.target_version_id,
-        })),
+        targets: updates.map(target),
       },
       { baseURL }
     );
@@ -118,10 +120,7 @@ export const PublicationService = {
         {
           expected_published_version_id: source.published_version_id,
           expected_draft_revision: draft.expected_draft_revision,
-          targets: updates.map((u) => ({
-            plugin_id: u.plugin_id,
-            target_version_id: u.target_version_id,
-          })),
+          targets: updates.map(target),
           draft,
           version: draft.plugin.version,
           changelog: draft.changelog,

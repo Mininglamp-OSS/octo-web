@@ -119,6 +119,15 @@ it("shows exact from/to labels and submits current unsaved edits with chosen pin
   );
   expect(cb.onSaved).toHaveBeenCalledWith("skillMarket.review.submittedToast");
 });
+it("shows a configuration change and preserves a connector relation without a pin", async () => {
+  const connector = { plugin_id: "mcp", name: "Search", plugin_type: "connector", target_config_revision: "config-2", is_skipped: false };
+  const relation = { relation_id: "r", relation_type: "expert_connector", target_plugin_id: "mcp", sort_order: 0 };
+  api.getUpdates.mockResolvedValue({ plugin_id: "expert", published_version_id: "e1", draft_revision: "current", updates: [connector] });
+  await mount({draft: {...draft, relations: [relation]}});
+  expect(container.textContent).toContain("skillMarket.publication.connectorConfigChanged");
+  await click("skillMarket.publication.confirmUpdate");
+  expect(api.adoptUpdates).toHaveBeenCalledWith(expect.any(String), "expert", expect.any(Object), expect.objectContaining({ relations: [relation] }), [connector]);
+});
 it("skip never submits or changes the edited draft, and uses the skip callback", async () => {
   const onSkipped = vi.fn();
   const cb = await mount({ onSkipped });

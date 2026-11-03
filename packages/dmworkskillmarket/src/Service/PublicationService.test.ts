@@ -61,6 +61,13 @@ describe("publication service contracts", () => {
       expect.any(Object)
     );
   });
+  it("uses a configuration revision for connector skip and adoption", async () => {
+    const update = {plugin_id:"connector",plugin_type:"connector",target_config_revision:"new-config",target_version_id:""} as never;
+    const draft = {plugin:{version:"1.1.0"},relations:[{relation_type:"expert_connector",target_plugin_id:"connector"}]} as unknown as PublicationWrite;
+    await PublicationService.skipUpdates("/market","expert",[update]);
+    await PublicationService.adoptUpdates("/market","expert",{plugin_id:"expert",draft_revision:"d",published_version_id:"r",updates:[update]},draft,[update]);
+    for (const [,body] of http.post.mock.calls) expect(body.targets).toEqual([{plugin_id:"connector",target_config_revision:"new-config"}]);
+  });
   it("passes the exact confirmed visibility plan revision", async () => {
     await PublicationService.changeVisibility(
       "/market/api/v1",

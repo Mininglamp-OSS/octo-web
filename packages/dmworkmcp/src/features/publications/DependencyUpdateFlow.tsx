@@ -140,7 +140,7 @@ export function DependencyUpdateFlow({
         return;
       }
       const chosen = new Map(
-        changes.map((u) => [u.plugin_id, u.target_version_id])
+        changes.filter((u) => u.plugin_type !== "connector").map((u) => [u.plugin_id, u.target_version_id])
       );
       const payload: PublicationWrite = {
         ...draft,
@@ -247,7 +247,9 @@ export function DependencyUpdateFlow({
                   disabled={busy || pending}
                 />
                 <span>
-                  {u.name} · v{u.from_version} → v{u.target_version}
+                  {u.name} · {u.plugin_type === "connector"
+                    ? t("skillMarket.publication.connectorConfigChanged")
+                    : `v${u.from_version} → v${u.target_version}`}
                 </span>
               </label>
             ))}
