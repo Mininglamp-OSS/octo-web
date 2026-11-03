@@ -100,6 +100,37 @@ describe("SummaryDetailPage convert flow", () => {
         windowOpenSpy?.mockRestore();
     });
 
+    it.each(["Web", "Client"])("converts a historical control-character title through the real API in %s", async (host) => {
+        const actualApi = await vi.importActual<typeof api>("../../api/summaryApi");
+        const docs = await import("../../__mocks__/dmworkBase");
+        const { Toast } = await import("@douyinfe/semi-ui");
+        const port = vi.fn(async ({ title }: { title: string; markdown: string }) => {
+            if (/[\u0000-\u001f\u007f]/.test(title)) throw new Error("invalid title");
+            return document;
+        });
+        const opener = vi.fn().mockResolvedValue(undefined);
+        const popup = { location: { href: "" }, closed: false, close: vi.fn(), opener: null } as any;
+        docs.__setDocsOn(true);
+        docs.__setDocsConvertHandler(port);
+        vi.mocked(api.convertSummaryToDoc).mockImplementationOnce(actualApi.convertSummaryToDoc);
+        mockGetDocsDocumentOpener.mockReturnValue(host === "Client" ? opener : undefined);
+        windowOpenSpy.mockReturnValue(popup);
+        try {
+            const page = makePage();
+            await page.handleConvertToDoc("正文\n第二行", "总结\t最近一天的工作\r\n补充", "team-result");
+            expect(port).toHaveBeenCalledExactlyOnceWith({
+                title: "总结 最近一天的工作 补充",
+                markdown: "正文\n第二行",
+            });
+            expect(Toast.error).not.toHaveBeenCalled();
+            expect(Toast.success).toHaveBeenCalled();
+            if (host === "Client") expect(opener).toHaveBeenCalledWith(document);
+            else expect(popup.location.href).toBe(document.url);
+        } finally {
+            docs.__resetDocsPort();
+        }
+    });
+
     describe("normal Web path (no host opener)", () => {
         it("preopens a popup before conversion and navigates it on success", async () => {
             const mockWindow = { location: { href: "" }, closed: false, close: vi.fn(), opener: null } as any;

@@ -1,5 +1,5 @@
 import axios, { AxiosRequestConfig } from 'axios';
-import { WKApp, buildAcceptLanguage, Dap, convertMarkdownToDoc } from '@octo/base';
+import { WKApp, buildAcceptLanguage, Dap, convertMarkdownToDoc, t } from '@octo/base';
 import type {
     AgentChatHistory,
     AgentChatParams,
@@ -1723,5 +1723,9 @@ export async function getMemberCandidates(params?: { keyword?: string }): Promis
  * 隐藏入口，正常路径上不会走到这个分支。
  */
 export async function convertSummaryToDoc(title: string, markdown: string): Promise<{ docId: string; url: string }> {
-    return convertMarkdownToDoc({ title, markdown });
+    // Historical summary titles may contain tabs or line breaks. Docs titles are
+    // single-line text; normalize at export so both Web and Client receive it.
+    const documentTitle = title.replace(/[\u0000-\u001f\u007f]+/g, ' ').trim()
+        || t('summary.detail.defaultTitle');
+    return convertMarkdownToDoc({ title: documentTitle, markdown });
 }
