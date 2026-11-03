@@ -365,7 +365,7 @@ export default function AllAssetsList({
       onVisibility: (item.listingState === "published"||item.listingState === "delisted") && !pending && (item.visibility === "private" || item.visibility === "space") ? (target?:"private"|"space") => {setVisibilityTarget(target);setVisibilityId(item.id)} : undefined,
       onEdit:
         onRequestAction && !pending
-          ? () => onRequestAction({ pluginId: item.id, type: rowType, action: "edit" })
+          ? () => onRequestAction({ pluginId: item.id, type: rowType, action: rowType === "connector" && listedToOrg ? "upgrade" : "edit" })
           : undefined,
       editAria: t("skillMarket.plugin.ariaEdit", { values: { name: item.name } }),
       onPublish:

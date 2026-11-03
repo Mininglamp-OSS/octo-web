@@ -7,6 +7,7 @@ const api = vi.hoisted(() => ({
   getUpdates: vi.fn(),
   getDraft: vi.fn(),
   getInstruction: vi.fn(),
+  getDependencies: vi.fn(),
   adoptUpdates: vi.fn(),
   skipUpdates: vi.fn(),
 }));
@@ -32,6 +33,12 @@ vi.mock("@octo/base", () => ({
 vi.mock("@dmwork/skillmarket/src/Service/PublicationService", () => ({
   PublicationService: api,
 }));
+vi.mock("../../ui/PublicationEditor", () => ({
+  PublicationEditorFields: ({ onShowUpdates }: { onShowUpdates: () => void }) => (
+    <button onClick={onShowUpdates}>View updates</button>
+  ),
+}));
+import { PublicationEditor } from "./PublicationEditor";
 import { DependencyUpdateFlow } from "./DependencyUpdateFlow";
 let container: HTMLDivElement;
 const updates = [
@@ -210,4 +217,30 @@ it("finishes adoption across an ordinary parent rerender", async () => {
     complete({ display_status: "published" });
   });
   expect(cb.onSaved).toHaveBeenCalled();
+});
+
+it("finishes adoption when the editor's initial reminder request completes during submission", async () => {
+  let finishAlerts!: (value: unknown) => void;
+  let finishAdoption!: (value: unknown) => void;
+  api.getUpdates.mockImplementationOnce(() => new Promise(resolve => { finishAlerts = resolve; }));
+  api.adoptUpdates.mockImplementationOnce(() => new Promise(resolve => { finishAdoption = resolve; }));
+  api.getDraft.mockResolvedValue({
+    draft_revision: "original", draft_changelog: "Notes", relations: draft.relations,
+    plugin: { ...draft.plugin, plugin_name: "Expert", visibility: "space", current_version: "1.0.1", published_version: "1.0.0" },
+  });
+  api.getInstruction.mockResolvedValue("Instructions");
+  api.getDependencies.mockResolvedValue([]);
+  const onSaved = vi.fn();
+  const onClose = vi.fn();
+  await act(async () => {
+    ReactDOM.render(<PublicationEditor item={{ id: "expert" } as any} onSaved={onSaved} onClose={onClose} onEditContent={vi.fn()} />, container);
+  });
+  await click("View updates");
+  await click("skillMarket.publication.confirmUpdate");
+  expect(api.adoptUpdates).toHaveBeenCalledOnce();
+  await act(async () => { finishAlerts({ updates }); });
+  expect(api.getUpdates).toHaveBeenCalledTimes(2);
+  await act(async () => { finishAdoption({ display_status: "published" }); });
+  expect(onSaved).toHaveBeenCalledOnce();
+  expect(onClose).toHaveBeenCalledOnce();
 });

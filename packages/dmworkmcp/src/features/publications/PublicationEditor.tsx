@@ -1,5 +1,5 @@
 import { PublicationEditorFields } from "../../ui/PublicationEditor";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   extractErrorMsg,
   t,
@@ -59,6 +59,10 @@ export function PublicationEditor({
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [updatesOpen, setUpdatesOpen] = useState(false);
+  const updateDraft = useMemo(
+    () => updatesOpen && draft ? editPublicationDraft(draft, fields) : null,
+    [updatesOpen, draft, fields]
+  );
   const generation = useRef(0);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
@@ -286,11 +290,11 @@ export function PublicationEditor({
           onInitialVisibilityChange={setInitialVisibility}
         />
       </WKModal>
-      {updatesOpen && item && draft && (
+      {item && updateDraft && (
         <DependencyUpdateFlow
           pluginId={item.id}
           pending={blocked}
-          draft={editPublicationDraft(draft, fields)}
+          draft={updateDraft}
           onClose={() => setUpdatesOpen(false)}
           onSkipped={refreshAlerts}
           onSaved={(message) => {

@@ -6,6 +6,7 @@ const http = vi.hoisted(() => ({
 }));
 vi.mock("@octo/base", () => ({ APIClient: { shared: http } }));
 import { PublicationService } from "./PublicationService";
+import { subscribeReviewsChanged } from "../api/reviewSignal";
 import type { PublicationWrite } from "../features/publications/publicationDraft";
 beforeEach(() => {
   Object.values(http).forEach((fn) => fn.mockReset());
@@ -14,6 +15,19 @@ beforeEach(() => {
   http.patch.mockResolvedValue({ data: { display_status: "pending_review" } });
 });
 describe("publication service contracts", () => {
+  it("refreshes independent review readers after a publish and a rejected visibility change", async () => {
+    const refresh = vi.fn();
+    const unsubscribe = subscribeReviewsChanged(refresh);
+    try {
+      await PublicationService.publishDraft("/market", "expert", "1.1.0", "notes", "draft");
+      expect(refresh).toHaveBeenCalledTimes(1);
+      http.patch.mockRejectedValueOnce(new Error("stale plan"));
+      await expect(PublicationService.changeVisibility("/market", "expert", "space", "plan")).rejects.toThrow("stale plan");
+      expect(refresh).toHaveBeenCalledTimes(2);
+    } finally {
+      unsubscribe();
+    }
+  });
   it("encodes resource IDs and passes the marketplace base explicitly", async () => {
     await PublicationService.getDraft("https://market.example/api/v1", "a/b");
     expect(http.get).toHaveBeenCalledWith("/plugins/a%2Fb/draft", {

@@ -1,4 +1,5 @@
 import { APIClient } from "@octo/base";
+import { withReviewInvalidation } from "../api/reviewSignal";
 import type { PluginDetailWire } from "../api/pluginWire";
 import type { PublicationWrite } from "../features/publications/publicationDraft";
 
@@ -58,13 +59,13 @@ const target = (u: DependencyUpdate) => u.plugin_type === "connector"
   : { plugin_id: u.plugin_id, target_version_id: u.target_version_id };
 const path = (id: string) => `/plugins/${encodeURIComponent(id)}`;
 export const PublicationService = {
-  async publishDraft(
+  publishDraft: withReviewInvalidation(async (
     baseURL: string,
     id: string,
     version: string,
     changelog: string,
     revision: string
-  ): Promise<PublicationOutcome> {
+  ): Promise<PublicationOutcome> => {
     return unwrap(
       await APIClient.shared.post(
         "/plugins/publish",
@@ -77,7 +78,7 @@ export const PublicationService = {
         { baseURL }
       )
     );
-  },
+  }),
   async getDraft(baseURL: string, id: string): Promise<PluginDetailWire> {
     return unwrap(await APIClient.shared.get(`${path(id)}/draft`, { baseURL }));
   },
@@ -141,12 +142,12 @@ export const PublicationService = {
       })
     );
   },
-  async changeVisibility(
+  changeVisibility: withReviewInvalidation(async (
     baseURL: string,
     id: string,
     visibility: string,
     revision: string
-  ): Promise<PublicationOutcome> {
+  ): Promise<PublicationOutcome> => {
     return unwrap(
       await APIClient.shared.patch(
         `${path(id)}/visibility`,
@@ -154,7 +155,7 @@ export const PublicationService = {
         { baseURL }
       )
     );
-  },
+  }),
   async getDependencies(
     baseURL: string,
     draft: PluginDetailWire
