@@ -251,7 +251,13 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
     if (f) setIconCropFile(f);
   }
 
+  const confirmingUpgrade = confirmClose && Boolean(skill?.publishedVersion || skill?.listingState === "published");
+
   function requestClose() {
+    if (confirmClose) {
+      setConfirmClose(false);
+      return;
+    }
     if (busy) {
       setConfirmClose(true);
       return;
@@ -538,11 +544,21 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
       <WKModal
         visible={Boolean(skill)}
         onCancel={requestClose}
-        title={skill ? t("skillMarket.form.editTitle", { values: { name: skill.name } }) : t("skillMarket.form.editTitleFallback")}
+        title={confirmingUpgrade ? t("skillMarket.confirm.leaveUpgradeTitle") : skill ? t("skillMarket.form.editTitle", { values: { name: skill.name } }) : t("skillMarket.form.editTitleFallback")}
         size="lg"
-        className="skill-market-workflow-modal"
+        className={confirmingUpgrade ? "skill-market-workflow-modal skill-market-workflow-modal--leave-confirm" : "skill-market-workflow-modal"}
         footer={
-          confirmClose ? (
+          confirmingUpgrade ? (
+            <div className="skill-market-leave-confirm__actions">
+              <WKButton autoFocus variant="secondary" onClick={() => setConfirmClose(false)}>
+                {t(busy ? "skillMarket.confirm.keepUploading" : "skillMarket.confirm.keepEditing")}
+              </WKButton>
+              <WKButton variant="danger" onClick={confirmLeave}>{t("skillMarket.confirm.leave")}</WKButton>
+              {!busy && <WKButton variant="primary" disabled={!canSave || saving} onClick={() => { setConfirmClose(false); void submit(false); }}>
+                {t("skillMarket.confirm.saveAndLeave")}
+              </WKButton>}
+            </div>
+          ) : confirmClose ? (
             <InlineConfirmBar
               message={t(
                 busy ? "skillMarket.confirm.busyMessage" : "skillMarket.confirm.unsavedMessage"
@@ -599,6 +615,12 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
           )
         }
       >
+        {confirmingUpgrade ? (
+          <section className="skill-market-leave-confirm" role="alert">
+            <span className="skill-market-leave-confirm__icon" aria-hidden="true"><AlertCircle size={28} /></span>
+            <p>{t(busy ? "skillMarket.confirm.busyMessage" : "skillMarket.confirm.upgradeUnsavedMessage")}</p>
+          </section>
+        ) : (
         <div className="skill-market-form skill-market-form--workflow">
           {error && (
             <div className="skill-market-form__error">
@@ -864,6 +886,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
             </label>
           </div>
         </div>
+        )}
       </WKModal>
       <IconCropModal
         visible={!!iconCropFile}

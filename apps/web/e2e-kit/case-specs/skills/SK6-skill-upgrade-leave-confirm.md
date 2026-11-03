@@ -17,12 +17,13 @@
 - fixture: `fixtures-authed`
 - Per-case MSW handler: `e2e-kit/msw-handlers/sk6-skill-upgrade-leave-confirm.ts`
 - `GET /market/api/v1/plugins` 返回当前用户拥有、已在组织内上架的 Skill。
+- `GET /market/api/v1/plugins/:id/draft` 返回该 Skill 的可编辑草稿。
 - `GET /market/api/v1/plugin_categories` 与 `GET /market/api/v1/plugin_tags` 返回表单所需数据。
 
 ## 用户操作步骤
 
 1. 分别以桌面和移动端尺寸打开“我的发布”中的 Skill 列表。
-2. 点击“升级版本”，修改版本号和发布说明。
+2. 点击“编辑”，修改版本号和发布说明。
 3. 点击“取消”，观察当前弹窗切换为离开确认页。
 4. 按 Esc 返回编辑，确认输入仍被保留。
 5. 再次通过右上角关闭入口进入确认页，点击“确认离开”。
@@ -46,6 +47,6 @@
 
 ## 摸清依据
 
-- `packages/dmworkskillmarket/src/pages/SkillListPage.tsx`: 已在组织上架的 Skill 进入升级流程。
-- `packages/dmworkskillmarket/src/components/NewSkillModal.tsx`: 升级表单、dirty 状态和离开确认态。
+- `packages/dmworkskillmarket/src/pages/SkillListPage.tsx`: 已上架的 Skill 从编辑入口打开草稿。
+- `packages/dmworkskillmarket/src/components/EditSkillModal.tsx`: 升级表单、dirty 状态和离开确认态。
 - `packages/dmworkskillmarket/src/index.css`: 确认页及移动端操作布局。
