@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import ReactDOM from "react-dom";
+import { act, Simulate } from "react-dom/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({ workspaces: vi.fn(), runtimes: vi.fn(), install: vi.fn() }));
@@ -43,16 +44,35 @@ vi.mock("../../api/expertService", async (importOriginal) => ({
 import ExpertAddToLoopModal from "../ExpertAddToLoopModal";
 import { clearLoopCache, getLoopRuntimes } from "../../api/expertService";
 const item = { id: "expert", name: "Expert", kind: "expert" } as never;
-const confirm = () => screen.getByRole("button", { name: "mcp.expert.confirmInstall" });
-const runtime = () => screen.getByRole("combobox", { name: "mcp.expert.selectRuntimePlaceholder" }) as HTMLSelectElement;
+let container: HTMLDivElement;
+const waitFor = vi.waitFor;
+const confirm = () => Array.from(container.querySelectorAll("button"))
+  .find((button) => button.textContent === "mcp.expert.confirmInstall")!;
+const runtime = () => container.querySelector<HTMLSelectElement>(
+  'select[aria-label="mcp.expert.selectRuntimePlaceholder"]'
+)!;
+
+// Match the package's React 17 renderer, including for rerenders and effects.
+async function render(element: React.ReactElement) {
+  await act(async () => { ReactDOM.render(element, container); });
+}
+
+async function clickConfirm() {
+  await act(async () => { confirm().click(); });
+}
 
 beforeEach(() => {
+  container = document.createElement("div");
+  document.body.appendChild(container);
   vi.clearAllMocks();
   clearLoopCache();
   api.workspaces.mockResolvedValue([{ id: "w1", name: "One" }, { id: "w2", name: "Two" }]);
   api.install.mockResolvedValue({ agentId: "installed" });
 });
-afterEach(cleanup);
+afterEach(() => {
+  act(() => { ReactDOM.unmountComponentAtNode(container); });
+  container.remove();
+});
 
 describe("market installation runtime selection", () => {
   it.each([
@@ -62,23 +82,23 @@ describe("market installation runtime selection", () => {
     api.runtimes.mockResolvedValue([{ id: "mine", name: "Mine", status: initial }]);
     // Seed the same real cache that marketplace prefetch populates.
     await getLoopRuntimes("w1");
-    const view = render(<ExpertAddToLoopModal item={item} onClose={vi.fn()} />);
+    await render(<ExpertAddToLoopModal item={item} onClose={vi.fn()} />);
     await waitFor(() => expect(api.runtimes).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(runtime().value).toBe(initial === "online" ? "mine" : ""));
-    view.rerender(<ExpertAddToLoopModal item={null} onClose={vi.fn()} />);
+    await render(<ExpertAddToLoopModal item={null} onClose={vi.fn()} />);
 
     let resolveRefresh!: (rows: unknown[]) => void;
     api.runtimes.mockImplementationOnce(() => new Promise((resolve) => { resolveRefresh = resolve; }));
-    view.rerender(<ExpertAddToLoopModal item={item} onClose={vi.fn()} />);
+    await render(<ExpertAddToLoopModal item={item} onClose={vi.fn()} />);
     await waitFor(() => expect(api.runtimes).toHaveBeenCalledTimes(3));
     expect((confirm() as HTMLButtonElement).disabled).toBe(true);
-    resolveRefresh([{ id: "mine", name: "Mine", status: next }]);
+    await act(async () => { resolveRefresh([{ id: "mine", name: "Mine", status: next }]); });
     await waitFor(() => {
       expect((confirm() as HTMLButtonElement).disabled).toBe(disabled);
       expect(runtime().value).toBe(selected);
       expect(runtime().querySelector('option[value="mine"]')?.hasAttribute("disabled")).toBe(disabled);
     });
-    fireEvent.click(confirm());
+    await clickConfirm();
     if (disabled) {
       expect(api.install).not.toHaveBeenCalled();
     } else {
@@ -93,10 +113,10 @@ describe("market installation runtime selection", () => {
       { id: "offline", name: "My offline runtime", status: "offline" },
       { id: "mine", name: "My online runtime", status: "online" },
     ]);
-    render(<ExpertAddToLoopModal item={item} onClose={vi.fn()} />);
+    await render(<ExpertAddToLoopModal item={item} onClose={vi.fn()} />);
     await waitFor(() => expect(runtime().value).toBe("mine"));
     expect(runtime().querySelector('option[value="offline"]')?.hasAttribute("disabled")).toBe(true);
-    fireEvent.click(confirm());
+    await clickConfirm();
     await waitFor(() => expect(api.install).toHaveBeenCalledWith("expert", {
       workspaceId: "w1", runtimeId: "mine", idempotencyKey: "install-key",
     }));
@@ -105,11 +125,11 @@ describe("market installation runtime selection", () => {
   it.each([[[]], [[{ id: "offline", name: "My offline runtime", status: "offline" }]]])(
     "keeps installation disabled when there is no ready owned runtime (%j)", async (rows) => {
       api.runtimes.mockResolvedValue(rows);
-      render(<ExpertAddToLoopModal item={item} onClose={vi.fn()} />);
+      await render(<ExpertAddToLoopModal item={item} onClose={vi.fn()} />);
       await waitFor(() => expect(api.runtimes).toHaveBeenCalledWith("w1"));
       expect(runtime().value).toBe("");
       expect((confirm() as HTMLButtonElement).disabled).toBe(true);
-      fireEvent.click(confirm());
+      await clickConfirm();
       expect(api.install).not.toHaveBeenCalled();
     },
   );
@@ -118,14 +138,20 @@ describe("market installation runtime selection", () => {
     let resolveNext!: (rows: unknown[]) => void;
     api.runtimes.mockResolvedValueOnce([{ id: "mine-1", name: "One", status: "online" }])
       .mockImplementationOnce(() => new Promise((resolve) => { resolveNext = resolve; }));
-    render(<ExpertAddToLoopModal item={item} onClose={vi.fn()} />);
+    await render(<ExpertAddToLoopModal item={item} onClose={vi.fn()} />);
     await waitFor(() => expect(runtime().value).toBe("mine-1"));
-    fireEvent.change(screen.getByRole("combobox", { name: "mcp.expert.selectWorkspacePlaceholder" }), { target: { value: "w2" } });
+    act(() => {
+      const workspace = container.querySelector<HTMLSelectElement>(
+        'select[aria-label="mcp.expert.selectWorkspacePlaceholder"]'
+      )!;
+      workspace.value = "w2";
+      Simulate.change(workspace);
+    });
     expect(runtime().value).toBe("");
     expect((confirm() as HTMLButtonElement).disabled).toBe(true);
-    resolveNext([{ id: "mine-2", name: "Two", status: "online" }]);
+    await act(async () => { resolveNext([{ id: "mine-2", name: "Two", status: "online" }]); });
     await waitFor(() => expect(runtime().value).toBe("mine-2"));
-    fireEvent.click(confirm());
+    await clickConfirm();
     await waitFor(() => expect(api.install).toHaveBeenCalledWith("expert", {
       workspaceId: "w2", runtimeId: "mine-2", idempotencyKey: "install-key",
     }));
