@@ -85,14 +85,14 @@ describe("EditSkillModal", () => {
     expect(screen.getByPlaceholderText(displayNamePlaceholder)).toHaveValue("新版会议纪要");
     fireEvent.click(screen.getByRole("button", { name: /发布|skillMarket.plugin.actionPublish/ }));
     await waitFor(() => expect(props.onPublished).toHaveBeenCalledOnce());
-    expect(api.publishPlugin).toHaveBeenCalledWith({ pluginId: skill.id, version: "1.1.4" });
+    expect(api.publishPlugin).toHaveBeenCalledWith(expect.objectContaining({ pluginId: skill.id, version: "1.1.4" }));
     expect(released.displayName).toBe("新版会议纪要");
     expect(released.version).toBe("1.1.4");
   });
 
-  it("keeps direct publication hidden for a listed organization Skill", () => {
+  it("offers draft save and reviewed publication for a listed organization Skill", () => {
     render(<EditSkillModal skill={{ ...skill, visibility: "space", listingState: "published" }} categories={categories} onClose={vi.fn()} onUpdated={vi.fn()} />);
-    expect(screen.queryByRole("button", { name: /发布|skillMarket.plugin.actionPublish/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /发布|skillMarket.plugin.actionPublish/ })).toBeInTheDocument();
   });
 
   it("prefills and saves the current draft explanation without a reupload", async () => {

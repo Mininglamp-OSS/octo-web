@@ -64,6 +64,8 @@ export interface PluginPackageWire {
 }
 
 export interface PluginListItemWire {
+ dependency_suspended?:boolean;
+ dependency_updates?: import("@dmwork/skillmarket/src/Service/PublicationService").DependencyUpdate[];
   plugin_id: string;
   plugin_name: string;
   plugin_type: PluginTypeWire;

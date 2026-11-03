@@ -8,7 +8,7 @@ import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 import IconCropModal from "./IconCropModal";
 import InlineConfirmBar from "./InlineConfirmBar";
 import { visibilityLabel } from "../utils/labels";
-import { isValidVersion, nextPatch, versionErrorKey } from "../utils/version";
+import { isValidVersion, nextPatch, versionErrorKey, upgradeVersionErrorKey } from "../utils/version";
 
 interface EditSkillModalProps {
   skill: Skill | null;
@@ -123,7 +123,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
     setActiveTagSuggestion(0);
     setTagError(null);
     setVisibility(skill.visibility);
-    setVersion(skill.version);
+    setVersion(skill.publishedVersion===skill.version?nextPatch(skill.publishedVersion):skill.version);
     setUploadStage("idle");
     setProgress(0);
     setUploadedFile(null);
@@ -143,6 +143,8 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
     ? savedDraft.current.key !== formKey || savedDraft.current.iconBlob !== iconBlob
     : Boolean(skill) && (
     name !== skill?.name ||
+    description !== skill?.description ||
+    version !== skill?.version ||
     displayName !== (skill?.displayName ?? "") ||
     categoryId !== skill?.categoryId ||
     JSON.stringify(tags) !== JSON.stringify(skill?.tags) ||
@@ -191,7 +193,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
   const willBeUnlisted =
     skill?.listingState !== "published" ||
     (skill?.visibility !== undefined && visibility !== skill.visibility);
-  const showDraftActions = willBeUnlisted || skill?.visibility === "private";
+  const showDraftActions = tenantVisibility;
   // 发布 does NOT inherit the grandfathering. On 本组织 it routes through
   // `Service.Publish` → `SubmitReview`, which gates on `validVersion` with no
   // stored-label exemption, so a legacy label that saves fine would 400 on
@@ -199,7 +201,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
   // server ignores the submitted version entirely (the immediate branch), so the
   // save rule is the right one there.
   const publishVersionError =
-    visibility === "space" ? versionErrorKey(skill?.version, version) : versionError;
+    skill?.publishedVersion ? upgradeVersionErrorKey(skill.publishedVersion,version) : visibility === "space" ? versionErrorKey(skill?.version, version) : versionError;
   // 发布 asks for a changelog only when the plugin is headed for organization
   // review, mirroring the create modal.
   const canPublishNow =
@@ -210,7 +212,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
   // a 本组织 publish (the org-review submit requires one — decision "3 强制").
   // Read-only otherwise, so a 仅自己 save does not present an editable field the
   // backend would ignore. Its `*` is only truthful when it is actually required.
-  const changelogRequired = Boolean(parseTaskId) || visibility === "space";
+  const changelogRequired = true;
 
   function updateTagSuggestionStyle() {
     const field = tagFieldRef.current;
@@ -510,7 +512,8 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
         const outcome = await publishPlugin({
           pluginId: skill.id,
           version,
-          ...(visibility === "space" ? { changelog } : {}),
+          changelog,
+          ...(updated.draftRevision?{expectedDraftRevision:updated.draftRevision}:{}),
         });
         if (!isCurrent()) return;
         onUpdated(updated);
@@ -649,6 +652,8 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
             <WKButton variant="secondary" onClick={() => fileInputRef.current?.click()}>{t("skillMarket.upload.reselect")}</WKButton>
           )}
 
+          <label><span>{t("skillMarket.publication.description")}</span><textarea value={description} onChange={event=>setDescription(event.target.value)} disabled={saving}/></label>
+          {skill?.publishedVersion&&<p className="skill-market-form__hint">v{skill.publishedVersion}</p>}
           <div className="skill-market-form__version-section">
             <h3 className="skill-market-form__section-title">{t("skillMarket.form.versionSection")}</h3>
             <div className="skill-market-form__row">

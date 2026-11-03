@@ -258,7 +258,7 @@ describe("AllAssetsList parity with type tabs", () => {
     );
   });
 
-  it("requests edit and upgrade from the page-level modal host", async () => {
+  it("requests unified editing for both drafts and organization releases", async () => {
     const onRequestAction = vi.fn();
     h.getMySkills.mockResolvedValue(
       page([
@@ -289,7 +289,7 @@ describe("AllAssetsList parity with type tabs", () => {
       ).click();
       (
         Array.from(container.querySelectorAll("button")).find(
-          (button) => button.textContent === "upgrade-Listed expert"
+          (button) => button.textContent === "edit-Listed expert"
         ) as HTMLButtonElement
       ).click();
     });
@@ -302,7 +302,7 @@ describe("AllAssetsList parity with type tabs", () => {
     expect(onRequestAction).toHaveBeenNthCalledWith(2, {
       pluginId: "listed-expert",
       type: "expert",
-      action: "upgrade",
+      action: "edit",
     });
   });
 

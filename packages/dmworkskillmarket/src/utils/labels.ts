@@ -46,7 +46,7 @@ const DISPLAY_STATUS_KEYS: Record<string, string> = {
   draft: "skillMarket.plugin.statusDraft",
   pending_review: "skillMarket.plugin.statusPendingReview",
   published: "skillMarket.plugin.statusPublished",
-  rejected: "skillMarket.plugin.statusRejected",
+  rejected: "skillMarket.plugin.statusDraft",
   delisted: "skillMarket.plugin.statusDelisted",
 };
 
@@ -69,7 +69,7 @@ export function displayStatusTone(status: PluginDisplayStatus | string): string 
     case "pending_review":
       return "pending";
     case "rejected":
-      return "rejected";
+      return "draft";
     case "delisted":
       return "delisted";
     default:

@@ -75,6 +75,8 @@ export interface ExpertMember {
 }
 
 interface ExpertBase {
+ dependencySuspended?:boolean;
+	dependencyUpdates?: import("@dmwork/skillmarket/src/Service/PublicationService").DependencyUpdate[];
   draftRevision?: string;
   draftChangelog?: string;
   id: string;

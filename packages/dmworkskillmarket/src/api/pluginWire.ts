@@ -91,6 +91,8 @@ export interface PluginDependencyIssueWire {
 }
 
 export interface PluginListItemWire {
+ dependency_suspended?:boolean;
+	dependency_updates?: import("../Service/PublicationService").DependencyUpdate[];
   plugin_id: string;
   plugin_name: string;
   plugin_type: PluginTypeWire;

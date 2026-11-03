@@ -80,6 +80,7 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
   const [botPublishVisible, setBotPublishVisible] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
   const editGeneration = useRef(0);
+  const [visibilityTarget,setVisibilityTarget]=useState<"private"|"space">();
   const [visibilityId, setVisibilityId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Skill | null>(null);
   const [deleting, setDeleting] = useState<Skill | null>(null);
@@ -296,10 +297,6 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
       showToast(t("skillMarket.review.pendingBlocksEdit"));
       return;
     }
-    if (listedToOrg) {
-      openReviewSubmit(skill);
-      return;
-    }
     void openEditor(skill);
   }
 
@@ -498,8 +495,8 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
                 // is editable by definition (that is how you fix and republish).
                 // While a request is pending nothing changes either, so the live
                 // version stays up until a decision lands.
-                onVisibility: skill.listingState === "published" && !pending && (skill.visibility === "private" || skill.visibility === "space") ? () => setVisibilityId(skill.id) : undefined,
-                onEdit: !listedToOrg && !pending ? () => void openEditor(skill) : undefined,
+                onVisibility: (skill.listingState === "published"||skill.listingState === "delisted") && !pending && (skill.visibility === "private" || skill.visibility === "space") ? (target?:"private"|"space") => {setVisibilityTarget(target);setVisibilityId(skill.id)} : undefined,
+                onEdit: !pending ? () => void openEditor(skill) : undefined,
                 onDelete: () => setDeleting(skill),
                 // The shared plugin namespace, same as the connector and expert
                 // pages: one MineTable affordance must not announce itself with
@@ -516,7 +513,7 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
                     ? () => void handlePublish(skill)
                     : undefined,
                 publishAria: t("skillMarket.plugin.ariaPublish", { values: { name: skill.name } }),
-                onUpgrade: listedToOrg && !pending ? () => openReviewSubmit(skill) : undefined,
+                onUpgrade: undefined,
                 upgradeAria: t("skillMarket.plugin.ariaUpgrade", { values: { name: skill.name } }),
                 onCancelReview:
                   pending && skill.reviewId
@@ -574,7 +571,7 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
         visible={botPublishVisible}
         onClose={() => setBotPublishVisible(false)}
       />
-      <VisibilityModal pluginId={visibilityId} onClose={() => setVisibilityId(null)} onSaved={message => { showToast(message); list.refresh(); myReviews.refresh(); }} />
+      <VisibilityModal target={visibilityTarget} pluginId={visibilityId} onClose={() => setVisibilityId(null)} onSaved={message => { showToast(message); list.refresh(); myReviews.refresh(); }} />
       <EditSkillModal
         skill={editing}
         categories={list.categories}

@@ -1,3 +1,4 @@
+import { DependencyUpdateFlow } from "../features/publications/DependencyUpdateFlow";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { AlertCircle, PackageOpen, RefreshCw } from "lucide-react";
 import { Toast } from "@douyinfe/semi-ui";
@@ -93,6 +94,8 @@ export default function AllAssetsList({
   const [error, setError] = useState<string | null>(null);
   const [moreError, setMoreError] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [visibilityTarget,setVisibilityTarget]=useState<"private"|"space">();
+  const [dependencyTarget,setDependencyTarget]=useState<Skill|null>(null);
   const [visibilityId, setVisibilityId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<Skill | null>(null);
   // Opaque cursor for the next page, null when the list is exhausted. The 全部
@@ -346,6 +349,9 @@ export default function AllAssetsList({
       // like their owning tabs do.
       downloads: rowType === "skill" ? item.downloadCount : item.installCount,
       status,
+      dependencyUpdates:item.dependencyUpdates,
+      dependencySuspended:item.dependencySuspended,
+      onDependencyUpdates:()=>setDependencyTarget(item),
       dependencyIssues: item.dependencyIssues?.map((issue) => ({
         targetPluginId: issue.targetPluginId,
         targetName: issue.targetName,
@@ -356,9 +362,9 @@ export default function AllAssetsList({
       onOpen: onRequestAction
         ? () => onRequestAction({ pluginId: item.id, type: rowType, action: "view" })
         : () => onOpenType(wireType),
-      onVisibility: wireType !== "connector" && item.listingState === "published" && !pending && (item.visibility === "private" || item.visibility === "space") ? () => setVisibilityId(item.id) : undefined,
+      onVisibility: (item.listingState === "published"||item.listingState === "delisted") && !pending && (item.visibility === "private" || item.visibility === "space") ? (target?:"private"|"space") => {setVisibilityTarget(target);setVisibilityId(item.id)} : undefined,
       onEdit:
-        onRequestAction && !listedToOrg && !pending
+        onRequestAction && !pending
           ? () => onRequestAction({ pluginId: item.id, type: rowType, action: "edit" })
           : undefined,
       editAria: t("skillMarket.plugin.ariaEdit", { values: { name: item.name } }),
@@ -384,10 +390,7 @@ export default function AllAssetsList({
               )
           : undefined,
       publishAria: t("skillMarket.plugin.ariaPublish", { values: { name: item.name } }),
-      onUpgrade:
-        onRequestAction && listedToOrg && !pending
-          ? () => onRequestAction({ pluginId: item.id, type: rowType, action: "upgrade" })
-          : undefined,
+      onUpgrade: undefined,
       upgradeAria: t("skillMarket.plugin.ariaUpgrade", { values: { name: item.name } }),
       onCancelReview:
         pending && item.reviewId
@@ -409,7 +412,8 @@ export default function AllAssetsList({
 
   return (
     <div className="wk-mcp-mine__all">
-      <VisibilityModal pluginId={visibilityId} onClose={() => setVisibilityId(null)} onSaved={message => { Toast.success(message); void load(); }} />
+      {dependencyTarget&&<DependencyUpdateFlow pluginId={dependencyTarget.id} pending={dependencyTarget.displayStatus==="pending_review"} onClose={()=>setDependencyTarget(null)} onSaved={message=>{Toast.success(message);void load()}}/>}
+      <VisibilityModal target={visibilityTarget} pluginId={visibilityId} onClose={() => setVisibilityId(null)} onSaved={message => { Toast.success(message); void load(); }} />
       <MineTable rows={rows} ariaLabel={t("mcp.mine.allAriaLabel")} />
       {(cursor || loadingMore || moreError) && (
         <LoadMoreSentinel

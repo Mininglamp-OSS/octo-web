@@ -16,7 +16,7 @@ import type {
 
 export type ExpertDependencyIssue = NonNullable<ExpertAgent["dependencyIssues"]>[number];
 
-export const DEPENDENCY_ISSUE_REASONS = ["delisted", "deleted", "release_missing"] as const;
+export const DEPENDENCY_ISSUE_REASONS = ["delisted", "deleted", "release_missing", "visibility_restricted"] as const;
 export type DependencyIssueReason = (typeof DEPENDENCY_ISSUE_REASONS)[number] | "unknown";
 import {
   jsonAttachment,
@@ -365,6 +365,8 @@ function commonFromPlugin(raw: PluginListItemWire, categoryName: string) {
     installCount: raw.install_count ?? 0,
     version: raw.published_version ?? raw.current_version ?? "",
     dependencyIssues: mapDependencyIssues(raw.dependency_issues),
+	dependencyUpdates: raw.dependency_updates,
+    dependencySuspended:raw.dependency_suspended,
   };
 }
 

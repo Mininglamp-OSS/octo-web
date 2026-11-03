@@ -51,6 +51,9 @@ export interface SkillDependencyIssue {
 }
 
 export interface Skill {
+ dependencySuspended?:boolean;
+	dependencyUpdates?: import("../Service/PublicationService").DependencyUpdate[];
+	publishedVersion?: string;
   draftRevision?: string;
   draftChangelog?: string;
   id: string;

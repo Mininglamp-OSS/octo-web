@@ -168,6 +168,7 @@ export default class APIClient {
 
      get<T>(path: string, config?: RequestConfig) {
        return this.wrapResult<T>(axios.get(path, {
+        baseURL: config?.baseURL,
         params: config?.param,
         headers: config?.headers,
         responseType: config?.responseType,
@@ -201,6 +202,7 @@ export default class APIClient {
 
     patch(path: string, data?: any, config?: RequestConfig) {
         return this.wrapResult(axios.patch(path, data, {
+            baseURL: config?.baseURL,
             params: config?.param,
             headers: config?.headers,
             timeout: config?.timeout,
