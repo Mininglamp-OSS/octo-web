@@ -235,6 +235,7 @@
       "delisted": "已下架",
       "deleted": "已删除",
       "release_missing": "版本未发布",
+      "visibility_restricted": "可见范围已缩小",
       "unknown": "其他不可用原因"
     }
   },
