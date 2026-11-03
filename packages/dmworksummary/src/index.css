@@ -4629,3 +4629,9 @@ body[theme-mode="dark"] .chat-selector-modal {
     cursor: pointer;
     padding: var(--wk-sp-1) var(--wk-sp-2);
 }
+
+.summary-workbench-ai-notice {
+    display: flex;
+    justify-content: flex-end;
+    margin-block-start: var(--wk-sp-2);
+}
