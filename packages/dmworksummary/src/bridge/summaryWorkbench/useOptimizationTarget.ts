@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getSummaryOptimizationTarget } from "../../Service/SummaryWorkbenchService";
+import { decodeSummaryOptimizationTarget } from "./adapter";
 import type { SummaryOptimizationContext } from "./protocol";
 
 // Capture the original revision before generation. Recovery must never silently
@@ -28,16 +29,9 @@ export function useOptimizationTarget({
     try {
       const cached = localStorage.getItem(key);
       if (cached) {
-        const parsed = JSON.parse(cached) as SummaryOptimizationContext;
-        if (
-          (!taskId || parsed.target.task_id === taskId) &&
-          typeof parsed.target.expected_revision === "string" &&
-          typeof parsed.can_save_version === "boolean"
-        ) {
-          setOptimization(parsed);
-          setLoading(false);
-          return;
-        }
+        setOptimization(decodeSummaryOptimizationTarget(JSON.parse(cached), taskId));
+        setLoading(false);
+        return;
       }
     } catch {
       /* A recovered session without its base can only save a copy. */

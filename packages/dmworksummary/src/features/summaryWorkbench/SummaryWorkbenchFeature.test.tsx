@@ -4147,6 +4147,12 @@ describe("SummaryWorkbenchFeature", () => {
     await waitFor(() => expect(savePreview).toHaveBeenCalledWith("Original", target));
     expect(screen.queryByRole("button", {name:"modal-ok"})).not.toBeInTheDocument();
     expect(onOpenTask).toHaveBeenCalledWith(17);
+    fireEvent.click(screen.getByRole("button", {name:"save-preview"}));
+    await waitFor(() => expect(savePreview).toHaveBeenCalledTimes(2));
+    expect(onOpenTask).toHaveBeenCalledTimes(1);
+    savePreview.mockResolvedValue({task_id: 17, save_mode: "new_version", version: 3});
+    fireEvent.click(screen.getByRole("button", {name:"save-preview"}));
+    await waitFor(() => expect(onOpenTask).toHaveBeenCalledTimes(2));
     expect(mocks.markNotificationEligible).not.toHaveBeenCalled();
   });
 

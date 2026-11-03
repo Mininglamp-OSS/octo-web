@@ -22,6 +22,7 @@ import {
   SUMMARY_WORKSPACE_RESULT_TYPES,
   SUMMARY_WORKSPACE_SNAPSHOT_VERSION,
   SummaryWorkspaceApiError,
+  type SummaryOptimizationContext,
   type SummaryWorkbenchScope,
   type SummaryWorkspaceAction,
   type SummaryWorkspaceCapabilitiesDTO,
@@ -400,6 +401,25 @@ export function decodeSummaryWorkspaceHistory(
       decodeHistoryMessage(message, `history.messages[${index}]`)
     ),
     state,
+  };
+}
+
+export function decodeSummaryOptimizationTarget(value: unknown, taskId?: number): SummaryOptimizationContext {
+  const record = requireRecord(value, "optimization");
+  const target = requireRecord(record.target, "optimization.target");
+  const id = requirePositiveInteger(target.task_id, "optimization.target.task_id");
+  if ((taskId !== undefined && taskId !== id) ||
+      (target.result_kind !== "team" && target.result_kind !== "personal")) {
+    throw protocolError("Invalid optimization target");
+  }
+  return {
+    target: {
+      task_id: id,
+      result_kind: target.result_kind,
+      expected_revision: requireString(target.expected_revision, "optimization.target.expected_revision"),
+    },
+    title: requireString(record.title, "optimization.title"),
+    can_save_version: requireBoolean(record.can_save_version, "optimization.can_save_version"),
   };
 }
 

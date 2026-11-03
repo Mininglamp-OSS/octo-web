@@ -265,7 +265,7 @@ export default function SummaryWorkbenchFeature({
   const [pendingTemplate, setPendingTemplate] =
     useState<SummaryWorkbenchTemplateScope | null>(null);
   const notifiedTaskIds = useRef(new Set<number>());
-  const handledSavedTaskIds = useRef(new Set<number>());
+  const handledSaves = useRef(new Set<string>());
   const hydrationObserved = useRef(false);
   const templateFilledComposer = useRef<string | null>(null);
   const themeTrackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1184,8 +1184,11 @@ export default function SummaryWorkbenchFeature({
       : workbench.savePreview(title));
     if (!result) return;
     setSaveDialogOpen(false);
-    if (handledSavedTaskIds.current.has(result.task_id)) return;
-    handledSavedTaskIds.current.add(result.task_id);
+    const saveKey = result.save_mode === "new_version"
+      ? `version:${result.task_id}:${optimization?.target.result_kind}:${result.version}`
+      : `summary:${result.task_id}`;
+    if (handledSaves.current.has(saveKey)) return;
+    handledSaves.current.add(saveKey);
     // Reaching this branch means task creation/save succeeded. Transport,
     // protocol, and task-creation failures stay on the existing error path;
     // finish_status and gaps are post-save internal quality diagnostics only.

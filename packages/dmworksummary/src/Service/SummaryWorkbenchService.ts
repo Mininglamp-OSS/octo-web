@@ -6,7 +6,7 @@ import type {
 import {
   confirmSummaryWorkspaceProposal,
   getSummaryDetail,
-  getSummaryOptimizationTarget,
+  getSummaryOptimizationTarget as fetchOptimizationTarget,
   getSummaryWorkspaceCapabilities,
   getSummaryWorkspaceHistory,
   postSummaryWorkspaceTurn,
@@ -17,6 +17,7 @@ import {
 import {
   adaptSummaryWorkspaceHistory,
   adaptSummaryWorkspaceTurn,
+  decodeSummaryOptimizationTarget,
   decodeSummaryWorkspaceCapabilities,
   decodeSummaryWorkspaceSaveResult,
   decodeSummaryWorkspaceStreamError,
@@ -326,4 +327,6 @@ function normalizeWorkspaceError(error: unknown): SummaryWorkspaceApiError {
 
 export default new SummaryWorkbenchService();
 
-export { getSummaryOptimizationTarget };
+export async function getSummaryOptimizationTarget(taskId: number) {
+  return decodeSummaryOptimizationTarget(await fetchOptimizationTarget(taskId), taskId);
+}

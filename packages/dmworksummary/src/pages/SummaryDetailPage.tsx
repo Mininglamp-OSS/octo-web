@@ -51,6 +51,7 @@ import { refreshSummaryAttentionBadge } from "../utils/summaryAttentionBadge";
 // (见 CHAT-REFERENCE-BASED-DESIGN-v1)
 import OverflowTooltip from "../components/OverflowTooltip";
 import type {
+    SummaryGenerationSnapshot,
     SummaryDetail,
     PersonalResult,
     MemberStatus,
@@ -241,8 +242,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         return <MessageSquareText size={14} aria-hidden />;
     };
 
-    private renderSourceMetadata = (sources: SourceItem[], snapshotAt?: string) => {
-        const currentSnapshot = this.state.detail?.result?.snapshot ?? this.state.personalResult?.snapshot;
+    private renderSourceMetadata = (sources: SourceItem[], snapshotAt?: string, currentSnapshot?: SummaryGenerationSnapshot) => {
         if (currentSnapshot?.scope.sources?.length) sources = currentSnapshot.scope.sources;
         if (!sources.length) return null;
         const { t } = this.context;
@@ -2824,7 +2824,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     <div className="summary-detail-meta-time">
                         {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
                     </div>
-                    {this.renderSourceMetadata(detail.sources || [], detail.created_at)}
+                    {this.renderSourceMetadata(detail.sources || [], detail.created_at, detail.result?.snapshot)}
                 </div>
                 <hr className="summary-detail-meta-divider" /></>}
                 <div className="summary-detail-failed">
@@ -3332,7 +3332,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         <div className="summary-detail-meta-time">
                             {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
                         </div>
-                        {this.renderSourceMetadata(detail.sources || [], detail.created_at)}
+                        {this.renderSourceMetadata(detail.sources || [], detail.created_at, detail.result?.snapshot)}
                     </div>
                     <hr className="summary-detail-meta-divider" />
                     <div className="summary-detail-result-header">
@@ -3484,7 +3484,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         <div className="summary-detail-meta-time">
                             {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
                         </div>
-                        {this.renderSourceMetadata(detail.sources || [], detail.created_at)}
+                        {this.renderSourceMetadata(detail.sources || [], detail.created_at, personalResult.snapshot)}
                     </div>
                 )}
                 <hr className="summary-detail-meta-divider" />
@@ -3651,7 +3651,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         <div className="summary-detail-meta-time">
                             {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
                         </div>
-                        {this.renderSourceMetadata(detail.sources || [], detail.created_at)}
+                        {this.renderSourceMetadata(detail.sources || [], detail.created_at, detail.result?.snapshot)}
                     </div>
                     <hr className="summary-detail-meta-divider" />
                     <div className="summary-detail-content-box">
@@ -3673,7 +3673,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     <div className="summary-detail-meta-time">
                         {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
                     </div>
-                    {this.renderSourceMetadata(detail.sources || [], detail.created_at)}
+                    {this.renderSourceMetadata(detail.sources || [], detail.created_at, detail.result?.snapshot)}
                 </div>
                 <hr className="summary-detail-meta-divider" />
                 <div className="summary-detail-section-header">

@@ -26,6 +26,7 @@ interface ChatSummaryPanelProps {
 interface ChatSummaryPanelState {
     view: 'list' | 'detail' | 'create';
     selectedTaskId: number | null;
+    detailSequence: number;
     refineTask: SummaryReferenceTask | null;
     isDragging: boolean;
     /** 仅供 Capability fail-closed 后的 Legacy 创建页恢复原选择。 */
@@ -51,7 +52,7 @@ export default class ChatSummaryPanel extends Component<
     constructor(props: ChatSummaryPanelProps) {
         super(props);
         const initialView = props.summaryPanelView === 'new' ? 'create' : 'list';
-        this.state = { view: initialView, selectedTaskId: null, refineTask: null, isDragging: false, legacyCreateMode: 'normal', createSeq: 0, freshSessionSeq: 0 };
+        this.state = { detailSequence: 0, view: initialView, selectedTaskId: null, refineTask: null, isDragging: false, legacyCreateMode: 'normal', createSeq: 0, freshSessionSeq: 0 };
     }
 
     componentDidMount() {
@@ -170,7 +171,7 @@ export default class ChatSummaryPanel extends Component<
     };
 
     private handleViewDetail = (taskId: number) => {
-        this.setState({ view: 'detail', selectedTaskId: taskId, refineTask: null });
+        this.setState(prev => ({ view: 'detail', selectedTaskId: taskId, refineTask: null, detailSequence: prev.detailSequence + 1 }));
     };
 
     private handleContinueOptimize = (task: SummaryReferenceTask) => {
@@ -290,7 +291,7 @@ export default class ChatSummaryPanel extends Component<
                             </button>
                         </div>
                         <div className="wk-summary-panel-detail-body">
-                            <SummaryDetailPage taskId={selectedTaskId} onAfterMutate={() => this.setState({ view: 'list', selectedTaskId: null })} onContinueRefine={this.handleContinueOptimize} />
+                            <SummaryDetailPage key={this.state.detailSequence} taskId={selectedTaskId} onAfterMutate={() => this.setState({ view: 'list', selectedTaskId: null })} onContinueRefine={this.handleContinueOptimize} />
                         </div>
                     </div>
                 )}

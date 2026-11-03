@@ -164,6 +164,11 @@ export async function registerS16SummaryDetailRefine(
           "*/summary/api/v1/agent/chat/stream",
           async ({ request }: any) => {
             const input = await request.json();
+            const refs = input.summary_context?.referenced_task_ids;
+            if (input.message !== "S16 请补充风险说明" || input.action !== "chat" ||
+                !Array.isArray(refs) || refs.length !== 1 || refs[0] !== taskId) {
+              return HttpResponse.json({ code: 40001, message: "Invalid S16 optimization turn" }, { status: 400 });
+            }
             const preview = {
               message_id: 160162,
               result_type: "agent_preview",

@@ -1726,6 +1726,6 @@ export async function convertSummaryToDoc(title: string, markdown: string): Prom
     return convertMarkdownToDoc({ title, markdown });
 }
 
-export async function getSummaryOptimizationTarget(taskId: number): Promise<import("../bridge/summaryWorkbench/protocol").SummaryOptimizationContext> {
+export async function getSummaryOptimizationTarget(taskId: number): Promise<unknown> {
     return get(`/summaries/${taskId}/optimization-target`);
 }
