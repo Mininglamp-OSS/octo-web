@@ -575,7 +575,10 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
     overflow: hidden;
 }
 
-.summary-card-desc {
+/* Both evidence rows share the clamped two-line treatment: the topic row and the
+   raw-title row that shows a match the derived title cannot carry. */
+.summary-card-desc,
+.summary-card-title-evidence {
     font-size: 12px;
     font-weight: 400;
     line-height: 16px;
@@ -4606,4 +4609,23 @@ body[theme-mode="dark"] .chat-selector-modal {
     font-size: 12px;
     line-height: 18px;
     color: var(--wk-text-tertiary, rgba(28, 28, 35, 0.5));
+}
+
+.summary-search-hit {
+    color: inherit;
+    /* Dedicated Figma search-highlight token, same as the channel search surface. */
+    background: var(--wk-color-search-highlight);
+    font-weight: 600;
+}
+.summary-search-history, .summary-search-feedback {
+    color: var(--wk-text-secondary);
+    font-size: var(--wk-text-size-sm);
+    padding: var(--wk-sp-2) var(--wk-sp-3);
+}
+.summary-search-clear {
+    border: none;
+    background: transparent;
+    color: var(--wk-text-secondary);
+    cursor: pointer;
+    padding: var(--wk-sp-1) var(--wk-sp-2);
 }
