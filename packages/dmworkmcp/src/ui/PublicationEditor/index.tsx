@@ -159,7 +159,9 @@ export function PublicationEditorFields({
           {deps.map((dep) => (
             <div key={dep.id} className="publication-editor-dependency">
               <span>
-                {dep.name || t("skillMarket.publication.unavailableDependency")}
+                <span id={`publication-dependency-${draft.plugin.plugin_id}-${dep.id}`}>
+                  {dep.name || t("skillMarket.publication.unavailableDependency")}
+                </span>
                 {alerts.some((u) => u.plugin_id === dep.id) && (
                   <button type="button" className="wk-mine-table__dependency-update" onClick={onShowUpdates} disabled={busy}>
                     {t("skillMarket.publication.hasUpdates")}
@@ -171,7 +173,7 @@ export function PublicationEditorFields({
               ) : (
                 <Select
                   className="publication-editor-version-select"
-                  aria-label={dep.name || t("skillMarket.publication.unavailableDependency")}
+                  aria-labelledby={`publication-dependency-${draft.plugin.plugin_id}-${dep.id}`}
                   value={fields.versions[dep.id] ?? dep.current ?? ""}
                   position="bottomLeft"
                   autoAdjustOverflow
