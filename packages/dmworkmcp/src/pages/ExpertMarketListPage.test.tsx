@@ -19,15 +19,20 @@ const api = vi.hoisted(() => ({
   deleteExpert: vi.fn(),
   deleteSquad: vi.fn(),
   getExpert: vi.fn(),
+  getExpertEditMetadata: vi.fn(),
   getSquad: vi.fn(),
 }));
 const pluginReview = vi.hoisted(() => ({ cancelPluginReview: vi.fn(), publishPluginListing: vi.fn() }));
 vi.mock("../api/pluginReview", () => pluginReview);
 const bus = vi.hoisted(() => ({ on: vi.fn(), off: vi.fn() }));
+const recruitment = vi.hoisted(() => ({
+  mounted: vi.fn(),
+  config: { dmloopOn: false, requestSuccess: true, addConfigChangeListener: () => () => {} },
+}));
 const reviews = vi.hoisted(() => ({ useReviewRequests: vi.fn(), refresh: vi.fn() }));
 vi.mock("../api/expertService", () => api);
 vi.mock("@octo/base", () => ({
-  WKApp: { mittBus: bus },
+  WKApp: { mittBus: bus, remoteConfig: recruitment.config },
   useI18n: () => undefined,
   t: (key: string, options?: { values?: Record<string, unknown> }) =>
     options?.values ? `${key}:${JSON.stringify(options.values)}` : key,
@@ -46,6 +51,7 @@ vi.mock("@douyinfe/semi-ui", () => ({
   Tooltip: () => null,
 }));
 vi.mock("@dmwork/skillmarket", async () => ({
+  VisibilityModal: () => null,
   deriveSkillReviewState: (await import("../../../dmworkskillmarket/src/utils/review")).deriveSkillReviewState,
   useReviewRequests: reviews.useReviewRequests,
   MineTable: ({ rows }: { rows: MineRow[] }) => (
@@ -63,8 +69,8 @@ vi.mock("@dmwork/skillmarket", async () => ({
   ),
 }));
 vi.mock("../components/ExpertCard", () => ({
-  default: ({ item }: { item: ExpertItem }) => (
-    <div data-item={item.id}>{item.name}</div>
+  default: ({ item, onAddToLoop }: { item: ExpertItem; onAddToLoop?: (item: ExpertItem) => void }) => (
+    <div data-item={item.id}>{item.name}{onAddToLoop && <button onClick={() => onAddToLoop(item)}>recruit</button>}</div>
   ),
 }));
 vi.mock("../components/ExpertDetailModal", () => ({ default: () => null }));
@@ -72,8 +78,13 @@ vi.mock("../components/ExpertBotPublishModal", () => ({ default: () => null }));
 vi.mock("../components/ExpertDeleteConfirmModal", () => ({
   default: () => null,
 }));
-vi.mock("../components/ExpertAddToLoopModal", () => ({ default: () => null }));
-vi.mock("../components/ExpertEditModal", () => ({ default: () => null }));
+vi.mock("../components/ExpertAddToLoopModal", () => ({
+  default: ({ item, onClose }: { item: ExpertItem | null; onClose: () => void }) => {
+    React.useEffect(() => { recruitment.mounted(); }, []);
+    return item ? <button onClick={onClose}>close recruitment</button> : null;
+  },
+}));
+vi.mock("../components/ExpertEditModal", () => ({ default: ({ item }: { item?: ExpertItem }) => item ? <div data-edited-notes={item.draftChangelog} /> : null }));
 vi.mock("../components/ReviewSubmitModal", () => ({ default: () => null }));
 
 import ExpertMarketListPage from "./ExpertMarketListPage";
@@ -165,6 +176,7 @@ function scrollLoadMore(parent: ParentNode = root) {
 }
 
 beforeEach(() => {
+  recruitment.config.dmloopOn = false;
   observers.length = 0;
   vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
   vi.useFakeTimers();
@@ -201,6 +213,15 @@ async function tick(ms = 0) {
     await vi.advanceTimersByTimeAsync(ms);
   });
 }
+
+it("keeps the recruitment dialog mounted across real card open/close cycles", async () => {
+  recruitment.config.dmloopOn = true;
+  await render();
+  click(button("recruit"));
+  click(button("close recruitment"));
+  click(button("recruit"));
+  expect(recruitment.mounted).toHaveBeenCalledTimes(1);
+});
 async function render(
   props: React.ComponentProps<typeof ExpertMarketListPage> = {}
 ) {
@@ -249,6 +270,17 @@ function deferred<T>() {
 }
 
 describe("expert catalog server search and pagination", () => {
+  it("hydrates saved draft notes before opening the expert type-tab editor", async () => {
+    const item = { ...records[0], visibility: "private", listingState: "draft", displayStatus: "draft" } as ExpertItem;
+    api.listMyExperts.mockResolvedValue({ items: [item], total: 1 });
+    api.getExpertEditMetadata.mockResolvedValue({ ...item, draftChangelog: "Saved expert draft notes" });
+    await render({ variant: "mine", mineType: "agent" });
+    click(button("edit"));
+    await tick();
+    expect(api.getExpertEditMetadata).toHaveBeenCalledWith(item.id);
+    expect(root.querySelector("[data-edited-notes]")?.getAttribute("data-edited-notes")).toBe("Saved expert draft notes");
+  });
+
   it("renders 综合/最新/最热 in order and defaults public discovery to comprehensive", async () => {
     await render();
 

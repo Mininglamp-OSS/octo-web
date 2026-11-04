@@ -33,6 +33,7 @@ vi.mock("@octo/base", () => ({
 }));
 
 import {
+  getExpertEditMetadata,
   loadExpertChildRelations,
   loadExpertReviewSnapshot,
   updateExpertVisibility,
@@ -44,6 +45,7 @@ import {
  * and two member edges whose `data` carries the install-time wiring.
  */
 const SQUAD_WIRE = {
+  draft_revision: "a".repeat(64),
   plugin: {
     plugin_id: "squad-1",
     plugin_name: "S1",
@@ -75,6 +77,7 @@ const SQUAD_WIRE = {
       source_plugin_id: "squad-1",
       target_plugin_id: "member-a",
       relation_type: "expert_team_expert",
+      target_version_id: "ver-a",
       sort_order: 0,
       data: { member_key: "lead", is_leader: true },
     },
@@ -91,7 +94,7 @@ const SQUAD_WIRE = {
 
 function wire() {
   mock.instance.get.mockImplementation((url: string) => {
-    if (url.endsWith("/plugins/detail")) {
+    if (url.endsWith("/plugins/detail") || url.endsWith("/draft")) {
       return Promise.resolve({ data: { data: SQUAD_WIRE } });
     }
     return Promise.resolve({ data: { data: {} } });
@@ -115,6 +118,57 @@ describe("updateExpertVisibility — the full-replace echo", () => {
   beforeEach(() => {
     mock.instance.get.mockReset();
     mock.instance.post.mockReset();
+  });
+
+  it("seeds the edit form from the saved draft name and version", async () => {
+    wire();
+    const item = await getExpertEditMetadata("squad-1");
+    expect(mock.instance.get.mock.calls[0][0]).toMatch(/\/plugins\/squad-1\/draft$/);
+    expect(item.name).toBe("S1");
+    expect(item.version).toBe("2.4.0");
+  });
+
+  it.each(["expert", "expert_team"])(
+    "keeps the editable %s version when the draft also carries a published release",
+    async (pluginType) => {
+      mock.instance.get.mockResolvedValueOnce({ data: { data: {
+        ...SQUAD_WIRE,
+        plugin: {
+          ...SQUAD_WIRE.plugin,
+          plugin_type: pluginType,
+          current_version: "1.0.5",
+          published_version: "1.0.3",
+        },
+      } } });
+
+      const draft = await getExpertEditMetadata("squad-1");
+
+      expect(draft.version).toBe("1.0.5");
+      expect(draft.draftRevision).toBe(SQUAD_WIRE.draft_revision);
+      expect(mock.instance.get.mock.calls[0][0]).toMatch(/\/plugins\/squad-1\/draft$/);
+    }
+  );
+
+  it("renames metadata without losing content or exact dependency pins", async () => {
+    wire();
+    await updateExpertVisibility("squad-1", "space", { name: "Renamed team", version: "2.4.1" });
+    const body = postedBody();
+    expect(body.plugin.plugin_name).toBe("Renamed team");
+    expect(body.plugin.version).toBe("2.4.1");
+    expect(body.plugin.manifest_json).toEqual({ ...SQUAD_WIRE.plugin.manifest_json, plugin_name: "Renamed team" });
+    expect(body.plugin.plugin_json).toEqual(SQUAD_WIRE.plugin.plugin_json);
+    expect(body.relations[0].target_version_id).toBe("ver-a");
+    expect(body.relations[0].data).toEqual({ member_key: "lead", is_leader: true });
+  });
+
+  it.each([
+    ["CONFLICT", { conflict_reason: "state" }, "stateConflict"],
+    ["DUPLICATE", { conflict_reason: "name_taken" }, "nameTaken"],
+    ["BAD_REQUEST", { reason: "dependency_visibility" }, "dependencyVisibility"],
+  ])("shows the actual %s cause", async (code, details, key) => {
+    wire();
+    mock.instance.post.mockRejectedValueOnce({ response: { data: { error: { code, details } } } });
+    await expect(updateExpertVisibility("squad-1", "space")).rejects.toThrow(`skillMarket.errors.${key}`);
   });
 
   it("writes the new audience and nothing else", async () => {
@@ -166,6 +220,7 @@ describe("updateExpertVisibility — the full-replace echo", () => {
         relation_id: "rel-1",
         target_plugin_id: "member-a",
         relation_type: "expert_team_expert",
+        target_version_id: "ver-a",
         sort_order: 0,
         data: { member_key: "lead", is_leader: true },
       },
@@ -179,16 +234,11 @@ describe("updateExpertVisibility — the full-replace echo", () => {
     ]);
   });
 
-  it("reads the relation graph, so the detail fetch must ask for it", async () => {
+  it("merges metadata onto the editable draft including its relation graph", async () => {
     wire();
     await updateExpertVisibility("squad-1", "space");
-    const detailCall = mock.instance.get.mock.calls.find((c: unknown[]) =>
-      String(c[0]).endsWith("/plugins/detail")
-    ) as [string, { params?: Record<string, unknown> }];
-    expect(detailCall[1].params).toMatchObject({
-      plugin_id: "squad-1",
-      include_relations: true,
-    });
+    expect(mock.instance.get.mock.calls[0][0]).toMatch(/\/plugins\/squad-1\/draft$/);
+    expect(postedBody().relations).toHaveLength(2);
   });
 
   it("surfaces a readable message when the record cannot be read", async () => {
@@ -223,6 +273,7 @@ describe("loadExpertChildRelations — the review-submit snapshot", () => {
         sortOrder: 0,
         relationId: "rel-1",
         data: { member_key: "lead", is_leader: true },
+        targetVersionId: "ver-a",
       },
       {
         targetPluginId: "member-b",
@@ -253,15 +304,32 @@ describe("loadExpertReviewSnapshot — one revision, one read", () => {
     mock.instance.post.mockReset();
   });
 
-  it("reads /plugins/detail exactly once", async () => {
+  it("reads the editable draft exactly once", async () => {
     wire();
 
     await loadExpertReviewSnapshot("squad-1");
 
     const detailReads = mock.instance.get.mock.calls.filter((c: unknown[]) =>
-      String(c[0]).endsWith("/plugins/detail")
+      String(c[0]).endsWith("/plugins/squad-1/draft")
     );
     expect(detailReads).toHaveLength(1);
+    expect(mock.instance.get).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the draft pins and documents even when release detail differs", async () => {
+    const draft = { ...SQUAD_WIRE, plugin: { ...SQUAD_WIRE.plugin, current_version: "3.0.0", manifest_json: { description: "repaired draft" } }, relations: [{ ...SQUAD_WIRE.relations[0], target_plugin_id: "replacement", target_version_id: "fixed-version" }] };
+    mock.instance.get.mockImplementation((url: string) => Promise.resolve({ data: { data: url.endsWith("/draft") ? draft : SQUAD_WIRE } }));
+    const snapshot = await loadExpertReviewSnapshot("squad-1");
+    expect(snapshot.version).toBe("3.0.0");
+    expect(snapshot.content.manifestJson).toEqual({ description: "repaired draft" });
+    expect(snapshot.relations).toEqual([expect.objectContaining({ targetPluginId: "replacement", targetVersionId: "fixed-version", relationId: "rel-1", data: { member_key: "lead", is_leader: true } })]);
+    expect(mock.instance.get).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not fall back to a release or empty relations when draft reading fails", async () => {
+    mock.instance.get.mockRejectedValue(new Error("draft unavailable"));
+    await expect(loadExpertReviewSnapshot("squad-1")).rejects.toThrow();
+    expect(mock.instance.get).toHaveBeenCalledTimes(1);
   });
 
   it("takes content and relations from the SAME response", async () => {
@@ -278,7 +346,7 @@ describe("loadExpertReviewSnapshot — one revision, one read", () => {
     const responses = [SQUAD_WIRE, revisionB];
     let call = 0;
     mock.instance.get.mockImplementation((url: string) => {
-      if (url.endsWith("/plugins/detail")) {
+      if (url.endsWith("/plugins/squad-1/draft")) {
         const body = responses[Math.min(call, responses.length - 1)];
         call += 1;
         return Promise.resolve({ data: { data: body } });
@@ -299,5 +367,44 @@ describe("loadExpertReviewSnapshot — one revision, one read", () => {
       "member-a",
       "member-b",
     ]);
+  });
+});
+
+ it("returns editable draft notes and sends note-only saves", async () => {
+   mock.instance.get.mockResolvedValue({ data: { data: { ...SQUAD_WIRE, draft_changelog: "Team draft note" } } });
+   mock.instance.post.mockResolvedValue({ data: {} });
+   expect((await getExpertEditMetadata("squad-1")).draftChangelog).toBe("Team draft note");
+   await updateExpertVisibility("squad-1", "private", { name: "S1", version: "2.4.0", changelog: "" });
+   expect(mock.instance.post).toHaveBeenLastCalledWith(expect.stringContaining("/plugins/upsert"), expect.objectContaining({ changelog: "" }));
+ });
+
+describe("guarded expert metadata edits", () => {
+  it("returns the revision committed by the update response", async () => {
+    wire();
+    mock.instance.post.mockResolvedValueOnce({ data: { data: { draft_revision: "saved-r2" } } });
+    await expect(updateExpertVisibility("squad-1", "private", { name: "Saved", version: "2.4.0" })).resolves.toBe("saved-r2");
+  });
+
+  beforeEach(() => { mock.instance.get.mockReset(); mock.instance.post.mockReset(); });
+  it("sends the echoed revision and leaves a server conflict visible", async () => {
+    wire();
+    mock.instance.post.mockRejectedValueOnce({ response: { status: 409, data: { error: { code: "CONFLICT" } } } });
+    await expect(updateExpertVisibility("squad-1", "private", { name: "Renamed", version: "2.4.0" })).rejects.toThrow("skillMarket.errors.stateConflict");
+    expect(mock.instance.post.mock.calls[0][1].expected_draft_revision).toBe(SQUAD_WIRE.draft_revision);
+    expect(mock.instance.post).toHaveBeenCalledTimes(1);
+  });
+  it("rejects a stale editor before posting a refreshed full-replace payload", async () => {
+    wire();
+    await expect(updateExpertVisibility("squad-1", "private", { name: "Old tab", version: "2.4.0", draftRevision: "b".repeat(64) })).rejects.toThrow("skillMarket.errors.stateConflict");
+    expect(mock.instance.post).not.toHaveBeenCalled();
+  });
+  it("does not silently save against a backend without a revision", async () => {
+    mock.instance.get.mockResolvedValue({ data: { data: { ...SQUAD_WIRE, draft_revision: undefined } } });
+    await expect(updateExpertVisibility("squad-1", "private")).rejects.toThrow("skillMarket.errors.stateConflict");
+    expect(mock.instance.post).not.toHaveBeenCalled();
+  });
+  it.each([[403, "forbidden"], [404, "notfound"], [500, "server"]])("localizes draft read %s", async (status, kind) => {
+    mock.instance.get.mockRejectedValue({ response: { status } });
+    await expect(getExpertEditMetadata("squad-1")).rejects.toThrow(`mcp.list.error.${kind}`);
   });
 });

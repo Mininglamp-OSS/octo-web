@@ -20,23 +20,23 @@ import { PLACEHOLDER_PATTERN } from "../api/pluginWire";
  * entry. Within each server only known fields are re-emitted: `env`/`headers`
  * values are masked (any non-placeholder, incl. non-string), the URL's query +
  * userinfo + fragment are masked, `args` are redacted, and structural fields
- * (`command`, `type`, `cwd`, …) are copied verbatim only when correctly typed.
+ * (`type`, `transport`) are copied only when correctly typed. A simple executable
+ * name is retained; complex commands and literal working directories are masked
+ * rather than attempting to parse shell syntax or guess where credentials end.
  * An exact `${KEY}` placeholder is kept; a value that merely contains `${…}` is
  * masked.
  *
  * Documented residuals (display-only `<pre>`, org-scoped visibility): a secret
- * embedded in a `command` shell one-liner or a URL path segment is kept, same
- * accepted posture as "the endpoint is not the secret".
+ * embedded in a URL path segment is kept, same accepted posture as
+ * "the endpoint is not the secret".
  */
 const MASK = "••••••";
 /** ASCII marker for inside a URL — a Unicode MASK would percent-encode to
  *  mojibake through URL serialization. */
 const URL_MASK = "REDACTED";
 
-/** Structural server fields copied verbatim when correctly typed. These are the
- *  executable / endpoint / behavioural fields, not credential carriers (a secret
- *  hand-embedded in `command` is a documented residual). */
-const STRING_FIELDS = ["type", "transport", "command", "cwd"] as const;
+/** Structural transport fields copied verbatim when correctly typed. */
+const STRING_FIELDS = ["type", "transport"] as const;
 
 function isPlaceholder(v: unknown): boolean {
   return typeof v === "string" && PLACEHOLDER_PATTERN.test(v);
@@ -190,6 +190,15 @@ function redactServer(s: Record<string, unknown>): Record<string, unknown> {
   for (const k of STRING_FIELDS) {
     if (typeof s[k] === "string") out[k] = s[k];
   }
+  // Display projection only: shell fragments and paths can carry arbitrary
+  // credentials. Keep a simple executable name; do not try to tokenize shell
+  // syntax. Working directories are opaque, so mask every literal directory.
+  // Exact placeholders and empty strings remain usable without exposing values.
+  if (typeof s.command === "string") {
+    out.command = /^[A-Za-z0-9_-][A-Za-z0-9_.-]*$/.test(s.command)
+      ? s.command : maskValue(s.command);
+  }
+  if (typeof s.cwd === "string") out.cwd = maskValue(s.cwd);
   if (typeof s.disabled === "boolean") out.disabled = s.disabled;
   if (typeof s.timeout === "number") out.timeout = s.timeout;
   if (typeof s.url === "string") out.url = redactUrlDeep(s.url, OPAQUE_URL);

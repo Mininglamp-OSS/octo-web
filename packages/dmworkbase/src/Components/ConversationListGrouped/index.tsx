@@ -56,6 +56,7 @@ export {
 }
 
 export interface ConversationListGroupedProps {
+    foldMenus?: (conv: ConversationWrap | undefined) => ContextMenusData[]
     conversations: ConversationWrap[]
     select?: Channel
     onConversationClick: (conv: ConversationWrap) => void
@@ -100,6 +101,7 @@ export interface ConversationListGroupedProps {
 
 
 const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
+    foldMenus,
     conversations,
     select,
     onConversationClick,
@@ -316,7 +318,7 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
         if (!conv) return []
         const channel = conv.channel
 
-        return [{
+        return [...(foldMenus?.(conv) || []), {
             title: t("base.chatSidebar.context.unfollow"),
             icon: StarOff,
             onClick: async () => {

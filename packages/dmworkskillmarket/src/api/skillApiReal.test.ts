@@ -6,6 +6,9 @@ import {
   getMySkills,
   getSkillTags,
   getSkill,
+  getSkillDraft,
+  getPublishedAudience,
+  changePublishedAudience,
   trackSkillView,
   getSkillMd,
   createSkill,
@@ -42,7 +45,11 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+const draftRevision = "a".repeat(64);
 function jsonResponse(data: unknown, status = 200, pagination?: unknown) {
+  if (data && typeof data === "object" && "plugin" in data) {
+    data = { draft_revision: draftRevision, ...data };
+  }
   return Promise.resolve({
     status,
     json: () =>
@@ -77,6 +84,25 @@ function pluginSkillWire(overrides: Record<string, unknown> = {}) {
 }
 
 describe("skillApiReal", () => {
+  it("uses the published pointer for audience changes and never sends content or a new label", async () => {
+    mockFetch.mockReturnValueOnce(jsonResponse({ plugin: pluginSkillWire({ listing_state: "published", current_version_id: "released-v1", visibility: "private" }), relations: [] }));
+    expect((await getPublishedAudience("skill-1")).publishedVersionId).toBe("released-v1");
+    mockFetch.mockReturnValueOnce(jsonResponse({ visibility: "private", published_version_id: "released-v1", display_status: "pending_review" }));
+    await changePublishedAudience("skill-1", "released-v1", "space");
+    expect(mockFetch.mock.calls[1][0]).toContain("/plugins/skill-1/visibility");
+    expect(mockFetch.mock.calls[1][1].method).toBe("PATCH");
+    expect(JSON.parse(mockFetch.mock.calls[1][1].body)).toEqual({ visibility: "space", expected_published_version_id: "released-v1" });
+  });
+
+  it("round-trips current draft notes, including an explicit clear", async () => {
+    mockFetch.mockReturnValueOnce(jsonResponse({ plugin: pluginSkillWire(), relations: [], draft_changelog: "current draft notes" }));
+    expect((await getSkillDraft("ci-failure-map")).draftChangelog).toBe("current draft notes");
+    mockFetch.mockReturnValueOnce(jsonResponse({ plugin: pluginSkillWire(), relations: [] }));
+    mockFetch.mockReturnValueOnce(jsonResponse({ plugin: pluginSkillWire(), relations: [] }));
+    await updateSkill("ci-failure-map", { changelog: "" });
+    expect(JSON.parse(mockFetch.mock.calls[2][1].body).changelog).toBe("");
+  });
+
   it("reads and updates the authenticated Space review policy", async () => {
     mockFetch
       .mockReturnValueOnce(jsonResponse({ is_auto_approve_enabled: true }))
@@ -278,6 +304,13 @@ describe("skillApiReal", () => {
     );
   });
 
+  it("uses the formal release for owner display and keeps draft reads independent", async () => {
+    mockFetch.mockReturnValueOnce(jsonResponse([pluginSkillWire({ current_version: "1.0.0", current_version_id: "draft-v0", published_version: "1.0.3", published_version_id: "release-v3" })], 200, { total: 1, page: 1, page_size: 20 }));
+    expect((await getMySkills()).items[0].version).toBe("1.0.3");
+    mockFetch.mockReturnValueOnce(jsonResponse({ plugin: pluginSkillWire({ current_version: "1.0.5", current_version_id: "draft-v5", published_version: "1.0.3", published_version_id: "release-v3" }), relations: [], draft_revision: "revision" }));
+    expect((await getSkillDraft("skill-1")).version).toBe("1.0.5");
+  });
+
   it("getMySkills scopes the unified list to mode=mine", async () => {
     mockFetch.mockReturnValueOnce(
       jsonResponse([], 200, { total: 0, page: 1, page_size: 20 })
@@ -307,6 +340,38 @@ describe("skillApiReal", () => {
     const result = await getMySkills({ cursor: "2", limit: 20 });
 
     expect(result).toEqual({ items: [], nextCursor: null, total: 100 });
+  });
+
+  it("getSkillDraft seeds edit forms from the current saved metadata", async () => {
+    mockFetch.mockReturnValueOnce(jsonResponse({ plugin: pluginSkillWire({ plugin_name: "Saved draft", current_version: "1.0.1" }), relations: [] }));
+    const item = await getSkillDraft("ci-failure-map");
+    expect(item.displayName).toBe("Saved draft");
+    expect(item.version).toBe("1.0.1");
+    expect(mockFetch.mock.calls[0][0]).toContain("/plugins/ci-failure-map/draft");
+  });
+
+  it("keeps the editable skill version when the draft also carries a published release", async () => {
+    mockFetch.mockReturnValueOnce(jsonResponse({
+      plugin: pluginSkillWire({ current_version: "1.0.5", published_version: "1.0.3" }),
+      relations: [],
+    }));
+
+    const draft = await getSkillDraft("ci-failure-map");
+
+    expect(draft.version).toBe("1.0.5");
+    expect(draft.draftRevision).toBe(draftRevision);
+    expect(mockFetch.mock.calls[0][0]).toContain("/plugins/ci-failure-map/draft");
+  });
+
+  it("keeps the draft lower bound separately from the owner list release label", async () => {
+    mockFetch.mockReturnValueOnce(jsonResponse([
+      pluginSkillWire({ current_version: "1.0.5", published_version: "1.0.3" }),
+    ], 200, { total: 1, page: 1, page_size: 20 }));
+
+    const skill = (await getMySkills()).items[0];
+
+    expect(skill.version).toBe("1.0.3");
+    expect(skill.draftVersion).toBe("1.0.5");
   });
 
   it("getSkill maps the plugin detail with package artifacts", async () => {
@@ -606,6 +671,7 @@ describe("skillApiReal", () => {
     mockFetch.mockReturnValueOnce(jsonResponse({ plugin: current, relations: [] }));
 
     await updateSkill("ci-failure-map", { displayName: "改名", tags: ["新标签"] });
+    expect(mockFetch.mock.calls[0][0]).toContain("/plugins/ci-failure-map/draft");
 
     const [url, init] = mockFetch.mock.calls[mockFetch.mock.calls.length - 1] as [string, RequestInit];
     expect(url).toBe("/market/api/v1/plugins/upsert");
@@ -670,6 +736,16 @@ describe("skillApiReal", () => {
     const [, init] = mockFetch.mock.calls[mockFetch.mock.calls.length - 1] as [string, RequestInit];
     const body = JSON.parse(init.body as string);
     expect(body.icon).toBe("icons/new.png");
+  });
+
+  it("metadata edits preserve draft dependency IDs, pins, order and opaque data", async () => {
+    const plugin = pluginSkillWire();
+    const relations = [{ relation_id: "edge-1", source_plugin_id: "ci-failure-map", target_plugin_id: "dependency", target_version_id: "release-v1", relation_type: "skill_dependency", sort_order: 7, data: { custom: { retain: true } } }];
+    mockFetch.mockReturnValueOnce(jsonResponse({ plugin, relations }));
+    mockFetch.mockReturnValueOnce(jsonResponse({ plugin, relations }));
+    await updateSkill("ci-failure-map", { displayName: "Renamed" });
+    const body = JSON.parse((mockFetch.mock.calls[1][1] as RequestInit).body as string);
+    expect(body.relations).toEqual([{ relation_id: "edge-1", target_plugin_id: "dependency", target_version_id: "release-v1", relation_type: "skill_dependency", sort_order: 7, data: { custom: { retain: true } } }]);
   });
 
   it("metadata edit strips unsafe attachment paths from the resubmitted upsert", async () => {
@@ -1490,6 +1566,7 @@ describe("skillApiReal", () => {
             relation_id: "rel-1",
             target_plugin_id: "expert-child-1",
             target_plugin_type: "expert",
+            target_version_id: "ver-1",
             relation_type: "team_member",
             sort_order: 2,
             data: { is_leader: true, role: "planner", member_key: "lead" },
@@ -1504,6 +1581,7 @@ describe("skillApiReal", () => {
         relationId: "rel-1",
         targetPluginId: "expert-child-1",
         targetPluginType: "expert",
+        targetVersionId: "ver-1",
         relationType: "team_member",
         sortOrder: 2,
         data: { is_leader: true, role: "planner", member_key: "lead" },
@@ -1606,5 +1684,61 @@ describe("skillApiReal", () => {
         status: 403,
       });
     });
+  });
+});
+
+describe("metadata concurrency and cancellation", () => {
+  it("returns the revision committed by the update response", async () => {
+    mockFetch.mockReturnValueOnce(jsonResponse({ plugin: pluginSkillWire(), relations: [] }));
+    mockFetch.mockReturnValueOnce(jsonResponse({ plugin: pluginSkillWire(), relations: [], draft_revision: "saved-r2" }));
+    expect((await updateSkill("ci-failure-map", { displayName: "Saved" })).draftRevision).toBe("saved-r2");
+  });
+
+  it("sends the revision of the echoed draft and surfaces a concurrent conflict", async () => {
+    mockFetch.mockReturnValueOnce(jsonResponse({ plugin: pluginSkillWire(), relations: [] }));
+    mockFetch.mockResolvedValueOnce({ status: 409, json: async () => ({ error: { code: "CONFLICT" } }) });
+    await expect(updateSkill("ci-failure-map", { displayName: "Stale name", draftRevision })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(JSON.parse(mockFetch.mock.calls[1][1].body).expected_draft_revision).toBe(draftRevision);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+  it("rejects a form opened before a newer save without posting", async () => {
+    mockFetch.mockReturnValueOnce(jsonResponse({ plugin: pluginSkillWire(), relations: [], draft_revision: "b".repeat(64) }));
+    await expect(updateSkill("ci-failure-map", { draftRevision, displayName: "Old tab" })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+  it("fails closed if the backend does not support guarded drafts", async () => {
+    mockFetch.mockReturnValueOnce(jsonResponse({ plugin: pluginSkillWire(), relations: [], draft_revision: undefined }));
+    await expect(updateSkill("ci-failure-map", { displayName: "Old server" })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+  it.each(["timeout", "caller"])("keeps %s cancellation active until the response body finishes", async source => {
+    const timeout = new AbortController();
+    const caller = new AbortController();
+    vi.spyOn(AbortSignal, "timeout").mockReturnValue(timeout.signal);
+    let readingBody!: () => void;
+    const bodyStarted = new Promise<void>(resolve => { readingBody = resolve; });
+    mockFetch.mockImplementation((_url, init) => Promise.resolve({ status: 200, json: () => new Promise((_resolve, reject) => {
+      init.signal.addEventListener("abort", () => reject(init.signal.reason), { once: true });
+      readingBody();
+    }) }));
+    const pending = getMySkills({}, { signal: caller.signal });
+    const result = expect(pending).rejects.toThrow("cancelled body");
+    await bodyStarted;
+    (source === "timeout" ? timeout : caller).abort(new DOMException("cancelled body", "AbortError"));
+    await result;
+  });
+  it.each(["timeout", "caller"])("preserves %s cancellation without AbortSignal.any", async source => {
+    const timeout = new AbortController();
+    const caller = new AbortController();
+    vi.spyOn(AbortSignal, "timeout").mockReturnValue(timeout.signal);
+    const anyDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, "any")!;
+    Object.defineProperty(AbortSignal, "any", { value: undefined, configurable: true });
+    mockFetch.mockImplementation((_url, init) => new Promise((_resolve, reject) => {
+      init.signal.addEventListener("abort", () => reject(init.signal.reason), { once: true });
+    }));
+    const pending = getMySkills({}, { signal: caller.signal });
+    const result = expect(pending).rejects.toThrow();
+    (source === "timeout" ? timeout : caller).abort(new DOMException("cancelled", "AbortError"));
+    try { await result; } finally { Object.defineProperty(AbortSignal, "any", anyDescriptor); }
   });
 });

@@ -1,5 +1,6 @@
 import React from "react";
 import { useI18n, WKButton } from "@octo/base";
+import AiGeneratedNotice from "../AiGeneratedNotice";
 import { summaryTestIds } from "../../utils/testIds";
 import type {
   SummaryWorkbenchAction,
@@ -715,6 +716,9 @@ const SummaryWorkbench = ({
             {t(state.sendLabelKey ?? "summary.workbench.composer.send")}
           </WKButton>
         </div>
+      </div>
+      <div className="wk-summary-workbench__notice">
+        <AiGeneratedNotice text={t("summary.common.aiGeneratedNotice")} />
       </div>
     </section>
   );

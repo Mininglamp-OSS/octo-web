@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { resolveTemplate, computeTemplateSelection, getTemplateEditableFields, deriveSummaryTitle, deriveSummaryDisplayContent, limitTemplateSummaryContent, trackPresetTemplateEditOpened } from '../templateResolver';
+import { resolveTemplate, computeTemplateSelection, getTemplateEditableFields, deriveSummaryTitle, deriveSummaryDisplayContent, deriveSummaryDisplayContentWithOffset, limitTemplateSummaryContent, trackPresetTemplateEditOpened } from '../templateResolver';
 import type { TopicTemplate } from '../../types/summary';
 import { TOPIC_TEMPLATES } from '../../constants/templates';
 import { Dap } from '@octo/base';
@@ -119,6 +119,30 @@ describe('deriveSummaryDisplayContent', () => {
     it('returns the complete direct input when no template label exists', () => {
         expect(deriveSummaryDisplayContent('第一行\n第二行'))
             .toBe('第一行\n第二行');
+    });
+});
+
+describe('deriveSummaryDisplayContentWithOffset', () => {
+    const cpSlice = (text: string, offset: number, length: number) =>
+        Array.from(text).slice(offset, offset + length).join('');
+
+    it('reports the code points dropped before the template content', () => {
+        const topic = '总结主题：项目复盘\n总结内容：第一行\n第二行\n第三行';
+        const derived = deriveSummaryDisplayContentWithOffset(topic);
+        expect(derived.text).toBe('第一行\n第二行\n第三行');
+        expect(cpSlice(topic, derived.offset, Array.from(derived.text).length)).toBe(derived.text);
+    });
+
+    it('counts emoji code points rather than UTF-16 units', () => {
+        const topic = '  😀总结主题：复盘\n总结内容：😀命中';
+        const derived = deriveSummaryDisplayContentWithOffset(topic);
+        expect(derived.text).toBe('😀命中');
+        expect(cpSlice(topic, derived.offset, Array.from(derived.text).length)).toBe(derived.text);
+        expect(derived.offset).toBe(16);
+    });
+
+    it('returns the trimmed text and its leading trim when no label exists', () => {
+        expect(deriveSummaryDisplayContentWithOffset('  \n 第一行 ')).toEqual({ text: '第一行', offset: 4 });
     });
 });
 

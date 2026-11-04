@@ -119,6 +119,7 @@ vi.mock("@douyinfe/semi-ui", () => ({
 }));
 
 vi.mock("@dmwork/skillmarket", () => ({
+  VisibilityModal: () => null,
   MineTable: ({ rows }: { rows: Array<Record<string, unknown>> }) =>
     React.createElement(
       "div",

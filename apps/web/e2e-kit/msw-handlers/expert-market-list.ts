@@ -62,11 +62,27 @@ const detail = {
 };
 
 export const expertMarketListHandlers = [
+  // Detail also reads graph metadata for dependency creator attribution. Model
+  // this expert's empty closure so the request never escapes to the dev proxy.
+  http.get(`*${API_BASE}/plugins/detail_graph`, ({ request }) => {
+    if (!enabled()) return undefined;
+    const pluginId = new URL(request.url).searchParams.get("plugin_id");
+    if (pluginId !== expertPlugin.plugin_id) {
+      return HttpResponse.json(
+        { error: { message: "Plugin not found" } },
+        { status: 404 }
+      );
+    }
+    return HttpResponse.json({ data: { ...detail, related_plugins: [] } });
+  }),
   http.get(`*${API_BASE}/plugins/detail`, ({ request }) => {
     if (!enabled()) return undefined;
     const pluginId = new URL(request.url).searchParams.get("plugin_id");
     if (pluginId !== expertPlugin.plugin_id) {
-      return HttpResponse.json({ error: { message: "Plugin not found" } }, { status: 404 });
+      return HttpResponse.json(
+        { error: { message: "Plugin not found" } },
+        { status: 404 }
+      );
     }
     return HttpResponse.json({ data: detail });
   }),
@@ -79,13 +95,20 @@ export const expertMarketListHandlers = [
   }),
   http.get(`*${API_BASE}/plugin_tags`, () => {
     if (!enabled()) return undefined;
-    return HttpResponse.json({ data: expertPlugin.tags.map((name) => ({ name, count: 1 })) });
+    return HttpResponse.json({
+      data: expertPlugin.tags.map((name) => ({ name, count: 1 })),
+    });
   }),
   http.get(`*${API_BASE}/plugin_categories`, () => {
     if (!enabled()) return undefined;
     return HttpResponse.json({
       data: [
-        { category_id: "dev-tools", name: "研发工具", sort_order: 0, plugin_count: 1 },
+        {
+          category_id: "dev-tools",
+          name: "研发工具",
+          sort_order: 0,
+          plugin_count: 1,
+        },
       ],
     });
   }),

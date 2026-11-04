@@ -915,6 +915,41 @@
   fill: #ffffff;
 }
 
+.wk-mcp-card__dependency-warning {
+  margin-top: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--wk-color-warning-bg);
+  color: var(--wk-color-warning);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.wk-mcp-card__dependency-warning__detail {
+  display: block;
+  margin-top: 2px;
+  color: inherit;
+  opacity: 0.78;
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.wk-mcp-bound-version {
+  display: inline-block;
+  flex: 0 0 auto;
+  padding: 0 var(--wk-sp-2);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-full);
+  color: var(--wk-text-secondary);
+  font-size: 12px;
+  font-weight: normal;
+  line-height: 1.6;
+}
+
+.wk-mcp-expert-skill__row > .wk-mcp-bound-version {
+  margin-left: auto;
+}
+
 .wk-mcp-card__slogan {
   min-height: 42px;
   margin: var(--wk-sp-3) 0 0;
@@ -3348,7 +3383,7 @@
 
 .wk-mcp-expert-member-row {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
+  grid-template-columns: 36px minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--wk-sp-3);
   min-height: 60px;
@@ -3386,13 +3421,26 @@
   font-size: var(--wk-text-size-base);
 }
 
-.wk-mcp-expert-member-row__copy span {
+.wk-mcp-expert-member-row__copy > span {
   display: block;
   overflow: hidden;
   color: var(--wk-text-tertiary);
   font-size: var(--wk-text-size-sm);
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.wk-mcp-expert-member-row__name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.wk-mcp-expert-member-row__copy .wk-mcp-expert-tag--leader {
+  flex: 0 0 auto;
+  color: var(--wk-text-secondary);
+  background: var(--wk-bg-elevated);
 }
 
 /* Squad members are clickable buttons that drill into the member's detail. */
@@ -4606,3 +4654,80 @@
   color: var(--wk-color-error);
   font-size: 13px;
 }
+
+.wk-mcp-expert-detail__id {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  margin-top: var(--wk-sp-2);
+  min-width: 0;
+  color: var(--wk-text-secondary);
+  font-size: var(--wk-text-size-sm);
+}
+
+.wk-mcp-expert-detail__id code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--wk-font-mono);
+  font-size: var(--wk-text-size-xs);
+}
+
+.wk-mcp-expert-detail__copy-id {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--wk-r-sm);
+  background: transparent;
+  color: var(--wk-text-secondary);
+  cursor: pointer;
+}
+
+.wk-mcp-expert-detail__copy-id:hover {
+  background: var(--wk-color-hover);
+  color: var(--wk-text-primary);
+}
+
+/* Expert dependency previews: version-pinned skill files and connector details. */
+.wk-mcp-dependency-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--wk-font-sans);
+}
+.wk-mcp-dependency-version {
+  flex-shrink: 0;
+  padding: 0 var(--wk-sp-2);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-sm);
+  color: var(--wk-text-secondary);
+  font: var(--wk-text-size-xs)/1.6 var(--wk-font-sans);
+}
+.wk-mcp-expert-skill__row:focus-visible {
+  outline: 2px solid var(--wk-color-accent);
+  outline-offset: 2px;
+}
+.wk-mcp-dependency-body {
+  min-width: 0;
+  padding: var(--wk-sp-3);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-bg-base);
+}
+.wk-mcp-dependency-metadata {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-3);
+  padding: 0 var(--wk-sp-2) var(--wk-sp-3);
+  color: var(--wk-text-secondary);
+  font-size: var(--wk-text-size-sm);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.wk-mcp-dependency-metadata p { margin: 0; }

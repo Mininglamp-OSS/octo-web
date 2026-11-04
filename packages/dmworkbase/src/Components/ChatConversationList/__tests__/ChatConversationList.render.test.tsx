@@ -14,6 +14,11 @@ const sidebarState: any = {
 }
 vi.mock("../../../Hooks/useCategoryList", () => ({ useCategoryList: () => categoryState }))
 vi.mock("../../../Hooks/useFollowSidebar", () => ({ useFollowSidebarContext: () => sidebarState }))
+// These tests inspect adapter props after preferences are initialized; the
+// real hook/loading and child lifecycle are covered by navigation.test.tsx.
+vi.mock("../../../bridge/foldChats/useFoldChats", () => ({ useFoldChats: () => ({
+  keys: new Set<string>(), ready: true, error: false, reload: vi.fn(), setFolded: vi.fn(),
+}) }))
 vi.mock("../../ConversationList", () => ({ default: (p: any) => { captured.list = p; return <button data-testid="conversation-list" onClick={() => p.onConversationClick?.({})}>list</button> } }))
 vi.mock("../../ConversationListGrouped", () => ({ default: (p: any) => { captured.grouped = p; return <button data-testid="grouped-list" onClick={() => p.onOpenCreateCategory?.()}>grouped</button> }, isValidCategoryItem: () => true }))
 vi.mock("../../CreateCategoryModal", () => ({ default: (p: any) => { captured.modal = p; return <div data-testid="create-modal">{String(p.visible)}</div> } }))

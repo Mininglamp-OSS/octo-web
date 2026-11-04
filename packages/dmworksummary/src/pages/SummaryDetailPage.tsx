@@ -1,3 +1,4 @@
+import AiGeneratedNotice from "../ui/AiGeneratedNotice";
 import React, { Component } from "react";
 import {
     Button,
@@ -2828,6 +2829,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
                     </div>
                     {this.renderSourceMetadata(detail.sources || [], detail.created_at, detail.result?.snapshot)}
+                    <AiGeneratedNotice text={t("summary.common.aiGeneratedNotice")} />
                 </div>
                 <hr className="summary-detail-meta-divider" /></>}
                 <div className="summary-detail-failed">
@@ -3336,6 +3338,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
                         </div>
                         {this.renderSourceMetadata(detail.sources || [], detail.created_at, detail.result?.snapshot)}
+                        <AiGeneratedNotice text={t("summary.common.aiGeneratedNotice")} />
                     </div>
                     <hr className="summary-detail-meta-divider" />
                     <div className="summary-detail-result-header">
@@ -3488,6 +3491,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
                         </div>
                         {this.renderSourceMetadata(detail.sources || [], detail.created_at, personalResult.snapshot)}
+                        <AiGeneratedNotice text={t("summary.common.aiGeneratedNotice")} />
                     </div>
                 )}
                 <hr className="summary-detail-meta-divider" />
@@ -3655,6 +3659,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
                         </div>
                         {this.renderSourceMetadata(detail.sources || [], detail.created_at, detail.result?.snapshot)}
+                        <AiGeneratedNotice text={t("summary.common.aiGeneratedNotice")} />
                     </div>
                     <hr className="summary-detail-meta-divider" />
                     <div className="summary-detail-content-box">
@@ -3677,6 +3682,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
                     </div>
                     {this.renderSourceMetadata(detail.sources || [], detail.created_at, detail.result?.snapshot)}
+                    <AiGeneratedNotice text={t("summary.common.aiGeneratedNotice")} />
                 </div>
                 <hr className="summary-detail-meta-divider" />
                 <div className="summary-detail-section-header">

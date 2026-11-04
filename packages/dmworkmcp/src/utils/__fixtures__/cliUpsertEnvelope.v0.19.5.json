@@ -1,0 +1,11 @@
+{
+  "source": "Mininglamp-OSS/octo-cli@7ffb7238756dcec639502ddb584b465fa770b6c1",
+  "version": "0.19.5",
+  "operationId": "plugin.upsert",
+  "projection": "Top-level request envelope; nested plugin/relations schemas intentionally omitted.",
+  "additionalProperties": false,
+  "properties": [
+    "plugin",
+    "relations"
+  ]
+}

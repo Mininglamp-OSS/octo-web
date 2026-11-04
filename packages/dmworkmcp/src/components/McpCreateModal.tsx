@@ -5,6 +5,7 @@ import { Select, Switch, TextArea, Toast } from "@douyinfe/semi-ui";
 import {
   buildConnectorReviewContent,
   createMcp,
+  fetchMcpList,
   listConnectorCategories,
   probeMcpTools,
   isProbeAvailable,
@@ -1178,6 +1179,28 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
         // it, while the toast reports success.
         let pluginId = createdPluginId;
         if (!pluginId) {
+          const wanted = form.name.trim().toLowerCase();
+          try {
+            const existing = await fetchMcpList({ keyword: form.name.trim(), limit: 50 });
+            if (!isCurrentSpace()) return;
+            if (
+              existing.items.some(
+                (item) => item.name.trim().toLowerCase() === wanted
+              )
+            ) {
+              Toast.error(
+                t("mcp.create.nameTaken", { values: { name: form.name.trim() } })
+              );
+              return;
+            }
+          } catch {
+            // Advisory pre-check: fall through to the create call and let the
+            // server's CONFLICT be authoritative.
+          }
+          // Both outcomes of the advisory lookup yield to a Space switch before
+          // any write; the request interceptor would otherwise save A's form
+          // under B's X-Space-Id.
+          if (!isCurrentSpace()) return;
           pluginId = (await createMcp(payload)).id;
         } else {
           await updateMcp(pluginId, payload);

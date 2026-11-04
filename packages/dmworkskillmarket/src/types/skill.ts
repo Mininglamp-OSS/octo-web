@@ -42,7 +42,17 @@ export interface Category {
   skillCount: number;
 }
 
+export interface SkillDependencyIssue {
+  targetPluginId: string;
+  targetName?: string;
+  relationType?: string;
+  reason?: string;
+  via?: string[];
+}
+
 export interface Skill {
+  draftRevision?: string;
+  draftChangelog?: string;
   id: string;
   name: string;
   displayName: string;
@@ -61,6 +71,8 @@ export interface Skill {
    *  "skill". */
   pluginType?: PluginType;
   version: string;
+  /** Editable head retained separately from the released list/upgrade baseline. */
+  draftVersion?: string;
   readmeContent: string;
   iconUrl: string;
   fileName: string;
@@ -78,6 +90,9 @@ export interface Skill {
    *  a 取消审核 button has something to act on without a second lookup. */
   listingState?: PluginListingState;
   displayStatus?: PluginDisplayStatus;
+  /** Unavailable published dependencies, returned on owner (`mode=mine`) rows.
+   *  The all-types Mine tab must keep these or a blocked asset looks healthy. */
+  dependencyIssues?: SkillDependencyIssue[];
   reviewId?: string;
   createdAt: string;
   updatedAt: string;
@@ -91,7 +106,7 @@ export interface Skill {
 // a stored field. The snake_case wire shape lives in `api/pluginWire.ts`.
 
 export type ReviewStatus = "pending" | "approved" | "rejected" | "canceled";
-export type ReviewKind = "first" | "upgrade";
+export type ReviewKind = "first" | "upgrade" | "visibility";
 export type ReviewListMode = "mine" | "space";
 export type ReviewTargetScope = "space" | "system";
 export type ReviewDecisionSource = "web" | "im" | "policy";
@@ -99,6 +114,8 @@ export type ReviewDecisionSource = "web" | "im" | "policy";
 export interface ReviewRelation {
   relationId?: string;
   targetPluginId: string;
+  /** Pinned version of the frozen relation; absent for connectors/legacy. */
+  targetVersionId?: string;
   targetPluginType?: string;
   relationType: string;
   sortOrder: number;
@@ -197,6 +214,7 @@ export interface NewSkillForm {
 }
 
 export interface UpdateSkillForm {
+  draftRevision?: string;
   parseTaskId?: string;
   name?: string;
   displayName?: string;

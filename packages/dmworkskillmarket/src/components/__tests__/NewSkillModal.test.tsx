@@ -104,6 +104,7 @@ describe("NewSkillModal", () => {
     vi.clearAllMocks();
     // A real id, because the publish step now needs the created plugin's id and
     // the retry path asserts the SAME id is reused.
+    vi.mocked(api.getSkills).mockResolvedValue({ items: [], total: 0, nextCursor: null });
     vi.mocked(api.createSkill).mockResolvedValue({ id: "created-1" } as never);
     // 发布 no longer picks an endpoint — it calls publishPlugin and the BACKEND
     // decides from the stored visibility whether that lists immediately or opens
@@ -203,6 +204,31 @@ describe("NewSkillModal", () => {
     );
     expect(onCreated).toHaveBeenCalled();
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it.each([saveDraftButton, publishButton])("uses the server name verdict and allows a renamed retry (%s)", async (action) => {
+    vi.mocked(api.getSkills).mockResolvedValue({ items: [reviewSkillFixture()], total: 1, nextCursor: null });
+    const message = "Name reserved by another plugin";
+    vi.mocked(api.createSkill).mockRejectedValueOnce(new Error(message));
+    const onClose = vi.fn();
+    render(<NewSkillModal visible categories={categories} onClose={onClose} onCreated={vi.fn()} />);
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(selectZipLabel), { target: { files: [zipFile()] } });
+    });
+    await waitFor(() => expect(screen.getByText("skill-pack.zip")).toBeInTheDocument());
+    fireEvent.change(screen.getByPlaceholderText(displayNamePlaceholder), { target: { value: "技能包" } });
+    fireEvent.change(screen.getByLabelText(categoryLabel), { target: { value: "office" } });
+    fireEvent.click(screen.getByRole("button", { name: action }));
+    await waitFor(() => expect(screen.getByText(message)).toBeInTheDocument());
+    expect(api.getSkills).not.toHaveBeenCalled();
+    expect(api.publishPlugin).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByPlaceholderText(displayNamePlaceholder)).toHaveValue("技能包");
+    fireEvent.change(screen.getByPlaceholderText(displayNamePlaceholder), { target: { value: "新名称" } });
+    fireEvent.click(screen.getByRole("button", { name: action }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(api.createSkill).toHaveBeenLastCalledWith(expect.objectContaining({ displayName: "新名称" }));
+    expect(api.getSkills).not.toHaveBeenCalled();
   });
 
   // The declared visibility now SURVIVES the create — the old form always sent
@@ -561,6 +587,45 @@ describe("NewSkillModal", () => {
   });
 
   describe("review mode", () => {
+    it("seeds an upgrade at the saved draft when it is ahead of the next release", () => {
+      render(<NewSkillModal visible categories={categories} onClose={vi.fn()} onCreated={vi.fn()} reviewSkill={reviewSkillFixture({ version: "1.0.3", draftVersion: "1.0.5" })} />);
+
+      expect(screen.getByPlaceholderText(versionPlaceholder)).toHaveValue("1.0.5");
+    });
+
+    it("rejects an intermediate release below the draft and accepts the draft label", async () => {
+      render(<NewSkillModal visible categories={categories} onClose={vi.fn()} onCreated={vi.fn()} reviewSkill={reviewSkillFixture({ version: "1.0.3", draftVersion: "1.0.5" })} />);
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText(selectNewZipLabel), {
+          target: { files: [zipFile("upgrade.zip")] },
+        });
+      });
+      fireEvent.change(screen.getByPlaceholderText(changelogPlaceholder), { target: { value: "Upgrade content" } });
+      fireEvent.change(screen.getByPlaceholderText(versionPlaceholder), { target: { value: "1.0.4" } });
+
+      const submit = screen.getByRole("button", { name: upgradeButton });
+      expect(screen.getByText(/版本号只能保持不变或递增|versionMustNotDecrease/)).toBeInTheDocument();
+      expect(submit).toBeDisabled();
+      fireEvent.click(submit);
+      expect(api.createReviewRequest).not.toHaveBeenCalled();
+
+      fireEvent.change(screen.getByPlaceholderText(versionPlaceholder), { target: { value: "1.0.5" } });
+      expect(submit).toBeEnabled();
+      fireEvent.click(submit);
+      await waitFor(() => expect(api.createReviewRequest).toHaveBeenCalledWith(
+        expect.objectContaining({ pluginId: "skill-pack", version: "1.0.5", parseTaskId: "task-123" }),
+      ));
+    });
+
+    it("seeds above the published version and rejects reusing that label", async () => {
+      render(<NewSkillModal visible categories={categories} onClose={vi.fn()} onCreated={vi.fn()} reviewSkill={reviewSkillFixture({ version: "1.0.3" })} />);
+      expect(screen.getByPlaceholderText(versionPlaceholder)).toHaveValue("1.0.4");
+      fireEvent.change(screen.getByPlaceholderText(versionPlaceholder), { target: { value: "1.0.3" } });
+      expect(screen.getByText(/新版本必须高于当前已发布版本|versionMustExceedPublished/)).toBeInTheDocument();
+      fireEvent.change(screen.getByPlaceholderText(versionPlaceholder), { target: { value: "1.0.4" } });
+      expect(screen.queryByText(/新版本必须高于当前已发布版本|versionMustExceedPublished/)).not.toBeInTheDocument();
+    });
+
     it("closes an untouched upgrade without showing a leave confirmation", async () => {
       const onClose = vi.fn();
       render(

@@ -49,6 +49,11 @@ export function getBotPublishPrompt(
    octo-cli skills octo-marketplace --profile <profile>
    \`\`\`
 
-4. 按该 Skill 的 \`skills.md\` 中“Publish as a Bot”流程，使用用户提供的附件、Skill 包路径或
+4. 创建前先查重：解析出技能名称后，运行
+   \`octo-cli marketplace plugin list --scene-code default --plugin-type skill --q "<名称>" --profile <profile> --format json\`，
+   对返回的 \`plugin_name\` 做大小写无关的精确比较。若已有同名技能，停止并请我改名；
+   不得自动覆盖、另建同名资源或跳过提示。
+
+5. 按该 Skill 的 \`skills.md\` 中“Publish as a Bot”流程，使用用户提供的附件、Skill 包路径或
    Skill 目录路径完成上架。以上 Space ID、API 地址和可见范围是本次操作的权威输入。`;
 }

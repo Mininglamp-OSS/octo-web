@@ -20,6 +20,9 @@ vi.mock("../../api/expertService", () => ({
   },
 }));
 vi.mock("../ExpertSpecView", () => ({ default: () => null }));
+vi.mock("@douyinfe/semi-ui", () => ({
+  Toast: { success: vi.fn(), error: vi.fn() },
+}));
 vi.mock("@octo/base", () => ({
   t: (key: string, opts?: { values?: { count?: number } }) =>
     opts?.values?.count !== undefined ? `${key}:${opts.values.count}` : key,
@@ -90,6 +93,20 @@ const squad: ExpertSquad = {
 };
 
 describe("expert metric counts", () => {
+  it("shows the pinned expert label in the team roster and member drill-in", () => {
+    const root = render(<ExpertDetailModal item={{ ...squad, members: [{ name: "Bound expert", role: "Leader", versionId: "e1", version: "1.0.0" }] }} onClose={vi.fn()} />);
+    const member = root.querySelector<HTMLButtonElement>(".wk-mcp-expert-member-row--button")!;
+    expect(member.querySelector(".wk-mcp-bound-version")?.textContent).toBe("v1.0.0");
+    act(() => member.click());
+    expect(root.querySelector(".wk-mcp-expert-member-detail__header .wk-mcp-bound-version")?.textContent).toBe("v1.0.0");
+  });
+
+  it("renders the immutable expert id with a copy action", () => {
+    const root = render(<ExpertDetailModal item={agent} onClose={vi.fn()} />);
+    expect(root.textContent).toContain("expert-1");
+    expect(root.querySelector(".wk-mcp-expert-detail__copy-id")).not.toBeNull();
+  });
+
   it("tracks one view per opened detail, keyed by resource kind", () => {
     render(<ExpertDetailModal item={agent} onClose={vi.fn()} />);
     expect(trackExpertView).toHaveBeenCalledTimes(1);

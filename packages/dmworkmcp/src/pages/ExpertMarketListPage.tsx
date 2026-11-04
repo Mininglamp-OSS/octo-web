@@ -10,6 +10,7 @@ import {
   deleteExpert,
   deleteSquad,
   getExpert,
+  getExpertEditMetadata,
   getSquad,
   loadExpertReviewSnapshot,
   prefetchLoopTargets,
@@ -26,7 +27,7 @@ import ExpertAddToLoopModal from "../components/ExpertAddToLoopModal";
 import ReviewSubmitModal, {
   type ReviewSubmitTarget,
 } from "../components/ReviewSubmitModal";
-import { MineTable, type MineRow } from "@dmwork/skillmarket";
+import { VisibilityModal, MineTable, type MineRow } from "@dmwork/skillmarket";
 import {
   resolveReviewRowState,
   useMyReviewState,
@@ -149,6 +150,8 @@ export default function ExpertMarketListPage({
   >(null);
   /** 编辑 — the 可见范围 editor (ExpertEditModal). Metadata only; content still
    *  goes through the Bot prompt. */
+  const editGeneration = useRef(0);
+  const [visibilityId, setVisibilityId] = useState<string | null>(null);
   const [editItem, setEditItem] = useState<ExpertItem | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ExpertItem | null>(null);
   const [addToLoopTarget, setAddToLoopTarget] = useState<ExpertItem | null>(null);
@@ -230,9 +233,11 @@ export default function ExpertMarketListPage({
   // market pages (visibility/ownership is Space-scoped on the backend).
   useEffect(() => {
     const handleSpaceChanged = () => {
+      editGeneration.current++;
       setSelected(null);
       setBotPublishOpen(false);
       setBotEditTarget(null);
+      setVisibilityId(null);
       setEditItem(null);
       setDeleteTarget(null);
       setAddToLoopTarget(null);
@@ -250,7 +255,7 @@ export default function ExpertMarketListPage({
       reviewsRefreshRef.current();
     };
     WKApp.mittBus.on("space-changed", handleSpaceChanged);
-    return () => WKApp.mittBus.off("space-changed", handleSpaceChanged);
+    return () => { editGeneration.current++; WKApp.mittBus.off("space-changed", handleSpaceChanged); };
   }, [loopOn]);
 
   // Tags and categories are catalog-specific, so switching the 专家 / 专家团 tab
@@ -409,8 +414,14 @@ export default function ExpertMarketListPage({
   // marketplace metadata that 发布 reads, so making an author round-trip it
   // through an agent would be absurd. A list projection carries everything the
   // modal reads, so no hydrate is required here either.
-  const handleEdit = (item: ExpertItem) => {
-    setEditItem(item);
+  const handleEdit = async (item: ExpertItem) => {
+    const generation = ++editGeneration.current;
+    try {
+      const draft = await getExpertEditMetadata(item.id);
+      if (generation === editGeneration.current) setEditItem(draft);
+    } catch (err) {
+      if (generation === editGeneration.current) showToast(err instanceof Error ? err.message : t("mcp.expert.loadError"));
+    }
   };
 
   /** Content handoff out of ExpertEditModal: the Bot reads the current record
@@ -451,6 +462,7 @@ export default function ExpertMarketListPage({
       name: item.name,
       version: item.version,
       isUpgrade,
+      editKind: item.kind === "squad" ? "squad" : "agent",
       initialChangelog,
       // ONE detail read backs both halves. Content and relations MUST come from
       // the same revision: composed from two reads, a Bot write landing between
@@ -558,6 +570,11 @@ export default function ExpertMarketListPage({
       downloads: item.installCount,
       status: review.status,
       rejectReason: review.rejectReason,
+      dependencyIssues: item.dependencyIssues?.map((issue) => ({
+        targetPluginId: issue.targetPluginId,
+        targetName: issue.targetName,
+        reason: issue.reason,
+      })),
       ariaLabel: item.name,
       onOpen: () => openDetail(item),
       // 编辑 is withheld once the record is listed to the org: a direct edit takes
@@ -571,6 +588,7 @@ export default function ExpertMarketListPage({
       deleteAria: t("skillMarket.plugin.ariaDelete", { values: { name: item.name } }),
       onPublish: review.canPublish ? () => void handlePublish(item) : undefined,
       publishAria: t("skillMarket.plugin.ariaPublish", { values: { name: item.name } }),
+      onVisibility: item.listingState === "published" && item.displayStatus !== "pending_review" && (item.visibility === "private" || item.visibility === "space") ? () => setVisibilityId(item.id) : undefined,
       onUpgrade: review.canUpgrade ? () => openReviewSubmit(item) : undefined,
       upgradeAria: t("skillMarket.plugin.ariaUpgrade", { values: { name: item.name } }),
       onCancelReview: review.canCancelReview && reviewId
@@ -914,6 +932,7 @@ export default function ExpertMarketListPage({
         onClose={() => setBotEditTarget(null)}
         onToast={showToast}
       />
+      <VisibilityModal pluginId={visibilityId} onClose={() => setVisibilityId(null)} onSaved={handleListingChanged} />
       <ExpertEditModal
         item={editItem}
         onClose={() => setEditItem(null)}
@@ -926,7 +945,6 @@ export default function ExpertMarketListPage({
         onConfirm={handleConfirmDelete}
       />
       <ExpertAddToLoopModal
-        key={addToLoopTarget?.id ?? "none"}
         item={addToLoopTarget}
         onClose={() => setAddToLoopTarget(null)}
       />
@@ -934,6 +952,7 @@ export default function ExpertMarketListPage({
         target={reviewTarget}
         onClose={() => setReviewTarget(null)}
         onSubmitted={handleListingChanged}
+        onBotReturn={() => { void reload(); myReviews.refresh(); }}
       />
 
       {toast &&

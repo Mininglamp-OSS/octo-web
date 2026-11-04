@@ -174,7 +174,7 @@ export default function ReviewDetailDrawer({
       <WKModal
         visible={Boolean(reviewId)}
         onCancel={handleClose}
-        options={{ closable: !acting, maskClosable: !acting, closeOnEsc: !acting }}
+        options={{ closable: !review, maskClosable: !acting, closeOnEsc: !acting }}
         title={null}
         size="lg"
         header={
@@ -338,6 +338,11 @@ export default function ReviewDetailDrawer({
                           <strong>{relation.targetPluginId}</strong>
                           {relation.targetPluginType && <span>{relation.targetPluginType}</span>}
                           <span>{relation.relationType}</span>
+                          <span title={relation.targetVersionId}>
+                            {relation.targetVersionId
+                              ? `${t("skillMarket.review.versionPinned")} ${relation.targetVersionId.slice(-8)}`
+                              : t("skillMarket.review.versionUnpinned")}
+                          </span>
                           <span>#{relation.sortOrder}</span>
                         </div>
                         {relation.data && Object.keys(relation.data).length > 0 && (

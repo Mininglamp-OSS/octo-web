@@ -4,6 +4,20 @@
 // fixture arrays at the bottom are only the USE_MOCK fallback in
 // expertService.ts — the live path fetches from the expert catalog backend.
 
+import type { DependencyIssueReason } from "../api/expertWire";
+
+export interface DependencyMetadata {
+  summary?: string;
+  creatorName?: string;
+  botName?: string;
+}
+
+export interface ExpertConnector extends DependencyMetadata {
+  pluginId: string;
+  name: string;
+  config?: string;
+}
+
 /**
  * A skill attached to an expert / squad member — a whole Agent-Skill package
  * (a .zip/.skill containing SKILL.md). `name` is always present; the rest is the
@@ -16,11 +30,16 @@
  * Content/package bytes are fetched lazily via the skill_md / skill_download
  * endpoints; they are never carried inline on this shape.
  */
-export interface ExpertSkill {
+export interface ExpertSkill extends DependencyMetadata {
   name: string;
   /** The bound skill's own plugin id (expert_skill relation target). Lets the
    *  expert editor open it for editing and preserve/rebuild the relation. */
   pluginId?: string;
+  /** Pinned version of this skill (expert_skill.target_version_id). Absent means
+   *  the edge is legacy/unpinned and the server resolves on write. */
+  versionId?: string;
+  /** Human label from the exact bound snapshot, never the latest release. */
+  version?: string;
   hasContent?: boolean;
   canDownload?: boolean;
   fileName?: string;
@@ -36,6 +55,10 @@ export interface ExpertMember {
    *  member in the expert editor and to rebuild expert_team_expert relations
    *  on squad save. */
   pluginId?: string;
+  /** Pinned version of this member (expert_team_expert.target_version_id). */
+  versionId?: string;
+  /** Human label from the exact bound snapshot, never the latest release. */
+  version?: string;
   /** Expert template this member is created from. */
   templateId?: string;
   name: string;
@@ -46,11 +69,14 @@ export interface ExpertMember {
   instruction?: string;
   /** Raw MCP servers config (mcpServers JSON) carried from the source expert. */
   mcpConfig?: string;
+  connectors?: ExpertConnector[];
   /** Skills attached to this member, carried from the source expert. */
   skills?: ExpertSkill[];
 }
 
 interface ExpertBase {
+  draftRevision?: string;
+  draftChangelog?: string;
   id: string;
   /** Short label rendered inside the square logo tile (e.g. 研发). */
   shortName: string;
@@ -83,10 +109,20 @@ interface ExpertBase {
   reviewId?: string;
   /** Current published version (wire `current_version`), shown in the detail. */
   version?: string;
+  /** Referenced assets that were delisted/deleted/unpublished. A non-empty list
+   *  means the owner must edit the root before it can be listed again. */
+  dependencyIssues?: {
+    targetPluginId: string;
+    targetName?: string;
+    relationType: string;
+    reason?: DependencyIssueReason;
+    via?: string[];
+  }[];
   /** System prompt / instructions that define how the expert behaves. */
   instruction?: string;
   /** Raw MCP servers config (mcpServers JSON), as entered in the config editor. */
   mcpConfig?: string;
+  connectors?: ExpertConnector[];
   /** Skills attached to the expert (uploaded; content fetched lazily on view). */
   skills?: ExpertSkill[];
   /**

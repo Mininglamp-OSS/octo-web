@@ -101,3 +101,15 @@ export function nextPatch(current: string | undefined): string {
   if (!p) return "1.0.0";
   return `${p[0]}.${p[1]}.${p[2] + 1}`;
 }
+
+/** Content publication must advance the release; draft saves may stay equal. */
+export function upgradeVersionErrorKey(current: string | undefined, next: string): string | null {
+  const error = versionErrorKey(undefined, next);
+  if (error || !next.trim()) return error;
+  // Reject release >= candidate directly; incrementing a maximum patch overflows
+  // the format limit and would turn a valid release into an unorderable label.
+  if (isValidVersion(current ?? "") && isVersionForward(next, current ?? "")) {
+    return "skillMarket.plugin.versionMustExceedPublished";
+  }
+  return null;
+}

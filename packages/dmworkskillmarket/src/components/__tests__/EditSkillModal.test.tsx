@@ -59,6 +59,53 @@ vi.mock("react-avatar-editor", async () => {
 });
 
 describe("EditSkillModal", () => {
+  it("can publish a saved private draft after closing and reopening a listed Skill", async () => {
+    const published = { ...skill, visibility: "private" as const, listingState: "published" as const, draftRevision: "a".repeat(64) };
+    let draft = published;
+    let released = published;
+    vi.mocked(api.updateSkill).mockImplementation(async (_id, form) => {
+      draft = { ...draft, displayName: form.displayName!, version: form.version!, draftRevision: "b".repeat(64) };
+      return draft;
+    });
+    vi.mocked(api.publishPlugin).mockImplementation(async () => {
+      released = draft;
+      return { displayStatus: "published" } as any;
+    });
+    const props = { categories, onClose: vi.fn(), onUpdated: vi.fn(), onPublished: vi.fn() };
+    const view = render(<EditSkillModal {...props} skill={published} />);
+    fireEvent.change(screen.getByPlaceholderText(displayNamePlaceholder), { target: { value: "新版会议纪要" } });
+    fireEvent.change(screen.getByDisplayValue("1.1.3"), { target: { value: "1.1.4" } });
+    fireEvent.click(screen.getByRole("button", { name: /保存草稿|skillMarket.plugin.actionSaveDraft/ }));
+    await waitFor(() => expect(props.onClose).toHaveBeenCalledOnce());
+    expect(api.publishPlugin).not.toHaveBeenCalled();
+    expect(released.displayName).toBe(skill.displayName);
+    expect(draft.displayName).toBe("新版会议纪要");
+    view.rerender(<EditSkillModal {...props} skill={null} />);
+    view.rerender(<EditSkillModal {...props} skill={draft} />);
+    expect(screen.getByPlaceholderText(displayNamePlaceholder)).toHaveValue("新版会议纪要");
+    fireEvent.click(screen.getByRole("button", { name: /发布|skillMarket.plugin.actionPublish/ }));
+    await waitFor(() => expect(props.onPublished).toHaveBeenCalledOnce());
+    expect(api.publishPlugin).toHaveBeenCalledWith({ pluginId: skill.id, version: "1.1.4" });
+    expect(released.displayName).toBe("新版会议纪要");
+    expect(released.version).toBe("1.1.4");
+  });
+
+  it("keeps direct publication hidden for a listed organization Skill", () => {
+    render(<EditSkillModal skill={{ ...skill, visibility: "space", listingState: "published" }} categories={categories} onClose={vi.fn()} onUpdated={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /发布|skillMarket.plugin.actionPublish/ })).not.toBeInTheDocument();
+  });
+
+  it("prefills and saves the current draft explanation without a reupload", async () => {
+    const props = { skill: { ...skill, draftChangelog: "Saved draft note" }, categories, onClose: vi.fn(), onUpdated: vi.fn() };
+    render(<EditSkillModal {...props} />);
+    const note = screen.getByPlaceholderText(changelogPlaceholder);
+    expect(note).toHaveValue("Saved draft note");
+    fireEvent.change(note, { target: { value: "Revised note" } });
+    fireEvent.click(screen.getByRole("button", { name: /保存草稿|skillMarket.plugin.actionSaveDraft/ }));
+    await waitFor(() => expect(api.updateSkill).toHaveBeenCalledWith(skill.id, expect.objectContaining({ changelog: "Revised note" })));
+    await waitFor(() => expect(props.onUpdated).toHaveBeenCalledOnce());
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(api.updateSkill).mockResolvedValue(skill);
@@ -95,6 +142,98 @@ describe("EditSkillModal", () => {
     vi.restoreAllMocks();
   });
 
+  it("retains edited fields and the open modal when a conditional save conflicts", async () => {
+    const onClose = vi.fn();
+    const onUpdated = vi.fn();
+    const draftRevision = "a".repeat(64);
+    vi.mocked(api.updateSkill).mockRejectedValue(new Error("Draft changed; reload before saving"));
+    render(<EditSkillModal skill={{ ...skill, draftRevision }} categories={categories} onClose={onClose} onUpdated={onUpdated} />);
+    fireEvent.change(screen.getByPlaceholderText(displayNamePlaceholder), { target: { value: "My unsaved title" } });
+    fireEvent.click(screen.getByRole("button", { name: saveButton }));
+    await waitFor(() => expect(screen.getByText("Draft changed; reload before saving")).toBeInTheDocument());
+    expect(api.updateSkill).toHaveBeenCalledWith(skill.id, expect.objectContaining({ draftRevision, displayName: "My unsaved title" }));
+    expect(screen.getByPlaceholderText(displayNamePlaceholder)).toHaveValue("My unsaved title");
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onUpdated).not.toHaveBeenCalled();
+    expect(api.updateSkill).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([false, true])("retries publication after a committed save (edit again: %s)", async editAgain => {
+    const r1 = "a".repeat(64), r2 = "b".repeat(64);
+    const onClose = vi.fn(), onUpdated = vi.fn();
+    vi.mocked(api.updateSkill).mockResolvedValue({ ...skill, draftRevision: r2 });
+    vi.mocked(api.getSkillDraft).mockResolvedValue({ ...skill, draftRevision: r2 });
+    vi.mocked(api.publishPlugin).mockRejectedValueOnce(new Error("Temporary publication failure")).mockResolvedValue({ displayStatus: "published" } as any);
+    render(<EditSkillModal skill={{ ...skill, draftRevision: r1, listingState: "draft" }} categories={categories} onClose={onClose} onUpdated={onUpdated} />);
+    fireEvent.change(screen.getByPlaceholderText(displayNamePlaceholder), { target: { value: "Saved title" } });
+    fireEvent.change(screen.getByPlaceholderText(changelogPlaceholder), { target: { value: "Saved notes" } });
+    fireEvent.click(screen.getByRole("button", { name: /发布|skillMarket.plugin.actionPublish/ }));
+    await waitFor(() => expect(screen.getByText("Temporary publication failure")).toBeInTheDocument());
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByPlaceholderText(displayNamePlaceholder)).toHaveValue("Saved title");
+    if (editAgain) fireEvent.change(screen.getByPlaceholderText(displayNamePlaceholder), { target: { value: "Edited again" } });
+    fireEvent.click(screen.getByRole("button", { name: /发布|skillMarket.plugin.actionPublish/ }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+    expect(api.publishPlugin).toHaveBeenCalledTimes(2);
+    expect(api.updateSkill).toHaveBeenCalledTimes(editAgain ? 2 : 1);
+    if (editAgain) expect(api.updateSkill).toHaveBeenLastCalledWith(skill.id, expect.objectContaining({ draftRevision: r2, displayName: "Edited again" }));
+  });
+
+  it.each(["changed", "missing", "unavailable"])("blocks cached publication when remote draft is %s", async state => {
+    const r2 = "b".repeat(64);
+    const onClose = vi.fn(), onUpdated = vi.fn();
+    vi.mocked(api.updateSkill).mockResolvedValue({ ...skill, draftRevision: r2 });
+    vi.mocked(api.publishPlugin).mockRejectedValue(new Error("Temporary publication failure"));
+    if (state === "unavailable") vi.mocked(api.getSkillDraft).mockRejectedValueOnce(new Error("Draft unavailable"));
+    else vi.mocked(api.getSkillDraft).mockResolvedValueOnce({ ...skill, draftRevision: state === "changed" ? "c".repeat(64) : undefined });
+    render(<EditSkillModal skill={{ ...skill, draftRevision: "a".repeat(64), listingState: "draft" }} categories={categories} onClose={onClose} onUpdated={onUpdated} />);
+    fireEvent.change(screen.getByPlaceholderText(displayNamePlaceholder), { target: { value: "My saved title" } });
+    fireEvent.change(screen.getByPlaceholderText(changelogPlaceholder), { target: { value: "Saved notes" } });
+    fireEvent.click(screen.getByRole("button", { name: /发布|skillMarket.plugin.actionPublish/ }));
+    await screen.findByText("Temporary publication failure");
+    fireEvent.click(screen.getByRole("button", { name: /发布|skillMarket.plugin.actionPublish/ }));
+    await screen.findByText(state === "unavailable" ? "Draft unavailable" : /资源状态已变化|skillMarket.errors.stateConflict/);
+    await waitFor(() => expect(api.getSkillDraft).toHaveBeenCalledWith(skill.id));
+    expect(api.publishPlugin).toHaveBeenCalledTimes(1);
+    expect(api.updateSkill).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onUpdated).not.toHaveBeenCalled();
+    expect(screen.getByPlaceholderText(displayNamePlaceholder)).toHaveValue("My saved title");
+  });
+
+  it.each(["save", "publish"])("resets a pending %s session without letting its completion unlock the next save", async phase => {
+    let finishOld!: (value: any) => void;
+    let finishNew!: (value: Skill) => void;
+    const oldRequest = new Promise<any>(resolve => { finishOld = resolve; });
+    const nextRequest = new Promise<Skill>(resolve => { finishNew = resolve; });
+    if (phase === "save") vi.mocked(api.updateSkill).mockReturnValueOnce(oldRequest);
+    else vi.mocked(api.publishPlugin).mockReturnValueOnce(oldRequest);
+    const props = { categories, onClose: vi.fn(), onUpdated: vi.fn() };
+    const target = { ...skill, listingState: "draft" as const };
+    const view = render(<EditSkillModal {...props} skill={target} />);
+    fireEvent.change(screen.getByPlaceholderText(displayNamePlaceholder), { target: { value: "Old session" } });
+    fireEvent.change(screen.getByPlaceholderText(changelogPlaceholder), { target: { value: "Session regression" } });
+    fireEvent.click(screen.getByRole("button", { name: phase === "save" ? saveButton : /发布|skillMarket.plugin.actionPublish/ }));
+    await waitFor(() => expect(phase === "save" ? api.updateSkill : api.publishPlugin).toHaveBeenCalledOnce());
+    // Both parent close and Space invalidation clear the target without
+    // unmounting this component. Reopen while the previous request is pending.
+    view.rerender(<EditSkillModal {...props} skill={null} />);
+    view.rerender(<EditSkillModal {...props} skill={target} />);
+    vi.mocked(api.updateSkill).mockReturnValueOnce(nextRequest);
+    fireEvent.change(screen.getByPlaceholderText(displayNamePlaceholder), { target: { value: "New session" } });
+    const save = screen.getByRole("button", { name: saveButton });
+    expect(save).toBeEnabled();
+    fireEvent.click(save);
+    await waitFor(() => expect(api.updateSkill).toHaveBeenCalledTimes(2));
+    await act(async () => { finishOld(phase === "save" ? skill : { displayStatus: "published" }); await oldRequest; });
+    expect(props.onUpdated).not.toHaveBeenCalled();
+    expect(props.onClose).not.toHaveBeenCalled();
+    expect(save).toBeDisabled();
+    await act(async () => { finishNew(skill); await nextRequest; });
+    await waitFor(() => expect(props.onUpdated).toHaveBeenCalledOnce());
+    expect(props.onClose).toHaveBeenCalledOnce();
+  });
+
   it("prefills current skill fields and saves updates", async () => {
     const onUpdated = vi.fn();
     const onClose = vi.fn();
@@ -117,6 +256,19 @@ describe("EditSkillModal", () => {
     })));
     expect(onUpdated).toHaveBeenCalled();
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("saves a stored legacy version unchanged but rejects a newly typed invalid label", async () => {
+    render(<EditSkillModal skill={{ ...skill, visibility: "private", version: "1.0" }} categories={categories} onClose={vi.fn()} onUpdated={vi.fn()} />);
+    const version = screen.getByDisplayValue("1.0");
+    fireEvent.change(screen.getByPlaceholderText(displayNamePlaceholder), { target: { value: "Legacy display edit" } });
+    const save = screen.getByRole("button", { name: saveButton });
+    expect(save).toBeEnabled();
+    fireEvent.change(version, { target: { value: "2.0" } });
+    expect(save).toBeDisabled();
+    fireEvent.change(version, { target: { value: "1.0" } });
+    fireEvent.click(save);
+    await waitFor(() => expect(api.updateSkill).toHaveBeenCalledWith(skill.id, expect.objectContaining({ version: "1.0", displayName: "Legacy display edit" })));
   });
 
   it("opens the hidden icon file input and shows the crop dialog after selecting an image", async () => {

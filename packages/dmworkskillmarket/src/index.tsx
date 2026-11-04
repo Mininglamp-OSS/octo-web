@@ -63,13 +63,14 @@ export {
 // The 全部 tab of 我的发布 lists every plugin type through the one endpoint that
 // can return them together (`mode=mine` with plugin_type omitted), so dmworkmcp
 // needs the reader and the row type.
-export { getCategories, getMySkills, getSkill, deleteSkill } from "./api/skillApi";
+export { getCategories, getMySkills, getSkill, getSkillDraft, deleteSkill } from "./api/skillApi";
 // Version rules, mirrored from the backend so a form objects before a round trip.
 export {
   isValidVersion,
   isVersionForward,
   isStoredVersionLabel,
   versionErrorKey,
+  upgradeVersionErrorKey,
   nextPatch,
 } from "./utils/version";
 // The 全部 tab renders skills beside connectors and experts, so it needs the
@@ -84,3 +85,5 @@ export type {
   PluginListingState,
   PluginDisplayStatus,
 } from "./types/skill";
+
+export { default as VisibilityModal } from "./features/visibility/VisibilityModal";

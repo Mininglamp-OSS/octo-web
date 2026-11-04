@@ -18,6 +18,11 @@ describe("getBotPublishPrompt", () => {
     expect(prompt).not.toContain("<skill-package-path>");
     expect(prompt).not.toContain("<skill-zip-path>");
     expect(prompt).toContain("Space ID：`space-1`");
+    expect(prompt).toContain(
+      "marketplace plugin list --scene-code default --plugin-type skill"
+    );
+    expect(prompt).toContain('--q "<名称>"');
+    expect(prompt).toContain("若已有同名技能，停止并请我改名");
     expect(prompt).toContain("确认当前版本 `>= 0.15.0`");
     expect(prompt).toContain("按 major/minor/patch 分段数字比较");
     expect(prompt).toContain("版本低于 `0.15.0`");

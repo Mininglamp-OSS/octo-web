@@ -1,5 +1,6 @@
 {
   "common": {
+    "aiGeneratedNotice": "内容由 AI 生成，请注意核实",
     "add": "添加",
     "cancel": "取消",
     "close": "关闭",
@@ -807,5 +808,15 @@
     "versionSaved": "已保存为第 {{version}} 版",
     "targetUnavailable": "暂时无法读取原总结，可继续优化并保存为新总结",
     "conflict": "原总结已更新，你的优化内容已保留。可以另存为新总结，或查看最新版本后重新优化。"
+  },
+  "search": {
+    "count": "找到 {{count}} 条结果",
+    "titleMatch": "标题：",
+    "topicMatch": "主题：",
+    "historicalRun": "历史运行 · {{date}}",
+    "clear": "清空搜索",
+    "limit": "最多输入 {{count}} 个字符，请缩短后搜索",
+    "noMatches": "当前范围没有匹配结果",
+    "searching": "正在搜索…"
   }
 }

@@ -82,6 +82,14 @@ export interface PluginPackageWire {
   attachments?: PluginAttachmentWire[];
 }
 
+export interface PluginDependencyIssueWire {
+  target_plugin_id: string;
+  target_name?: string;
+  relation_type: string;
+  reason: string;
+  via?: string[];
+}
+
 export interface PluginListItemWire {
   plugin_id: string;
   plugin_name: string;
@@ -107,7 +115,11 @@ export interface PluginListItemWire {
   install_count: number;
   download_count: number;
   manifest_json: PluginManifestWire;
+  current_version_id?: string;
   current_version?: string;
+  /** Formal release baseline on owner listings; current_* still describes the draft. */
+  published_version?: string;
+  published_version_id?: string;
   /** Listing lifecycle. Both fields are owner-scoped: the server only computes
    *  and emits them for `GET /plugins?mode=mine` and `GET /plugins/detail`, so
    *  they are absent on the public marketplace grid — optional here rather than
@@ -115,6 +127,8 @@ export interface PluginListItemWire {
    *  default would paint every catalog card as a draft. */
   listing_state?: PluginListingStateWire;
   display_status?: PluginDisplayStatusWire;
+  /** Owner-only diagnostics for blocked published dependencies (#127). */
+  dependency_issues?: PluginDependencyIssueWire[];
   /** Set only while a review request is relevant to the row (pending, or the
    *  rejection being reported). Its presence is what makes 撤回/查看理由
    *  actionable without a second round-trip to the review list. */
@@ -129,6 +143,7 @@ export interface PluginDetailPluginWire extends PluginListItemWire {
 
 export interface PluginRelationWire {
   relation_id: string;
+  target_version_id?: string;
   source_plugin_id: string;
   target_plugin_id: string;
   relation_type: string;
@@ -137,6 +152,8 @@ export interface PluginRelationWire {
 }
 
 export interface PluginDetailWire {
+  draft_revision?: string;
+  draft_changelog?: string;
   plugin: PluginDetailPluginWire;
   relations: PluginRelationWire[];
 }
@@ -164,6 +181,7 @@ export interface PluginCategoryWire {
 export interface PluginReviewRelationWire {
   relation_id?: string;
   target_plugin_id: string;
+  target_version_id?: string;
   target_plugin_type?: PluginTypeWire;
   relation_type: string;
   sort_order: number;
@@ -185,7 +203,11 @@ export interface PluginReviewRequestWire {
   status: string;
   kind: string;
   version: string;
+  current_version_id?: string;
   current_version?: string;
+  /** Formal release baseline on owner listings; current_* still describes the draft. */
+  published_version?: string;
+  published_version_id?: string;
   changelog?: string;
   readme_content?: string;
   manifest_hash?: string;

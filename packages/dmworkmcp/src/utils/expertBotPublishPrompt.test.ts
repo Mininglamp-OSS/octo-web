@@ -1,10 +1,50 @@
 import { describe, expect, it } from "vitest";
+import cliEnvelope from "./__fixtures__/cliUpsertEnvelope.v0.19.5.json";
 import { getExpertBotPublishPrompt } from "./expertBotPublishPrompt";
 
 const SLUG = "minglue_default";
 const API = "https://example.com";
 
+describe("Expert marketplace naming contract", () => {
+  it.each([
+    ["agent", "create"], ["agent", "update"],
+    ["squad", "create"], ["squad", "update"],
+  ] as const)("keeps display and internal names distinct for %s %s", (kind, mode) => {
+    const prompt = getExpertBotPublishPrompt({ kind, mode, id: "expert-1", spaceId: SLUG, apiBaseUrl: API });
+    expect(prompt).toContain("市场列表与详情标题读取 `plugin.plugin_name`");
+    expect(prompt).toContain("`plugin.manifest_json.plugin_name` 必须与它完全一致");
+    expect(prompt).toContain("用户说“改名”或“修改显示名”时，修改这两处");
+    expect(prompt).toContain("`plugin.manifest_json.name` 是清单内部名称");
+    expect(prompt).toContain("更新时保留原值");
+    expect(prompt).toContain("不要额外创建 `display_name` 字段");
+    expect(prompt).toContain("市场展示名称（plugin_name）");
+    expect(prompt).toContain("清单内部名称（manifest_json.name）");
+    expect(prompt).toContain("回读结果的 `plugin_name` 与 `manifest_json.plugin_name`");
+    expect(prompt).toContain("不能用 `manifest_json.name` 的变化证明市场改名成功");
+    expect(prompt).toContain("人工审核 pending 时核对提交审核的快照名称");
+    expect(prompt).toContain("审核通过并回读正式版本后才报告市场名称已生效");
+    expect(prompt).toContain(mode === "update"
+      ? "保存成功后回读草稿，确认外层及清单中的 plugin_name"
+      : "不一致时停止发布并报告");
+    if (mode === "update") expect(prompt).toContain("改名保留原 plugin_id 和未修改的内容、依赖及版本绑定");
+  });
+});
+
 describe("getExpertBotPublishPrompt — command surface", () => {
+  it.each([
+    ["agent", "create"], ["agent", "update"],
+    ["squad", "create"], ["squad", "update"],
+  ] as const)("requires an explicit confirmed release version for %s %s", (kind, mode) => {
+    const p = getExpertBotPublishPrompt({ kind, mode, id: "expert-1", spaceId: SLUG, apiBaseUrl: API });
+    expect(p).toContain("发布预览必须包含已确认的版本号");
+    expect(p).toContain("发布时必须显式传入已确认的版本号");
+    expect(p).toContain("调用 `plugin publish` 必须带 `--version`");
+    expect(p).toContain("与已保存草稿的 version 一致");
+    expect(p).toContain("审核请求体中的 `version` 也必须明确填写");
+    expect(p).toContain("不支持版本参数时停止并提示升级 CLI");
+    expect(p).toContain("不得省略版本号重试");
+    expect(p).not.toContain("只有在 `expert.md` 要求且版本来源明确时才传 `--version`");
+  });
   it("agent prompt targets the unified expert plugin workflow", () => {
     const p = getExpertBotPublishPrompt({
       kind: "agent",
@@ -15,6 +55,11 @@ describe("getExpertBotPublishPrompt — command surface", () => {
     expect(p).toContain(
       "octo-cli marketplace plugin-category list --scene-code default --plugin-type expert"
     );
+    expect(p).toContain("创建前先查重");
+    expect(p).toContain(
+      "marketplace plugin list --scene-code default --plugin-type expert"
+    );
+    expect(p).toContain('--q "<名称>"');
     expect(p).toContain('plugin_type: "expert"');
     expect(p).toContain("plugin upsert --data @expert-plugin.json");
     expect(p).toContain("plugin review-request create");
@@ -39,6 +84,8 @@ describe("getExpertBotPublishPrompt — command surface", () => {
     expect(p).toContain(
       "准备完整的 `manifest_json`、`plugin_json` 和完整 `relations`"
     );
+    expect(p).toContain("`expert_connector` 禁止带版本");
+    expect(p).toContain("`released_version_required` 时停止");
   });
 
   it("defers to the embedded octo-marketplace Skill's expert.md", () => {
@@ -177,22 +224,27 @@ describe("getExpertBotPublishPrompt — update mode", () => {
       spaceId: SLUG,
       apiBaseUrl: API,
     });
-    expect(p).toContain("更新 OCTO Marketplace 上已上架的专家");
+    expect(p).toContain("编辑 OCTO Marketplace 上专家的草稿");
     expect(p).toContain(`专家 ID：\`${ID}\``);
     expect(p).toContain(`plugin.plugin_id = "${ID}"`);
     expect(p).toContain(
-      `octo-cli marketplace plugin get --plugin-id ${ID} --include-relations`
+      `GET /market/api/v1/plugins/${ID}/draft`
     );
     expect(p).toContain("全量替换语义");
     expect(p).toContain(
       "`plugin_name` / `publisher` / `icon` / `tags` / `visibility` / `category_id`"
     );
     expect(p).toContain("`relation_id` 和 `data`");
-    expect(p).toContain("未上架的 Space 可见记录");
+    expect(p).toContain("expected_draft_revision");
     expect(p).toContain("任何 409");
-    expect(p).toContain("`listed_requires_review` / `review_pending`");
-    expect(p).toContain("plugin review-request create");
-    expect(p).toContain("不要引用未在本流程中实际生成的文件");
+    expect(p).toContain("保存成功后回读草稿");
+    expect(p).toContain("调用 `plugin publish`");
+    expect(p).toContain("草稿已保存，但发布失败");
+    expect(p).toContain("已提交审核，线上仍使用旧版本");
+    expect(p).toContain("不得绕过或修改组织审核策略");
+    expect(p).toContain("先确认新版本号和更新说明");
+    expect(p).not.toContain("plugin review-request create");
+    expect(p).toContain("version_migration_required");
     expect(p).toContain("不要把展示用的 `icon_url` 写回");
     expect(p).toContain("不要伪造成功");
     expect(p).toContain("可重试命令和错误摘要");
@@ -264,11 +316,11 @@ describe("getExpertBotPublishPrompt — update mode", () => {
       spaceId: SLUG,
       apiBaseUrl: API,
     });
-    expect(p).toContain("更新 OCTO Marketplace 上已上架的专家团");
+    expect(p).toContain("编辑 OCTO Marketplace 上专家团的草稿");
     expect(p).toContain(`专家团 ID：\`${ID}\``);
     expect(p).toContain(`plugin.plugin_id = "${ID}"`);
     expect(p).toContain(
-      `octo-cli marketplace plugin get --plugin-id ${ID} --include-relations`
+      `GET /market/api/v1/plugins/${ID}/draft`
     );
     expect(p).toContain("缺失关系会被软删");
     expect(p).not.toContain("squad create --data");
@@ -284,7 +336,7 @@ describe("getExpertBotPublishPrompt — update mode", () => {
     });
     expect(p).not.toContain("; rm -rf /");
     expect(p).toContain('plugin.plugin_id = "<expert-id>"');
-    expect(p).toContain("plugin get --plugin-id <expert-id>");
+    expect(p).toContain("GET /market/api/v1/plugins/<expert-id>/draft");
   });
 
   it("create mode (default) is unchanged", () => {
@@ -295,14 +347,12 @@ describe("getExpertBotPublishPrompt — update mode", () => {
     });
     expect(p).toContain("将指定专家上架");
     expect(p).toContain("plugin upsert --data @expert-plugin.json");
-    expect(p).toContain(
-      "只有在 `expert.md` 要求且版本来源明确时才传 `--version`"
-    );
+    expect(p).toContain("调用 `plugin publish` 必须带 `--version`");
     expect(p).not.toContain("octo-cli marketplace expert update");
     expect(p).not.toContain("确认更新");
   });
 
-  it("keeps update version omitted and uses a copyable upsert command", () => {
+  it("requires a confirmed new version and publishes after the upsert", () => {
     const p = getExpertBotPublishPrompt({
       kind: "agent",
       mode: "update",
@@ -310,7 +360,37 @@ describe("getExpertBotPublishPrompt — update mode", () => {
       spaceId: SLUG,
       apiBaseUrl: API,
     });
-    expect(p).toContain("`version` 保持省略");
+    expect(p).toContain("写入明确确认的新 `version`");
+    expect(p).toContain("不得复用已发布版本号");
+    expect(p).toContain("保存成功后的重试只处理发布");
+    expect(p).toContain("新版本已发布并生效");
+    expect(p).not.toContain("草稿已保存，尚未发布");
     expect(p).toContain("plugin upsert --data @expert-plugin.json");
+  });
+});
+
+
+describe("Expert conditional save CLI contract", () => {
+  it.each(["agent", "squad"] as const)("provides an authenticated HTTP fallback for the current %s CLI schema", kind => {
+    // Frozen from the supported CLI, independently of Web's request types.
+    expect(cliEnvelope.additionalProperties).toBe(false);
+    expect(cliEnvelope.properties).toEqual(["plugin", "relations"]);
+    const payload = {plugin:{plugin_id:"existing"},relations:[],expected_draft_revision:"a".repeat(64)};
+    expect(Object.keys(payload).filter(key => !cliEnvelope.properties.includes(key))).toEqual(["expected_draft_revision"]);
+    const prompt=getExpertBotPublishPrompt({kind,mode:"update",id:"expert-1",spaceId:SLUG,apiBaseUrl:API});
+    const confirmation=prompt.indexOf("明确等待我回复“确认更新”");
+    const fallback=prompt.indexOf("POST /market/api/v1/plugins/upsert");
+    expect(fallback).toBeGreaterThan(confirmation);
+    expect(prompt).toContain("只有明确的本地 schema 不支持才切换保存方式");
+    expect(prompt).toContain("同一完整 JSON body（包括原始 expected_draft_revision、plugin 和 relations）");
+    expect(prompt).toContain("Authorization: Bearer");
+    expect(prompt).toContain("X-Space-Id");
+    expect(prompt).toContain("Content-Type: application/json");
+    expect(prompt).toContain("不得删除或忽略该字段");
+    expect(prompt).toContain("无法安全认证则停止");
+    expect(prompt).toContain("不得输出、写入 payload、放入命令参数");
+    expect(prompt).toContain("不得盲目跨接口重发");
+    expect(prompt).toContain("409 时停止，不得无条件覆盖");
+    expect(prompt).not.toContain("只使用 `expert.md` 记录的统一");
   });
 });

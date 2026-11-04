@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { WKModal, WKButton, t, useI18n } from "@octo/base";
 import { Select, Toast } from "@douyinfe/semi-ui";
 import type { ExpertItem } from "../mock/expertMock";
@@ -7,6 +7,7 @@ import {
   installSquadToLoop,
   getLoopRuntimes,
   getLoopWorkspaces,
+  createLoopInstallationKey,
 } from "../api/expertService";
 import type { LoopRuntime, LoopWorkspace } from "../api/expertService";
 
@@ -47,18 +48,22 @@ export default function ExpertAddToLoopModal({
   const [loadingWorkspaces, setLoadingWorkspaces] = useState(false);
   const [loadingRuntimes, setLoadingRuntimes] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const inFlight = useRef(false);
+  const operationKeys = useRef(new Map<string, string>());
+  const activeItem = useRef(item);
+  activeItem.current = item;
 
   const visible = Boolean(item);
 
   // Load workspaces when the dialog opens; reset all selection state so a
   // second open (possibly for a different expert) starts clean.
   useEffect(() => {
-    if (!item) return;
-    let cancelled = false;
     setWorkspaceId("");
     setRuntimeId("");
     setRuntimes([]);
-    setLoadingWorkspaces(true);
+    setLoadingWorkspaces(Boolean(item));
+    if (!item) return;
+    let cancelled = false;
     getLoopWorkspaces()
       .then((list) => {
         if (cancelled) return;
@@ -72,7 +77,9 @@ export default function ExpertAddToLoopModal({
       .catch((err) => {
         if (cancelled) return;
         setWorkspaces([]);
-        Toast.error(err instanceof Error ? err.message : t("mcp.expert.installFailed"));
+        Toast.error(
+          err instanceof Error ? err.message : t("mcp.expert.installFailed")
+        );
       })
       .finally(() => {
         if (!cancelled) setLoadingWorkspaces(false);
@@ -92,23 +99,22 @@ export default function ExpertAddToLoopModal({
     let cancelled = false;
     setRuntimeId("");
     setLoadingRuntimes(true);
-    getLoopRuntimes(workspaceId)
+    // Readiness gates installation, so refresh even if market prefetch or a
+    // previous dialog session already cached this workspace's runtimes.
+    getLoopRuntimes(workspaceId, { refresh: true })
       .then((list) => {
         if (cancelled) return;
         setRuntimes(list);
-        // Default-select the first READY runtime so the dialog is confirmable in
-        // one click without picking a runtime that can't actually run the agent;
-        // fall back to the first runtime if none report ready. The user can
-        // still switch before confirming.
-        if (list.length > 0) {
-          const firstReady = list.find(isRuntimeReady) ?? list[0];
-          setRuntimeId(firstReady.id);
-        }
+        // The service requests owner=me. Never fall back to an unavailable
+        // runtime when none of the current user's machines are ready.
+        setRuntimeId(list.find(isRuntimeReady)?.id ?? "");
       })
       .catch((err) => {
         if (cancelled) return;
         setRuntimes([]);
-        Toast.error(err instanceof Error ? err.message : t("mcp.expert.installFailed"));
+        Toast.error(
+          err instanceof Error ? err.message : t("mcp.expert.installFailed")
+        );
       })
       .finally(() => {
         if (!cancelled) setLoadingRuntimes(false);
@@ -119,48 +125,77 @@ export default function ExpertAddToLoopModal({
   }, [item, workspaceId]);
 
   const handleClose = () => {
-    if (submitting) return;
+    if (inFlight.current) return;
     onClose();
   };
 
   const handleConfirm = async () => {
-    if (!item || !workspaceId || !runtimeId || submitting) return;
+    if (!item || !workspaceId || loadingWorkspaces || loadingRuntimes ||
+      !runtimes.some((rt) => rt.id === runtimeId && isRuntimeReady(rt)) || inFlight.current) return;
+    inFlight.current = true;
     setSubmitting(true);
     try {
-      // Squads install each member then form the team; experts install one
-      // agent. Both take the same workspace/runtime selection and throw if the
-      // backend 2xx carries no id (so we never falsely report success).
-      if (item.kind === "squad") {
-        await installSquadToLoop(item.id, { workspaceId, runtimeId });
-      } else {
-        await installExpertToLoop(item.id, { workspaceId, runtimeId });
+      const operation = JSON.stringify([
+        item.kind,
+        item.id,
+        workspaceId,
+        runtimeId,
+      ]);
+      let idempotencyKey = operationKeys.current.get(operation);
+      if (!idempotencyKey) {
+        idempotencyKey = createLoopInstallationKey();
+        operationKeys.current.set(operation, idempotencyKey);
       }
+      const options = { workspaceId, runtimeId, idempotencyKey };
+      // Failed/uncertain outcomes retain the original key. Do not retry through
+      // another route or create a fresh key on each click.
+      if (item.kind === "squad") {
+        await installSquadToLoop(item.id, options);
+      } else {
+        await installExpertToLoop(item.id, options);
+      }
+      operationKeys.current.delete(operation);
+      if (activeItem.current !== item) return;
       Toast.success(t("mcp.expert.installSuccess"));
       onClose();
     } catch (err) {
+      if (activeItem.current !== item) return;
       Toast.error(
         err instanceof Error ? err.message : t("mcp.expert.installFailed")
       );
     } finally {
+      inFlight.current = false;
       setSubmitting(false);
     }
   };
 
   if (!item) return null;
 
-  const workspaceOptions = workspaces.map((w) => ({ label: w.name, value: w.id }));
+  const workspaceOptions = workspaces.map((w) => ({
+    label: w.name,
+    value: w.id,
+  }));
   const runtimeOptions = runtimes.map((rt) => ({
     // Surface a non-ready status so the user isn't silently defaulted onto (or
     // left picking) a runtime that can't run the agent. The status value itself
     // is fleet data (shown raw); the surrounding chrome is localized.
-    label: isRuntimeReady(rt)
-      ? rt.name
-      : t("mcp.expert.runtimeWithStatus", {
-          values: { name: rt.name, status: rt.status ?? "" },
-        }),
+    // Semi keys its selection map by label, even in single-select mode. Give
+    // each runtime its own React label so equal names cannot share a checkmark.
+    label: (
+      <span key={rt.id}>
+        {isRuntimeReady(rt)
+          ? rt.name
+          : t("mcp.expert.runtimeWithStatus", {
+              values: { name: rt.name, status: rt.status ?? "" },
+            })}
+      </span>
+    ),
     value: rt.id,
+    disabled: !isRuntimeReady(rt),
   }));
-  const canSubmit = Boolean(workspaceId && runtimeId) && !submitting;
+  const canSubmit = Boolean(workspaceId) &&
+    runtimes.some((rt) => rt.id === runtimeId && isRuntimeReady(rt)) &&
+    !loadingWorkspaces && !loadingRuntimes && !submitting;
 
   return (
     <WKModal
@@ -171,11 +206,21 @@ export default function ExpertAddToLoopModal({
       title={t("mcp.expert.addToLoopTitle")}
       footer={
         <div className="wk-mcp-form-footer__right">
-          <WKButton variant="secondary" onClick={handleClose} disabled={submitting}>
+          <WKButton
+            variant="secondary"
+            onClick={handleClose}
+            disabled={submitting}
+          >
             {t("mcp.expert.cancel")}
           </WKButton>
-          <WKButton variant="primary" onClick={handleConfirm} disabled={!canSubmit}>
-            {submitting ? t("mcp.expert.installing") : t("mcp.expert.confirmInstall")}
+          <WKButton
+            variant="primary"
+            onClick={handleConfirm}
+            disabled={!canSubmit}
+          >
+            {submitting
+              ? t("mcp.expert.installing")
+              : t("mcp.expert.confirmInstall")}
           </WKButton>
         </div>
       }
@@ -196,7 +241,12 @@ export default function ExpertAddToLoopModal({
           disabled={submitting}
           placeholder={t("mcp.expert.selectWorkspacePlaceholder")}
           emptyContent={t("mcp.expert.noWorkspaces")}
-          onChange={(v) => setWorkspaceId(v as string)}
+          onChange={(v) => {
+            setRuntimeId("");
+            setRuntimes([]);
+            setLoadingRuntimes(true);
+            setWorkspaceId(v as string);
+          }}
         />
 
         <label className="wk-mcp-add-to-loop__label">

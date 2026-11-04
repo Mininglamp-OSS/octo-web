@@ -35,6 +35,12 @@ export function useSkills(options: UseSkillsOptions = {}): UseSkillsResult {
   const [query, setQueryState] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [categoryId, setCategoryIdState] = useState("all");
+  // Total visible rows for the synthetic "all" chip. It must come from the list
+  // total, not the sum of category counts: uncategorized plugins are visible in
+  // the catalog but belong to no category, so the sum undercounts them.
+  const allSkillCountRef = useRef(0);
+  const refreshNonceRef = useRef(0);
+  const lastCountProbeNonceRef = useRef(-1);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -88,7 +94,37 @@ export function useSkills(options: UseSkillsOptions = {}): UseSkillsResult {
                 { signal }
               ),
         ]);
+        // The unfiltered total is decorative (the 全部 chip); fetch it after the
+        // list so its failure can never take down the catalog.
+        // Refresh (including a Space change) must refresh the summary even when
+        // a search/tag filter is active. Ordinary filter changes reuse the
+        // same-scope cache; a filtered page.total must never replace it.
+        const forceCountRefresh =
+          refreshNonceRef.current !== lastCountProbeNonceRef.current;
+        const unfilteredPage =
+          !debouncedQuery.trim() &&
+          selectedTags.length === 0 &&
+          categoryId === "all";
+        const shouldProbeAllCount =
+          !isMore && (forceCountRefresh || unfilteredPage);
+        const allPage = shouldProbeAllCount
+          ? await (options.mine
+              ? getMySkills({ limit: 1 }, { signal })
+              : getSkills({ limit: 1 }, { signal })
+            )
+              .then((p) => p?.total ?? null)
+              .catch(() => null)
+          : null;
         if (controller.signal.aborted) return;
+        if (allPage !== null) {
+          allSkillCountRef.current = allPage;
+          lastCountProbeNonceRef.current = refreshNonceRef.current;
+        } else if (shouldProbeAllCount && unfilteredPage && !isMore) {
+          // Count request failed; the unfiltered page already knows the total.
+          allSkillCountRef.current = page.total;
+          lastCountProbeNonceRef.current = refreshNonceRef.current;
+        }
+        const effectiveAllCount = allPage ?? allSkillCountRef.current;
         const normalizedCategories = [
           {
             id: "all",
@@ -98,13 +134,7 @@ export function useSkills(options: UseSkillsOptions = {}): UseSkillsResult {
             name: t("skillMarket.category.all"),
             iconKey: "LayoutGrid",
             sortOrder: 0,
-            skillCount: categoryItems.reduce(
-              (total, category) =>
-                category.id === "all"
-                  ? total
-                  : total + (category.skillCount ?? 0),
-              0
-            ),
+            skillCount: effectiveAllCount,
           },
           ...categoryItems.filter((category) => category.id !== "all"),
         ];
@@ -207,7 +237,12 @@ export function useSkills(options: UseSkillsOptions = {}): UseSkillsResult {
     hasMore: Boolean(cursor),
     setQuery,
     setCategoryId,
-    refresh: () => void fetchPage(null),
+    refresh: () => {
+      // Force the next fetch to re-probe the unfiltered total (Space change or
+      // an explicit refresh) even while a filter is active.
+      refreshNonceRef.current += 1;
+      void fetchPage(null);
+    },
     loadMore: () => {
       if (!cursor || loading || loadingMore) return;
       void fetchPage(cursor);

@@ -13,9 +13,15 @@ import type {
   ExpertMember,
   ExpertSquad,
 } from "../mock/expertMock";
+
+export type ExpertDependencyIssue = NonNullable<ExpertAgent["dependencyIssues"]>[number];
+
+export const DEPENDENCY_ISSUE_REASONS = ["delisted", "deleted", "release_missing"] as const;
+export type DependencyIssueReason = (typeof DEPENDENCY_ISSUE_REASONS)[number] | "unknown";
 import {
   jsonAttachment,
   rawAttachment,
+  type PluginDependencyIssueWire,
   type PluginDetailPluginWire,
   type PluginListItemWire,
 } from "./pluginWire";
@@ -315,11 +321,24 @@ export interface SkillRefWire {
   files?: string[];
   object_key?: string;
   zip_object_key?: string;
+  object_key_hash?: string;
+  zip_object_key_hash?: string;
+  file_url_hash?: string;
 }
 
 /** The legacy short_name never survived into the unified manifest; derive a
  *  compact logo glyph from the display name so ExpertCard's logo block keeps
  *  rendering. */
+function narrowDependencyReason(value: string | undefined): DependencyIssueReason | undefined {
+  if (!value) return undefined;
+  return DEPENDENCY_ISSUE_REASONS.find((reason) => reason === value) ?? "unknown";
+}
+
+/** Normalize an open backend reason to a locale key suffix. */
+export function dependencyIssueReasonKey(reason: string | undefined): DependencyIssueReason {
+  return narrowDependencyReason(reason) ?? "unknown";
+}
+
 function deriveShortName(name: string): string {
   return name.trim().slice(0, 2);
 }
@@ -344,8 +363,21 @@ function commonFromPlugin(raw: PluginListItemWire, categoryName: string) {
     creatorName: raw.creator_name ?? "",
     viewCount: raw.view_count ?? 0,
     installCount: raw.install_count ?? 0,
-    version: raw.current_version ?? "",
+    version: raw.published_version ?? raw.current_version ?? "",
+    dependencyIssues: mapDependencyIssues(raw.dependency_issues),
   };
+}
+
+export function mapDependencyIssues(
+  issues: PluginDependencyIssueWire[] | undefined
+): ExpertDependencyIssue[] | undefined {
+  return issues?.map((issue) => ({
+    targetPluginId: issue.target_plugin_id,
+    targetName: issue.target_name,
+    relationType: issue.relation_type,
+    reason: narrowDependencyReason(issue.reason),
+    via: issue.via,
+  }));
 }
 
 export function mapPluginAgentListItem(
@@ -381,11 +413,12 @@ export function mapPluginSquadListItem(
  *  their files directly as attachments; a legacy skill/ref.json pointer is still
  *  honored for not-yet-expanded rows. */
 export function fromSkillPlugin(
-  plugin: PluginDetailPluginWire
+  plugin: Pick<PluginDetailPluginWire, "plugin_id" | "plugin_name" | "plugin_json"> & Partial<PluginDetailPluginWire>,
+  versionId?: string
 ): import("../mock/expertMock").ExpertSkill {
   const ref = jsonAttachment<SkillRefWire>(plugin.plugin_json, "skill/ref.json") ?? {};
   const attachments = plugin.plugin_json?.attachments ?? [];
-  const inlineMd = rawAttachment(plugin.plugin_json, "SKILL.md") !== undefined;
+  const hasMarkdown = attachments.some(a => a.path === "SKILL.md");
   const isLegacy = attachments.some(
     (a) => a.path === "skill/ref.json" || a.path === "skill/package.zip"
   );
@@ -400,11 +433,11 @@ export function fromSkillPlugin(
   return {
     name: plugin.plugin_name ?? "",
     pluginId: plugin.plugin_id,
-    hasContent: inlineMd || !!ref.object_key,
+    hasContent: hasMarkdown || !!ref.object_key || !!ref.object_key_hash,
     // A tree skill is downloadable (the backend rebuilds a zip) when it carries
     // supporting files beyond SKILL.md; legacy skills need a resolvable pointer.
     canDownload: isLegacy
-      ? managedZip || !!ref.zip_object_key || !!ref.file_url
+      ? managedZip || !!ref.zip_object_key || !!ref.file_url || !!ref.zip_object_key_hash || !!ref.file_url_hash
       : treeFiles.length > 0,
     // Tree skills have no ref.json, so synthesize a download filename from the
     // plugin name (matching mapSkillDetail in the skill market); legacy skills
@@ -412,5 +445,10 @@ export function fromSkillPlugin(
     fileName: isLegacy ? ref.file_name : treeFiles.length > 0 ? `${plugin.plugin_name ?? "skill"}.zip` : undefined,
     fileSize: isLegacy ? ref.file_size : treeSize,
     files: isLegacy ? ref.files : treeFiles,
+    versionId,
+    version: versionId ? plugin.current_version : undefined,
+    summary: plugin.manifest_json?.description,
+    creatorName: plugin.creator_name,
+    botName: plugin.created_by_type === "bot" ? plugin.created_by_bot_name : undefined,
   };
 }

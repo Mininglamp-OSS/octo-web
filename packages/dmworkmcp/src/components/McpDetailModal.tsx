@@ -8,6 +8,7 @@ import { buildQuickStartTabs, TOKEN_PLACEHOLDER_RE } from "../api/quickStartTemp
 import type { McpDetail, McpQuickStart } from "../types/mcp";
 import { IconGlyph } from "../utils/icon";
 import { getMcpAvatarColor, getMcpAvatarText } from "../utils/mcpAvatar";
+import { dependencyIssueReasonKey } from "../api/expertWire";
 import { resolveOwner } from "./McpCard";
 import { isOfficialMcp } from "../utils/publisher";
 
@@ -381,6 +382,22 @@ const McpDetailModal: React.FC<McpDetailModalProps> = ({
           {/* Slogan / 简介 — 详情页空间够，不 clamp。 */}
           {detail.slogan && (
             <div className="wk-mcp-detail__slogan">{detail.slogan}</div>
+          )}
+          {detail.dependencyIssues && detail.dependencyIssues.length > 0 && (
+            <div className="wk-mcp-card__dependency-warning">
+              {t("mcp.card.dependencyWarning")}
+              <span className="wk-mcp-card__dependency-warning__detail">
+                {detail.dependencyIssues
+                  .map((issue) => {
+                    const reason = issue.reason
+                      ? t(`mcp.card.dependencyIssue.${dependencyIssueReasonKey(issue.reason)}`)
+                      : "";
+                    const target = issue.targetName || issue.targetPluginId;
+                    return reason ? `${target} · ${reason}` : target;
+                  })
+                  .join(", ")}
+              </span>
+            </div>
           )}
           {/* 工具数量：与卡片 footer 及 dmworkskillmarket 的 stats 一致。 */}
           <div className="wk-mcp-detail__stats">

@@ -6,6 +6,7 @@ import type { McpListItem } from "../types/mcp";
 import { t } from "@octo/base";
 import { IconGlyph } from "../utils/icon";
 import { getMcpAvatarColor, getMcpAvatarText } from "../utils/mcpAvatar";
+import { dependencyIssueReasonKey } from "../api/expertWire";
 import { isOfficialMcp } from "../utils/publisher";
 
 interface McpCardProps {
@@ -193,6 +194,22 @@ const McpCard: React.FC<McpCardProps> = ({ item, onClick, onConnect, onEdit, onD
         </div>
       </div>
       <div className="wk-mcp-card__slogan">{item.slogan}</div>
+      {item.dependencyIssues && item.dependencyIssues.length > 0 && (
+        <div className="wk-mcp-card__dependency-warning">
+          {t("mcp.card.dependencyWarning")}
+          <span className="wk-mcp-card__dependency-warning__detail">
+            {item.dependencyIssues
+              .map((issue) => {
+                const reason = issue.reason
+                  ? t(`mcp.card.dependencyIssue.${dependencyIssueReasonKey(issue.reason)}`)
+                  : "";
+                const target = issue.targetName || issue.targetPluginId;
+                return reason ? `${target} · ${reason}` : target;
+              })
+              .join(", ")}
+          </span>
+        </div>
+      )}
       <div className="wk-mcp-card__tags">
         {visibleTags.map((tag) => (
           <span key={tag} className="wk-mcp-tag">

@@ -23,6 +23,7 @@ export function reviewStatusLabel(status: ReviewStatus): string {
 }
 
 export function reviewKindLabel(kind: ReviewKind): string {
+  if (kind === "visibility") return t("skillMarket.review.kindVisibility");
   return kind === "upgrade"
     ? t("skillMarket.review.kindUpgrade")
     : t("skillMarket.review.kindFirst");

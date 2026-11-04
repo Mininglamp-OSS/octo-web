@@ -1,5 +1,6 @@
 {
   "common": {
+    "aiGeneratedNotice": "Content is AI-generated. Please verify it.",
     "add": "Add",
     "cancel": "Cancel",
     "close": "Close",
@@ -807,5 +808,15 @@
     "versionSaved": "Saved as version {{version}}",
     "targetUnavailable": "The original summary is unavailable. You can save your changes as a new summary.",
     "conflict": "The original summary has changed. Your draft is preserved. Save it as a new summary, or review the latest version before optimizing again."
+  },
+  "search": {
+    "count": "{{count}} results",
+    "titleMatch": "Title: ",
+    "topicMatch": "Topic: ",
+    "historicalRun": "Historical run · {{date}}",
+    "clear": "Clear search",
+    "limit": "Enter no more than {{count}} characters to search",
+    "noMatches": "No matching results in the current scope",
+    "searching": "Searching…"
   }
 }

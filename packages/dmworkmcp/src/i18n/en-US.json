@@ -26,6 +26,9 @@
     "deletedToast": "Deleted"
   },
   "expert": {
+    "versionless": "No version",
+    "versionPinned": "Pinned version",
+    "versionUnpinned": "Not pinned",
     "typeSquad": "Squads",
     "typeAgent": "Experts",
     "navAriaLabel": "Expert type",
@@ -49,7 +52,7 @@
     "botPublishHintAgent": "Copy the prompt below to an Agent — it will publish this expert.",
     "botUpdateTitle": "Update squad via Bot",
     "botUpdateTitleAgent": "Update expert via Bot",
-    "botUpdateHint": "Copy the prompt below to an Agent — it will apply your changes to the published listing.",
+    "botUpdateHint": "Forward this prompt to an Agent to save confirmed changes and submit publication. Automatic approval takes effect immediately; manual approval remains pending.",
     "memberCount": "{{count}} experts",
     "viewCountTitle": "{{count}} views",
     "installCountTitle": "Added to Loop {{count}} times",
@@ -117,7 +120,15 @@
     "mcpUnavailable": "MCP configuration cannot be shown safely",
     "skillsTitle": "Skills",
     "selfCreator": "Me",
-    "sortHottest": "Hottest"
+    "sortHottest": "Hottest",
+    "expertIdLabel": "Expert ID",
+    "teamIdLabel": "Team ID",
+    "copyId": "Copy ID",
+    "dependencyAuthor": "Author",
+    "dependencyUnknownAuthor": "Not provided",
+    "dependencyNoSummary": "No description provided",
+    "dependencyNoContent": "No files to preview",
+    "dependencyLegacyConfig": "MCP configuration"
   },
   "common": {
     "loadFailed": "Failed to load"
@@ -200,6 +211,7 @@
     "clear": "Clear"
   },
   "card": {
+    "dependencyWarning": "A dependency is unavailable",
     "officialPublisher": "Official publisher",
     "connect": "Add to Bot",
     "matchReason": {
@@ -218,7 +230,13 @@
     "edit": "Edit",
     "delete": "Delete",
     "viewCountTitle": "{{count}} views",
-    "installCountTitle": "{{count}} installs"
+    "installCountTitle": "{{count}} installs",
+    "dependencyIssue": {
+      "delisted": "delisted",
+      "deleted": "deleted",
+      "release_missing": "release missing",
+      "unknown": "unavailable"
+    }
   },
   "detail": {
     "title": "MCP Details",
@@ -396,7 +414,8 @@
     },
     "submit": "Submit",
     "success": "Created",
-    "failed": "Create failed"
+    "failed": "Create failed",
+    "nameTaken": "The name \"{{name}}\" already exists; rename it before creating"
   },
   "time": {
     "justNow": "just now",
@@ -405,6 +424,9 @@
     "daysAgo": "{{count}} days ago"
   },
   "review": {
+    "draftEditHint": "The Bot saves changes and submits publication under the organization review policy. Returning closes this dialog and refreshes the list. Check the Bot result for publication or pending review before submitting again.",
+    "versionMustExceedPublished": "The new version must be higher than the published version",
+    "refreshDraft": "Reload latest draft",
     "cancel": "Cancel",
     "relationsLoading": "Loading current items…",
     "relationsFrozen": "This submission freezes the current {{count}} item(s)",

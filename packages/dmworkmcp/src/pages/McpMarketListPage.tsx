@@ -758,6 +758,7 @@ export default class McpMarketListPage extends Component<
       name: item.name,
       description: item.slogan,
       category: item.category,
+      dependencyIssues: item.dependencyIssues,
       version: item.version,
       visibility: item.visibility,
       views: item.viewCount,
