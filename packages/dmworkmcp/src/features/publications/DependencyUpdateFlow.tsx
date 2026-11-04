@@ -102,6 +102,10 @@ export function DependencyUpdateFlow({
           });
         }
         if (token !== generation.current) return;
+        if (preserved && payload?.expected_draft_revision &&
+            updates.draft_revision && payload.expected_draft_revision !== updates.draft_revision) {
+          setError(t("skillMarket.publication.draftConflict"));
+        }
         setSource(updates);
         setDraft(payload ?? null);
         setVersion(preserved?.version ?? payload?.plugin.version ?? "1.0.0");
@@ -126,7 +130,7 @@ export function DependencyUpdateFlow({
   }, [pluginId, edited, listingState, attempt]);
   const changes = source?.updates.filter((u) => selected[u.plugin_id]) ?? [];
   async function run(skip: boolean) {
-    if (!source || busy) return;
+    if (!source || busy || error) return;
     const token = generation.current;
     setBusy(true);
     setError("");
@@ -226,6 +230,7 @@ export function DependencyUpdateFlow({
               variant="primary"
               disabled={
                 busy ||
+                Boolean(error) ||
                 !draft ||
                 !changes.length ||
                 !version.trim() ||

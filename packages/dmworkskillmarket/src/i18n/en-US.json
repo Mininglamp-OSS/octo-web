@@ -378,6 +378,7 @@
   "skillMarket.publication.invalidDependencies": "Unavailable dependencies",
   "skillMarket.publication.repairWithBot": "Fix the dependencies and publish again, or update the content with the Bot above.",
   "skillMarket.publication.editBeforeUpdates": "This resource is a draft or has been delisted. Edit its dependencies and publish it again.",
+  "skillMarket.publication.draftConflict": "The draft changed in another session. Your inputs are preserved here. Open the editor to reconcile the latest draft before submitting again.",
   "skillMarket.publication.updatesConflict": "The resource has changed. Reload its dependency updates, or edit and republish it if it was delisted.",
   "skillMarket.publication.editResource": "Edit resource",
   "skillMarket.publication.permissionDenied": "You do not have permission to change this resource. Refresh and try again.",

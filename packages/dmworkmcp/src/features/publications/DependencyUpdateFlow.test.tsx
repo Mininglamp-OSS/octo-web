@@ -262,7 +262,7 @@ it("explains a stale list state without showing the raw conflict message", async
 });
 
 it("reloads a conflict while keeping version, notes and dependency choices", async () => {
-  api.getUpdates.mockResolvedValue({ plugin_id: "expert", published_version_id: "e1", draft_revision: "current", updates: [...updates, { ...updates[0], plugin_id: "other", name: "Other" }] });
+  api.getUpdates.mockResolvedValue({ plugin_id: "expert", published_version_id: "e1", draft_revision: "original", updates: [...updates, { ...updates[0], plugin_id: "other", name: "Other" }] });
   api.adoptUpdates.mockRejectedValueOnce({ status: 409, msg: "stale target" });
   await mount();
   await act(async () => {
@@ -276,4 +276,38 @@ it("reloads a conflict while keeping version, notes and dependency choices", asy
   expect((container.querySelectorAll('input:not([type="checkbox"])')[0] as HTMLInputElement).value).toBe("1.0.2");
   expect((container.querySelectorAll('input:not([type="checkbox"])')[1] as HTMLInputElement).value).toBe("Keep my notes");
   expect((container.querySelectorAll('input[type="checkbox"]')[1] as HTMLInputElement).checked).toBe(false);
+  await click("skillMarket.publication.confirmUpdate");
+  expect(api.adoptUpdates).toHaveBeenCalledTimes(2);
+  expect(api.adoptUpdates.mock.calls[1][3].expected_draft_revision).toBe("original");
+});
+
+it.each(["list", "editor"])("keeps a changed draft in explicit conflict after retry from %s", async (entry) => {
+  api.getUpdates.mockResolvedValueOnce({
+    published_version_id: "e1", draft_revision: "original", updates,
+  }).mockResolvedValue({
+    published_version_id: "e1", draft_revision: "new-revision", updates,
+  });
+  api.getDraft.mockResolvedValue({
+    draft_revision: "original", relations: draft.relations,
+    plugin: { ...draft.plugin, plugin_name: "Expert", current_version: "1.0.1" },
+  });
+  api.getInstruction.mockResolvedValue("Instructions");
+  api.adoptUpdates.mockRejectedValueOnce({ status: 409 });
+  const edit = vi.fn();
+  await mount({ draft: entry === "editor" ? draft : undefined, onEdit: edit });
+  await click("skillMarket.publication.confirmUpdate");
+  api.getDraft.mockResolvedValue({
+    draft_revision: "new-revision", relations: draft.relations,
+    plugin: { ...draft.plugin, plugin_name: "Concurrent edit", current_version: "1.0.1" },
+  });
+  await click("skillMarket.list.retry");
+  expect(container.textContent).toContain("skillMarket.publication.draftConflict");
+  const confirm = Array.from(container.querySelectorAll("button")).find(
+    button => button.textContent === "skillMarket.publication.confirmUpdate"
+  )!;
+  expect(confirm.disabled).toBe(true);
+  await click("skillMarket.publication.confirmUpdate");
+  expect(api.adoptUpdates).toHaveBeenCalledOnce();
+  await click("skillMarket.publication.editResource");
+  expect(edit).toHaveBeenCalledOnce();
 });
