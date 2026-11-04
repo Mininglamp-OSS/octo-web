@@ -5,10 +5,11 @@ import type { Page } from "@playwright/test";
 /** S16: Summary 详情按意见调整. */
 export async function registerS16SummaryDetailRefine(
   page: Page,
-  conflict = false
+  conflict = false,
+  capabilityMode: "enabled" | "disabled" | "not-found" | "unsupported" = "enabled"
 ): Promise<void> {
   await page.evaluate(
-    ({ conflict }) => {
+    ({ conflict, capabilityMode }) => {
       type MSW = {
         worker: { use: (...h: unknown[]) => void };
         http: {
@@ -101,6 +102,12 @@ export async function registerS16SummaryDetailRefine(
         },
       };
 
+      if (capabilityMode === "not-found") {
+        listItem.trigger_type = 3;
+        delete (listItem as any).referenceable;
+        detail.trigger_type = 3;
+        delete (detail as any).referenceable;
+      }
       const state = {
         targetCalls: 0,
         saves: [] as Array<{ body: any; key: string | null }>,
@@ -116,7 +123,8 @@ export async function registerS16SummaryDetailRefine(
       };
       worker.use(
         http.get("*/summary/api/v1/summary-workbench/capabilities", () =>
-          env({ enabled: true, contract_version: "2", max_time_range_days: 90 })
+          capabilityMode === "not-found" ? HttpResponse.json({code:404,message:"not found"}, {status:404}) :
+          env({ enabled: capabilityMode !== "disabled", contract_version: capabilityMode === "unsupported" ? "unsupported" : "2", max_time_range_days: 90 })
         ),
         http.get("*/summary/api/v1/summary-templates", () =>
           env({ templates: [], custom_template_limit: 30 })
@@ -160,6 +168,16 @@ export async function registerS16SummaryDetailRefine(
             },
           })
         ),
+        http.post("*/summary/api/v1/summaries/16016/refine/stream", async ({request}: any) => {
+          const input = await request.json();
+          if (input.feedback !== "S16 原任务调整" || input.base_result_id !== detail.result_id) {
+            return HttpResponse.json({code:40001,message:"invalid original-task refinement"}, {status:400});
+          }
+          detail.result.content = "S16 已更新原任务";
+          detail.result.version = 2;
+          const result = {type:"done",result_id:160162,version:2,content:detail.result.content,citations:[],team_citations:[]};
+          return HttpResponse.text(`event: done\ndata: ${JSON.stringify(result)}\n\n`, {headers:{"content-type":"text/event-stream"}});
+        }),
         http.post(
           "*/summary/api/v1/agent/chat/stream",
           async ({ request }: any) => {
@@ -239,6 +257,6 @@ export async function registerS16SummaryDetailRefine(
         )
       );
     },
-    { conflict }
+    { conflict, capabilityMode }
   );
 }

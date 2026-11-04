@@ -1,3 +1,4 @@
+import { summaryWorkbenchAvailability } from "../features/summaryWorkbench/availability";
 import AiGeneratedNotice from "../ui/AiGeneratedNotice";
 import React, { Component } from "react";
 import {
@@ -2557,10 +2558,17 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
      * 用户在新 chat 里聊完保存后:①出现的是全新总结(和当前总结平级) ②当前
      * 总结不变 ③新总结的 SummaryTask.referenced_task_ids 记录来源。
      */
-    handleContinueRefine = () => {
+    handleContinueRefine = async () => {
         const { detail } = this.state;
         if (!detail) return;
         if (!this.canRefineCurrentDetail()) {
+            this.handleRegenerate();
+            return;
+        }
+        const spaceId = WKApp.shared?.currentSpaceId || "";
+        const availability = await summaryWorkbenchAvailability.resolve(spaceId);
+        if (this.unmounted || this.state.detail?.task_id !== detail.task_id || (WKApp.shared?.currentSpaceId || "") !== spaceId) return;
+        if (!availability.enabled) {
             this.handleRegenerate();
             return;
         }

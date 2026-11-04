@@ -111,3 +111,22 @@ test.describe("@S16 @p0 @summary @detail @summary-refine S16 — 继续优化保
     );
   }
 });
+
+test.describe("original-task optimization fallback", () => {
+  for (const capability of ["disabled", "not-found", "unsupported"] as const) {
+    test(`updates original task when workbench is ${capability}`, async ({authedPage}) => {
+      await registerS16SummaryDetailRefine(authedPage, false, capability);
+      await authedPage.getByRole("button", {name:"智能总结"}).click();
+      await authedPage.getByText("S16 可调整总结", {exact:true}).click();
+      await authedPage.getByTestId(T.detailContinueRefineBtn).click();
+      const input = authedPage.locator("#summary-regenerate-input");
+      await expect(input).toBeVisible();
+      await input.fill("S16 原任务调整");
+      await authedPage.getByTestId("summary-regenerate-submit-btn").click();
+      await expect(authedPage.getByText("S16 已更新原任务", {exact:true})).toBeVisible();
+      const state = await authedPage.evaluate(() => (window as any).__s16State__);
+      expect(state.saves).toHaveLength(0);
+      await expect(authedPage.getByTestId(T.detailTitle)).toContainText("S16 可调整总结");
+    });
+  }
+});

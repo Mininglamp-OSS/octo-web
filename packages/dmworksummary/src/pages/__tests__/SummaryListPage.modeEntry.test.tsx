@@ -1,3 +1,4 @@
+import { summaryWorkbenchAvailability } from "../../features/summaryWorkbench/availability";
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -227,30 +228,41 @@ describe('SummaryListPage mode entry navigation', () => {
         expect(onCreateNew).toHaveBeenCalledWith('unified');
     });
 
-    it('opens Agent continue optimization with the selected summary as reference', () => {
+    it('opens Agent continue optimization with the selected summary as reference', async () => {
+        vi.spyOn(summaryWorkbenchAvailability, 'resolve').mockResolvedValue({enabled: true} as any);
         const page = makePage();
         const task = { task_id: 42, title: 'Agent summary' };
         (page as any).state = { ...(page as any).state, items: [task] };
         const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
 
-        (page as any).handleContinueOptimize(42);
+        await (page as any).handleContinueOptimize(42);
 
         const event = dispatchSpy.mock.calls[0][0] as CustomEvent;
         expect(event.type).toBe('summary-open-chat-with-reference');
         expect(event.detail).toBe(task);
     });
 
-    it('delegates Agent continue optimization to the panel host when provided', () => {
+    it('delegates Agent continue optimization to the panel host when provided', async () => {
+        vi.spyOn(summaryWorkbenchAvailability, 'resolve').mockResolvedValue({enabled: true} as any);
         const onContinueOptimize = vi.fn();
         const page = makePage({ onContinueOptimize });
         const task = { task_id: 42, title: 'Agent summary' };
         (page as any).state = { ...(page as any).state, items: [task] };
         const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
 
-        (page as any).handleContinueOptimize(42);
+        await (page as any).handleContinueOptimize(42);
 
         expect(onContinueOptimize).toHaveBeenCalledWith(task);
         expect(dispatchSpy).not.toHaveBeenCalled();
+    });
+
+    it("routes a disabled workbench optimization to the original-task action", async () => {
+        vi.spyOn(summaryWorkbenchAvailability, "resolve").mockResolvedValueOnce({enabled:false} as any);
+        const page = makePage();
+        page.state.items = [{task_id:42,referenceable:true,trigger_type:TriggerType.AGENT}] as any;
+        const originalAction = vi.spyOn(page, "handleRegenerate").mockImplementation(() => {});
+        await page.handleContinueOptimize(42);
+        expect(originalAction).toHaveBeenCalledWith(42);
     });
 
     it('fail-closed Legacy entry keeps normal and Agent choices in the original dropdown', () => {

@@ -1,3 +1,5 @@
+import { SummaryWorkbenchAvailability, summaryWorkbenchAvailability } from "../../features/summaryWorkbench/availability";
+import { SummaryWorkspaceApiError } from "../../bridge/summaryWorkbench/protocol";
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 vi.mock("../../components/ChatSelectorModal", () => ({ default: () => null }));
 vi.mock("../../components/TimeRangePicker", () => ({ default: () => null }));
@@ -3955,5 +3957,34 @@ describe("version-specific source metadata", () => {
     const page = makePage(1);
     const result = (page as any).renderSourceMetadata([{source_type: 1, source_id: "old-group", source_name: "Old group"}]);
     expect(result).not.toBeNull();
+  });
+});
+
+describe("completed-summary optimization capability fallback", () => {
+  it.each(["disabled", "not-found", "unsupported"] as const)("updates the original task when capability is %s", async (mode) => {
+    const source = {getCapabilities: vi.fn().mockImplementation(async () => {
+      if (mode === "not-found") throw new SummaryWorkspaceApiError({message:"not found",kind:"transport",httpStatus:404});
+      return {enabled: mode !== "disabled",contract_version:mode === "unsupported" ? "unsupported" : "2",
+        max_time_range_days:90,direct_team_workflow:false,mixed_sources:false};
+    })};
+    const availability = new SummaryWorkbenchAvailability(source);
+    const resolve = vi.spyOn(summaryWorkbenchAvailability, "resolve").mockImplementation((space, options) => availability.resolve(space, options));
+    const page = makePage(1);
+    page.state.detail = baseDetail({status:TaskStatus.COMPLETED,trigger_type:TriggerType.AGENT,
+      referenceable:mode === "not-found" ? undefined : true,result_id:77,result:{id:77,content:"Original body",version:1,citations:[]}});
+    const onContinue = vi.spyOn(window,"dispatchEvent");
+    vi.mocked(api.streamRefineSummary).mockImplementation(async (_task, _body, options) => {
+      options.onEvent({type:"done",result_id:78,version:2,content:"Updated original",citations:[]} as any);
+    });
+    try {
+      await page.handleContinueRefine();
+      expect(page.state.showRegenerateModal).toBe(true);
+      expect(onContinue).not.toHaveBeenCalled();
+      page.state.refineFeedback = "Shorten";
+      await page.handleRegenerateConfirm();
+      expect(api.streamRefineSummary).toHaveBeenCalledWith(1,expect.objectContaining({base_result_id:77}),expect.anything());
+      expect(page.state.detail?.task_id).toBe(1);
+      expect(page.state.detail?.result?.content).toBe("Updated original");
+    } finally { resolve.mockRestore(); onContinue.mockRestore(); }
   });
 });

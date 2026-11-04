@@ -1,3 +1,4 @@
+import { summaryWorkbenchAvailability } from "../features/summaryWorkbench/availability";
 import { SUMMARY_SEARCH_MAX_CHARACTERS, summarySearchTooLong } from "../utils/summarySearch";
 import React, { Component } from "react";
 import { Button, Dropdown, Spin, Toast, Banner } from "@douyinfe/semi-ui";
@@ -884,9 +885,16 @@ export default class SummaryListPage extends Component<
         this.handleCardClick(taskId);
     };
 
-    handleContinueOptimize = (taskId: number) => {
+    handleContinueOptimize = async (taskId: number) => {
         const task = this.state.items.find(item => item.task_id === taskId);
         if (!task) return;
+        const spaceId = WKApp.shared?.currentSpaceId || "";
+        const availability = await summaryWorkbenchAvailability.resolve(spaceId);
+        if (!this.isMounted_ || (WKApp.shared?.currentSpaceId || "") !== spaceId) return;
+        if (!availability.enabled) {
+            this.handleRegenerate(taskId);
+            return;
+        }
         if (this.props.onContinueOptimize) {
             this.props.onContinueOptimize(task);
             return;

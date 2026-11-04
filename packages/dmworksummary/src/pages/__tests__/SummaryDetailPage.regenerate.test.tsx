@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import React from "react";
+import { summaryWorkbenchAvailability } from "../../features/summaryWorkbench/availability";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../components/ChatSelectorModal", () => ({ default: () => null }));
 vi.mock("../../components/TimeRangePicker", () => ({ default: () => null }));
@@ -275,7 +276,8 @@ describe("SummaryDetailPage regenerate dialog", () => {
         expect(api.saveGenerationConfig).not.toHaveBeenCalled();
     });
 
-  it("delegates continue-refine and confirmation navigation when controlled", () => {
+  it("delegates continue-refine and confirmation navigation when controlled", async () => {
+    vi.spyOn(summaryWorkbenchAvailability, "resolve").mockResolvedValueOnce({enabled:true} as any);
     const onContinueRefine = vi.fn();
     const onViewConfirm = vi.fn();
     const page = makePage({ onContinueRefine, onViewConfirm });
@@ -284,7 +286,7 @@ describe("SummaryDetailPage regenerate dialog", () => {
       detail: { ...page.state.detail, referenceable: true },
     } as any;
 
-    page.handleContinueRefine();
+    await page.handleContinueRefine();
     (page as any).handleViewConfirm();
 
     expect(onContinueRefine).toHaveBeenCalledWith(
