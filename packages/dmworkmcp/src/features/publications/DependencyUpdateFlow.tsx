@@ -263,7 +263,7 @@ export function DependencyUpdateFlow({
           }}>
             {t("skillMarket.publication.editResource")}
           </WKButton>}
-          {error && (!listingState || listingState === "published") && <WKButton variant="secondary" onClick={() => {
+          {error && (!listingState || listingState === "published") && <WKButton variant="secondary" disabled={busy} onClick={() => {
             if (source && draft) reloadEdits.current = { pluginId, version, notes, selected, draft, versions: chosenVersions };
             setAttempt(value => value + 1);
           }}>

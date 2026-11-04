@@ -501,3 +501,28 @@ it.each(["resolve", "reject"])("ignores stale recovery %s after Space navigation
   await act(async () => finish());
   expect(cb.onClose).toHaveBeenCalledOnce();
 });
+
+it.each(["resolve", "reject"])("blocks Retry during pending edit recovery until it %s", async outcome => {
+  let finish!: () => void;
+  const pending = new Promise<void>((resolve, reject) => {
+    finish = outcome === "resolve" ? resolve : () => reject(new Error("edit failed"));
+  });
+  api.adoptUpdates.mockRejectedValueOnce({ status: 409 });
+  const cb = await mount({ onEdit: () => pending });
+  await click("skillMarket.publication.confirmUpdate");
+  await click("skillMarket.publication.editResource");
+  const retry = Array.from(container.querySelectorAll("button")).find(button => button.textContent === "skillMarket.list.retry")!;
+  expect(retry.disabled).toBe(true);
+  await act(async () => retry.click());
+  expect(api.getUpdates).toHaveBeenCalledOnce();
+  await act(async () => finish());
+  if (outcome === "resolve") expect(cb.onClose).toHaveBeenCalledOnce();
+  else {
+    expect(cb.onClose).not.toHaveBeenCalled();
+    const cancel = Array.from(container.querySelectorAll("button")).find(button => button.textContent === "skillMarket.common.cancel")!;
+    expect(cancel.disabled).toBe(false);
+    expect(retry.disabled).toBe(false);
+    await click("skillMarket.list.retry");
+    expect(api.getUpdates).toHaveBeenCalledTimes(2);
+  }
+});
