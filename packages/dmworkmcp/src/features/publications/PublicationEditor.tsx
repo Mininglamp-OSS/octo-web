@@ -149,15 +149,23 @@ export function PublicationEditor({
         // once, against the draft just loaded, so the author compares real
         // values instead of the empty form defaults.
         const wanted = pendingRecovery.current;
-        pendingRecovery.current = undefined;
         if (
           wanted &&
           (wanted.version !== null ||
             wanted.changelog !== null ||
             Object.keys(wanted.versions).length > 0)
         ) {
-          void reconcile(wanted, loaded);
+          setReconciliation({
+            latest: value, dependencies, remote: loaded,
+            local: {
+              ...loaded,
+              version: wanted.version ?? loaded.version,
+              changelog: wanted.changelog ?? loaded.changelog,
+              versions: { ...loaded.versions, ...wanted.versions },
+            },
+          });
         }
+        pendingRecovery.current = undefined;
       })
       .catch((err) => {
         if (token === generation.current)

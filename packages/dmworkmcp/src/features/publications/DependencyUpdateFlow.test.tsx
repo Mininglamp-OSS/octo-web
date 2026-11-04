@@ -35,8 +35,8 @@ vi.mock("@dmwork/skillmarket/src/Service/PublicationService", () => ({
   PublicationService: api,
 }));
 vi.mock("../../ui/PublicationEditor", () => ({
-  PublicationEditorFields: ({ onShowUpdates }: { onShowUpdates: () => void }) => (
-    <button onClick={onShowUpdates}>View updates</button>
+  PublicationEditorFields: ({ onShowUpdates, onRetry, error }: any) => (
+    <><button onClick={onShowUpdates}>View updates</button>{error && <p>{error}</p>}<button onClick={onRetry}>Retry editor</button></>
   ),
 }));
 import { PublicationEditor } from "./PublicationEditor";
@@ -446,6 +446,39 @@ it("reconciles recovery passed by a list with the freshly loaded editor draft", 
   await click("skillMarket.plugin.actionSaveDraft");
   expect(api.saveDraft.mock.calls[0][1]).toMatchObject({
     expected_draft_revision: "latest", changelog: "List notes", plugin: { version: "1.0.3" },
+    relations: [expect.objectContaining({ target_version_id: "s2" })],
+  });
+});
+
+it.each(["delayed", "failed"])("keeps list recovery safe during %s draft initialization", async mode => {
+  const value = {
+    draft_revision: "latest", draft_changelog: "Server notes", relations: draft.relations,
+    plugin: { ...draft.plugin, plugin_name: "Expert", visibility: "space", current_version: "1.0.1", published_version: "1.0.0" },
+  };
+  const recovery = { version: "1.0.9", changelog: "Retained list notes", versions: { skill: "s2" } };
+  let complete!: (value: any) => void;
+  api.getDraft.mockResolvedValue(value);
+  if (mode === "failed") api.getDependencies.mockRejectedValueOnce(new Error("read failed")).mockResolvedValue([]);
+  else api.getDependencies.mockImplementationOnce(() => new Promise(resolve => { complete = resolve; }));
+  api.getInstruction.mockResolvedValue("Instructions");
+  api.saveDraft.mockResolvedValue(value);
+  await act(async () => {
+    ReactDOM.render(<PublicationEditor item={{ id: "expert" } as any} recovery={recovery} onSaved={vi.fn()} onClose={vi.fn()} onEditContent={vi.fn()} />, container);
+  });
+  await click("skillMarket.plugin.actionSaveDraft");
+  await click("skillMarket.publication.publishNewVersion");
+  expect(api.saveDraft).not.toHaveBeenCalled();
+  if (mode === "failed") {
+    expect(container.textContent).toContain("skillMarket.common.loadFailed");
+    // The mock field component exposes the editor's normal retry action.
+    await click("Retry editor");
+  } else await act(async () => complete([]));
+  expect(container.textContent).toContain("Retained list notes");
+  expect(api.getDraft).toHaveBeenCalledTimes(mode === "failed" ? 2 : 1);
+  await click("skillMarket.publication.keepLocal");
+  await click("skillMarket.plugin.actionSaveDraft");
+  expect(api.saveDraft.mock.calls[0][1]).toMatchObject({
+    expected_draft_revision: "latest", changelog: "Retained list notes", plugin: { version: "1.0.9" },
     relations: [expect.objectContaining({ target_version_id: "s2" })],
   });
 });

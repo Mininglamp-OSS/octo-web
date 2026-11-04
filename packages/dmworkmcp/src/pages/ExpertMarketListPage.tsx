@@ -426,6 +426,7 @@ export default function ExpertMarketListPage({
       if (generation === editGeneration.current) setEditItem({ ...draft, dependencyIssues: draft.dependencyIssues ?? item.dependencyIssues, dependencySuspended: draft.dependencySuspended ?? item.dependencySuspended });
     } catch (err) {
       if (generation === editGeneration.current) {
+        if (recovery) throw err;
         setEditRecovery(null);
         showToast(err instanceof Error ? err.message : t("mcp.expert.loadError"));
       }
@@ -943,13 +944,13 @@ export default function ExpertMarketListPage({
         onClose={() => setBotEditTarget(null)}
         onToast={showToast}
       />
-      {dependencyTarget&&<DependencyUpdateFlow pluginId={dependencyTarget.id} listingState={dependencyTarget.listingState} onEdit={(recovery)=>void handleEdit(dependencyTarget, recovery)} pending={dependencyTarget.displayStatus==="pending_review"} onClose={()=>setDependencyTarget(null)} onSaved={message=>{showToast(message);reload()}}/>}
+      {dependencyTarget&&<DependencyUpdateFlow pluginId={dependencyTarget.id} listingState={dependencyTarget.listingState} onEdit={(recovery)=>handleEdit(dependencyTarget, recovery)} pending={dependencyTarget.displayStatus==="pending_review"} onClose={()=>setDependencyTarget(null)} onSaved={message=>{showToast(message);reload()}}/>}
       <VisibilityModal target={visibilityTarget} pluginId={visibilityId} onClose={() => setVisibilityId(null)} onSaved={handleListingChanged} />
       <ExpertEditModal
         item={editItem}
         recovery={editRecovery ?? undefined}
         onClose={() => { setEditItem(null); setEditRecovery(null); }}
-        onSaved={() => { setEditRecovery(null); handleListingChanged(); }}
+        onSaved={message => { setEditRecovery(null); handleListingChanged(message); }}
         onEditContent={handleEditContent}
       />
       <ExpertDeleteConfirmModal

@@ -9,6 +9,7 @@ import type { MineRow } from "@dmwork/skillmarket";
 
 const api = vi.hoisted(() => ({
   recoveryControls: false,
+  realRecovery: false,
   listExperts: vi.fn(),
   listSquads: vi.fn(),
   listMyExperts: vi.fn(),
@@ -34,6 +35,8 @@ const reviews = vi.hoisted(() => ({ useReviewRequests: vi.fn(), refresh: vi.fn()
 vi.mock("../api/expertService", () => api);
 vi.mock("@octo/base", () => ({
   WKApp: { mittBus: bus, remoteConfig: recruitment.config },
+  WKInput: ({ value, onChange }: any) => <input value={value} onChange={event => onChange(event.target.value)} />,
+  WKModal: ({ children, footer }: any) => <section>{children}{footer}</section>,
   useI18n: () => undefined,
   t: (key: string, options?: { values?: Record<string, unknown> }) =>
     options?.values ? `${key}:${JSON.stringify(options.values)}` : key,
@@ -53,6 +56,8 @@ vi.mock("@douyinfe/semi-ui", () => ({
 }));
 vi.mock("@dmwork/skillmarket", async () => ({
   VisibilityModal: () => null,
+  nextPatch: (await import("../../../dmworkskillmarket/src/utils/version")).nextPatch,
+  upgradeVersionErrorKey: (await import("../../../dmworkskillmarket/src/utils/version")).upgradeVersionErrorKey,
   deriveSkillReviewState: (await import("../../../dmworkskillmarket/src/utils/review")).deriveSkillReviewState,
   useReviewRequests: reviews.useReviewRequests,
   MineTable: ({ rows }: { rows: MineRow[] }) => (
@@ -89,9 +94,15 @@ vi.mock("../components/ExpertAddToLoopModal", () => ({
 vi.mock("../components/ExpertEditModal", () => ({ default: ({ item, recovery }: { item?: ExpertItem; recovery?: unknown }) => item ? <div data-edited-notes={item.draftChangelog} data-recovery={JSON.stringify(recovery)} /> : null }));
 vi.mock("../components/ReviewSubmitModal", () => ({ default: () => null }));
 
-vi.mock("../features/publications/DependencyUpdateFlow", () => ({
-  DependencyUpdateFlow: ({ onEdit }: any) => <button onClick={() => onEdit({ version: "1.0.3", changelog: "List notes", versions: { skill: "s2" } })}>recover</button>,
-}));
+const flow = vi.hoisted(() => ({ getUpdates: vi.fn(), getDraft: vi.fn(), getInstruction: vi.fn(), adoptUpdates: vi.fn() }));
+vi.mock("@dmwork/skillmarket/src/Service/PublicationService", () => ({ PublicationService: flow }));
+vi.mock("../features/publications/DependencyUpdateFlow", async importOriginal => {
+  const actual = await importOriginal<typeof import("../features/publications/DependencyUpdateFlow")>();
+  return {
+    DependencyUpdateFlow: (props: any) => api.realRecovery ? <actual.DependencyUpdateFlow {...props} />
+      : <button onClick={() => props.onEdit({ version: "1.0.3", changelog: "List notes", versions: { skill: "s2" } })}>recover</button>,
+  };
+});
 import ExpertMarketListPage from "./ExpertMarketListPage";
 import { EXPERT_CATEGORIES } from "../mock/expertMock";
 
@@ -182,6 +193,7 @@ function scrollLoadMore(parent: ParentNode = root) {
 
 beforeEach(() => {
   api.recoveryControls = false;
+  api.realRecovery = false;
   recruitment.config.dmloopOn = false;
   observers.length = 0;
   vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
@@ -783,4 +795,32 @@ it("passes recovery through the real expert-list edit callback", async () => {
   await clickText("updates");
   await clickText("recover");
   expect(JSON.parse(root.querySelector('[data-recovery]')!.getAttribute('data-recovery')!)).toEqual({ version: "1.0.3", changelog: "List notes", versions: { skill: "s2" } });
+});
+
+it("awaits list metadata hydration and retains the actual recovery dialog after failure", async () => {
+  api.recoveryControls = true;
+  api.realRecovery = true;
+  const item = { ...records[0], visibility: "private", listingState: "published", displayStatus: "published" } as ExpertItem;
+  api.listMyExperts.mockResolvedValue({ items: [item], total: 1 });
+  api.getExpertEditMetadata.mockRejectedValueOnce(new Error("metadata unavailable")).mockResolvedValue(item);
+  flow.getUpdates.mockResolvedValue({ updates: [{ plugin_id: "skill", plugin_type: "skill", name: "Skill", target_version_id: "s2", target_version: "1.0.1", from_version: "1.0.0" }] });
+  flow.getDraft.mockResolvedValue({ draft_revision: "r1", relations: [{ target_plugin_id: "skill", target_version_id: "s1", relation_type: "expert_skill" }], plugin: { plugin_id: item.id, plugin_name: item.name, current_version: "1.0.1", manifest_json: {} } });
+  flow.getInstruction.mockResolvedValue("Instructions");
+  flow.adoptUpdates.mockRejectedValue({ status: 409 });
+  await render({ variant: "mine", mineType: "agent" });
+  click(button("updates"));
+  await tick();
+  await act(async () => {
+    Simulate.change(root.querySelectorAll('section input:not([type="checkbox"])')[0], { target: { value: "1.0.9" } } as any);
+    Simulate.change(root.querySelectorAll('section input:not([type="checkbox"])')[1], { target: { value: "Keep notes" } } as any);
+  });
+  click(button("skillMarket.publication.confirmUpdate"));
+  await tick();
+  click(button("skillMarket.publication.editResource"));
+  await tick();
+  expect(root.querySelector('[data-recovery]')).toBeNull();
+  expect((root.querySelectorAll('section input:not([type="checkbox"])')[1] as HTMLInputElement).value).toBe("Keep notes");
+  click(button("skillMarket.publication.editResource"));
+  await tick();
+  expect(JSON.parse(root.querySelector('[data-recovery]')!.getAttribute("data-recovery")!)).toEqual({ version: "1.0.9", changelog: "Keep notes", versions: { skill: "s2" } });
 });
