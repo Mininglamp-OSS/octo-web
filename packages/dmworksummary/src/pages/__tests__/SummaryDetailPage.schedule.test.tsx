@@ -242,7 +242,7 @@ describe('shared detail actions after navigation', () => {
         vi.mocked(api.getPersonalResult).mockReturnValue(new Promise(resolve => { resolvePersonal = resolve; }));
         vi.mocked(api.getMembers).mockResolvedValue([]);
         const page = makePage(1);
-        const optimize = vi.spyOn(page, "handleContinueRefine").mockImplementation(() => {});
+        const optimize = vi.spyOn(page, "handleContinueRefine").mockImplementation(async () => {});
         requestSummaryDetailAction(1, WKApp.shared.currentSpaceId, 'regenerate');
         const loading = page.loadDetail();
         expect(page.state.showRegenerateModal).toBe(false);
@@ -4026,4 +4026,28 @@ describe("historical preview source identity", () => {
       expect(current).not.toContain("historical-source-A");
     });
   }
+});
+
+
+describe("read-only reference optimization fallback", () => {
+  it.each(["disabled", "not-found", "unsupported"] as const)("preserves independent-copy entry when capability is %s", async (mode) => {
+    const source = {getCapabilities: vi.fn().mockImplementation(async () => {
+      if (mode === "not-found") throw new SummaryWorkspaceApiError({message:"not found",kind:"transport",httpStatus:404});
+      return {enabled: mode !== "disabled",contract_version:mode === "unsupported" ? "unsupported" : "2",
+        max_time_range_days:90,direct_team_workflow:false,mixed_sources:false};
+    })};
+    const availability = new SummaryWorkbenchAvailability(source);
+    const resolve = vi.spyOn(summaryWorkbenchAvailability, "resolve").mockImplementation((space, options) => availability.resolve(space, options));
+    const page = makePage(1);
+    page.state.detail = baseDetail({status:TaskStatus.COMPLETED,summary_mode:SummaryMode.BY_GROUP,
+      creator_id:"another-user", referenceable:true, result_id:77,
+      permissions:{can_edit:false,can_edit_team:false,can_edit_personal:true}});
+    const events = vi.spyOn(window, "dispatchEvent");
+    try {
+      await page.handleContinueRefine();
+      expect(page.state.showRegenerateModal).toBe(false);
+      const event = events.mock.calls.map(([event]) => event).find(event => event.type === "summary-open-chat-with-reference") as CustomEvent;
+      expect(event?.detail.task_id).toBe(1);
+    } finally { resolve.mockRestore(); events.mockRestore(); }
+  });
 });

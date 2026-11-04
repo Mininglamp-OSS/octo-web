@@ -130,3 +130,31 @@ test.describe("original-task optimization fallback", () => {
     });
   }
 });
+
+
+test.describe("read-only reference-copy fallback", () => {
+  for (const capability of ["disabled", "not-found", "unsupported"] as const) {
+    test(`preserves independent-copy optimization when workbench is ${capability}`, async ({authedPage}) => {
+      await registerS16SummaryDetailRefine(authedPage, false, capability, true);
+      await authedPage.getByRole("button", {name:"智能总结"}).click();
+      await authedPage.getByText("S16 可调整总结", {exact:true}).click();
+      await authedPage.getByTestId(T.detailContinueRefineBtn).click();
+      await expect(authedPage.locator("#summary-regenerate-input")).toHaveCount(0);
+      await expect(authedPage.getByTestId(T.agentRefCard)).toContainText("S16 可调整总结");
+      await authedPage.getByTestId(T.agentInput).fill("S16 只读副本优化");
+      await authedPage.getByTestId(T.agentSendBtn).click();
+      await expect(authedPage.getByText("S16 已按意见调整正文", {exact:true})).toBeVisible();
+      await authedPage.getByTestId(T.agentSaveBtn).click();
+      await authedPage.getByTestId(T.agentSaveTitleInput).fill("S16 独立副本");
+      await authedPage.getByTestId(T.agentSaveConfirmBtn).click();
+      await expect(authedPage.getByTestId(T.detailTitle)).toContainText("S16 独立副本");
+      const state = await authedPage.evaluate(() => (window as any).__s16State__);
+      expect(state.saves).toHaveLength(1);
+      expect(state.saves[0].body.referenced_task_ids).toEqual([16016]);
+      expect(state.saves[0].body.target).toBeUndefined();
+      expect(state.saves[0].body.save_mode).not.toBe("new_version");
+      const original = await authedPage.evaluate(async () => (await (await fetch("/summary/api/v1/summaries/16016")).json()).data);
+      expect(original.result.content).toContain("S16 原始正文内容");
+    });
+  }
+});

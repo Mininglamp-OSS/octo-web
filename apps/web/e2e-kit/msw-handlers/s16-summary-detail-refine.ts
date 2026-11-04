@@ -6,10 +6,11 @@ import type { Page } from "@playwright/test";
 export async function registerS16SummaryDetailRefine(
   page: Page,
   conflict = false,
-  capabilityMode: "enabled" | "disabled" | "not-found" | "unsupported" = "enabled"
+  capabilityMode: "enabled" | "disabled" | "not-found" | "unsupported" = "enabled",
+  readOnly = false
 ): Promise<void> {
   await page.evaluate(
-    ({ conflict, capabilityMode }) => {
+    ({ conflict, capabilityMode, readOnly }) => {
       type MSW = {
         worker: { use: (...h: unknown[]) => void };
         http: {
@@ -102,6 +103,13 @@ export async function registerS16SummaryDetailRefine(
         },
       };
 
+      if (readOnly) {
+        listItem.creator_id = "another-user";
+        detail.creator_id = "another-user";
+        detail.permissions.can_edit = false;
+        detail.permissions.can_edit_team = false;
+        detail.permissions.can_edit_personal = true;
+      }
       if (capabilityMode === "not-found") {
         listItem.trigger_type = 3;
         delete (listItem as any).referenceable;
@@ -182,6 +190,10 @@ export async function registerS16SummaryDetailRefine(
           "*/summary/api/v1/agent/chat/stream",
           async ({ request }: any) => {
             const input = await request.json();
+            if (readOnly) {
+              if (input.message !== "S16 只读副本优化") return HttpResponse.json({code:40001,message:"invalid copy turn"}, {status:400});
+              return HttpResponse.text(`event: done\ndata: ${JSON.stringify({reply:"S16 已按意见调整正文",session_id:input.session_id})}\n\n`, {headers:{"content-type":"text/event-stream"}});
+            }
             const refs = input.summary_context?.referenced_task_ids;
             if (input.message !== "S16 请补充风险说明" || input.action !== "chat" ||
                 !Array.isArray(refs) || refs.length !== 1 || refs[0] !== taskId) {
@@ -257,6 +269,6 @@ export async function registerS16SummaryDetailRefine(
         )
       );
     },
-    { conflict, capabilityMode }
+    { conflict, capabilityMode, readOnly }
   );
 }

@@ -2575,10 +2575,15 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const spaceId = WKApp.shared?.currentSpaceId || "";
         const availability = await summaryWorkbenchAvailability.resolve(spaceId);
         if (this.unmounted || this.state.detail?.task_id !== detail.task_id || (WKApp.shared?.currentSpaceId || "") !== spaceId) return;
-        if (!availability.enabled) {
+        const personalTarget = detail.summary_mode === SummaryMode.BY_PERSON && !this.shouldOperateOnTeamSummary();
+        const canUpdateOriginal = personalTarget
+            ? (detail.permissions?.can_edit_personal ?? detail.permissions?.can_edit)
+            : (detail.permissions?.can_edit_team ?? detail.permissions?.can_edit);
+        if (!availability.enabled && canUpdateOriginal) {
             this.handleRegenerate();
             return;
         }
+        // Referenceable readers retain the legacy copy flow when updates are forbidden.
         // DAP-218 M11：点击「继续优化」手势。
         // DAP-266：补 summary_id（detail.task_id 就近）。
         Dap.shared.track("smart_summary_continue_refine_clicked", { summary_id: detail.task_id });

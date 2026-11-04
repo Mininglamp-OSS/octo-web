@@ -19,3 +19,7 @@
 5. 两条流程都断言 target 仅读取一次，且没有未 mock 的业务请求泄漏。
 
 这些断言通过实际 UI、controller、service 和 API 序列化，不以 mock 工作台组件代替按钮行为。
+
+## 工作台不可用时的权限分流
+
+对 disabled、404 和 unsupported 三种能力响应分别验证：可更新原结果的用户进入原任务调整并保留 task_id；可引用但无团队写权限的参与者进入 legacy 引用流程，生成后保存独立副本。副本请求携带 referenced_task_ids，不携带 target 或 new_version，原任务正文保持不变。
