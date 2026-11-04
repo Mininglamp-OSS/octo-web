@@ -3922,3 +3922,36 @@ it.each([false, undefined])("keeps generation reachable for a legacy completed s
   page.handleContinueRefine();
   expect(fallback).toHaveBeenCalledTimes(1);
 });
+
+describe("version-specific source metadata", () => {
+  for (const kind of ["team", "personal"]) {
+    it.each([
+      {scope: {sources: []}},
+      {provenance_status: "unknown", scope: {}},
+    ])(`${kind} does not borrow task sources for an empty or unknown version`, (snapshot) => {
+      const page = makePage(1);
+      const taskSources = [{source_type: 4, source_id: "old-document", source_name: "Old document", source_version: "v1"}];
+      page.state = {
+        ...page.state,
+        detail: multiCollabDetail({}, {
+          sources: taskSources,
+          participants: kind === "personal" ? [{user_id: "test-uid"}] : [{user_id: "test-uid"}, {user_id: "u_b"}],
+          result: {content: "team body", version: 1, citations: [], team_citations: [], snapshot},
+        }),
+        members: kind === "personal" ? [submittedMember("test-uid", "Me", "personal body")] :
+          [submittedMember("test-uid", "Me", "personal body"), submittedMember("u_b", "Other", "other body")],
+        personalResult: {content: "personal body", worker_status: 2, citations: [], snapshot} as any,
+        personalLoading: false,
+        personalExpanded: true,
+      };
+      const tree = kind === "team" ? page.renderTeamSummary() : page.renderPersonalSummary();
+      expect(tree).not.toBeNull();
+      expect(JSON.stringify(tree)).not.toContain("old-document");
+    });
+  }
+  it("retains task source fallback for legacy records without a snapshot", () => {
+    const page = makePage(1);
+    const result = (page as any).renderSourceMetadata([{source_type: 1, source_id: "old-group", source_name: "Old group"}]);
+    expect(result).not.toBeNull();
+  });
+});

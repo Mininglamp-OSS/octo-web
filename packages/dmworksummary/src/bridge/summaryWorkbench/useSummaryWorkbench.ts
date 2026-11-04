@@ -705,8 +705,6 @@ export default function useSummaryWorkbench(
 
   const savePreview = useCallback(
     (title?: string, target?: SummaryOptimizationTarget): Promise<CreateAgentSummaryResult | undefined> => {
-      const existing = saveRef.current;
-      if (existing) return existing.promise;
       if (
         generationRef.current ||
         hydrationRef.current ||
@@ -721,7 +719,6 @@ export default function useSummaryWorkbench(
         return Promise.resolve(undefined);
       }
 
-      operationVersionRef.current += 1;
       const normalizedTitle = title?.trim() || undefined;
       const identity = [
         current.sessionId,
@@ -732,6 +729,11 @@ export default function useSummaryWorkbench(
         normalizedTitle ?? "",
         JSON.stringify(target ?? null),
       ].join(":");
+      const existing = saveRef.current;
+      if (existing) {
+        return existing.identity === identity ? existing.promise : Promise.resolve(undefined);
+      }
+      operationVersionRef.current += 1;
       const key = idempotencyKeyFor(`save:${identity}`);
       const controller = new AbortController();
       const epoch = epochRef.current;

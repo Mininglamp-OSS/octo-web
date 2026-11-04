@@ -1998,6 +1998,10 @@ describe("useSummaryWorkbench", () => {
       second = result.current.savePreview("风险总结");
     });
     expect(first).toBe(second);
+    const differentDestination = result.current.savePreview("风险总结", {
+      task_id: 7, result_kind: "team", expected_revision: "base",
+    });
+    await expect(differentDestination).resolves.toBeUndefined();
     expect(savePreview).toHaveBeenCalledTimes(1);
     expect(savePreview.mock.calls[0]?.[0]).toMatchObject({
       messageId: "18",

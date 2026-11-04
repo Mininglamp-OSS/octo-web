@@ -110,6 +110,7 @@ export interface TeamCitationItem {
 
 /** 总结结果 */
 export interface SummaryGenerationSnapshot {
+  provenance_status?: string;
   content_version: number;
   scope: { sources?: SourceItem[]; time_range: { start: string; end: string } };
 }

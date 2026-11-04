@@ -244,7 +244,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     private renderSourceMetadata = (sources: SourceItem[], snapshotAt?: string, currentSnapshot?: SummaryGenerationSnapshot) => {
-        if (currentSnapshot?.scope.sources?.length) sources = currentSnapshot.scope.sources;
+        if (currentSnapshot?.provenance_status === "unknown") return null;
+        if (currentSnapshot?.scope.sources !== undefined) sources = currentSnapshot.scope.sources;
         if (!sources.length) return null;
         const { t } = this.context;
         const snapshotDocumentCount = sources.filter(

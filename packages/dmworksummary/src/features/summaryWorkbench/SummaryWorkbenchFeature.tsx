@@ -1318,6 +1318,7 @@ export default function SummaryWorkbenchFeature({
             onOpenContext: handleContextOpen,
             onRemoveContext: handleContextRemove,
             onSaveAsNew: canSaveVersion ? () => {
+              if (workbench.isSaving) return;
               workbench.clearError();
               setSaveTitle(deriveSummaryTitle(workbench.model.currentPreview?.content ?? "").slice(0, 100));
               setSaveDialogOpen(true);

@@ -70,6 +70,12 @@ test.describe("@S16 @p0 @summary @detail @summary-refine S16 — 继续优化保
           await expect(authedPage.getByTestId(T.detailTitle)).toContainText(
             "S16 独立副本"
           );
+          await expect(authedPage.getByText("S16 已按意见调整正文", {exact:true})).toBeVisible();
+          const originalContent = await authedPage.evaluate(async () => {
+            const response = await fetch("/summary/api/v1/summaries/16016");
+            return (await response.json()).data.result.content;
+          });
+          expect(originalContent).toContain("S16 原始正文内容");
         } else {
           await expect(authedPage.getByTestId(T.detailTitle)).toContainText(
             "S16 可调整总结"

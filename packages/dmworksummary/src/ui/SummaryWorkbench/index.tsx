@@ -351,6 +351,7 @@ const SummaryWorkbench = ({
                     ? "primary"
                     : "secondary"
                 }
+                disabled={action === "save_preview" && state.isSending}
                 onClick={() => {
                   actions.onResultAction(action);
                   if (action === "continue_chat") composerRef.current?.focus();
@@ -360,7 +361,7 @@ const SummaryWorkbench = ({
               </WKButton>
             ))}
             {cardActions.includes("save_preview") && actions.onSaveAsNew && (
-              <WKButton type="button" variant="secondary" onClick={actions.onSaveAsNew}>
+              <WKButton type="button" variant="secondary" disabled={state.isSending} onClick={actions.onSaveAsNew}>
                 {t("summary.optimization.saveNew")}
               </WKButton>
             )}

@@ -126,7 +126,7 @@ export async function registerS16SummaryDetailRefine(
         ),
         http.get("*/summary/api/v1/summaries/16016", () => env(detail)),
         http.get("*/summary/api/v1/summaries/16017", () =>
-          env({ ...detail, task_id: 16017, trigger_type: 3, title: "S16 独立副本", topic: "S16 独立副本" })
+          env({ ...detail, result: {...detail.result, content: "S16 已按意见调整正文"}, task_id: 16017, trigger_type: 3, title: "S16 独立副本", topic: "S16 独立副本" })
         ),
         http.post("*/summary/api/v1/summaries/:id/read", () =>
           env({ is_unread: false })
