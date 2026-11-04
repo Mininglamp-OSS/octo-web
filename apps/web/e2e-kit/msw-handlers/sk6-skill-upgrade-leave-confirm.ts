@@ -41,6 +41,7 @@ export async function registerSkillUpgradeLeaveConfirm(page: Page): Promise<void
       download_count: 1,
       install_count: 0,
       current_version: "1.0.0",
+      published_version: "1.0.0",
       listing_state: "published",
       display_status: "published",
       manifest_json: {
@@ -58,6 +59,9 @@ export async function registerSkillUpgradeLeaveConfirm(page: Page): Promise<void
           data: [skill],
           pagination: { total: 1, page: 1, page_size: 20 },
         })
+      ),
+      http.get("*/market/api/v1/plugins/upgrade-leave-demo/draft", () =>
+        HttpResponse.json({ data: { plugin: skill, draft_revision: "draft-1", relations: [] } })
       ),
       http.get("*/market/api/v1/plugin_categories", () =>
         HttpResponse.json({

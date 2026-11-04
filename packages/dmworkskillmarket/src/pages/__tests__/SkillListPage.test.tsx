@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SkillListPage from "../SkillListPage";
 import * as api from "../../api/skillApi";
 import type { Category, Skill } from "../../types/skill";
-import { WKApp } from "@octo/base";
+import { WKApp, t } from "@octo/base";
 
 const categories: Category[] = [
   {
@@ -169,7 +169,7 @@ describe("SkillListPage", () => {
     // route around review. 删除 stays available.
     expect(
       screen.queryByRole("button", { name: editSkillName })
-    ).not.toBeInTheDocument();
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: deleteSkillName })
     ).toBeInTheDocument();
@@ -186,12 +186,12 @@ describe("SkillListPage", () => {
   // one-axis model could not express, such as a PUBLISHED PRIVATE plugin (no org
   // audience to protect) and a DELISTED one (editing is how you fix and
   // republish).
-  it("row publish for a Space draft opens the changelog-aware saved draft editor", async () => {
+  it("row editing a Space draft restores saved release notes", async () => {
     const draft = { ...skill, listingState: "draft" as const, displayStatus: "draft" as const, draftChangelog: "Saved review rationale" };
     vi.mocked(api.getMySkills).mockResolvedValue({ items: [draft], nextCursor: null, total: 1 });
     vi.mocked(api.getSkillDraft).mockResolvedValue(draft);
     render(<SkillListPage variant="mine" />);
-    fireEvent.click(await screen.findByRole("button", { name: /skillMarket.plugin.ariaPublish|发布「meeting-note-cleaner」/ }));
+    fireEvent.click(await screen.findByRole("button", { name: editSkillName }));
     expect(await screen.findByDisplayValue("Saved review rationale")).toBeInTheDocument();
     expect(screen.getByDisplayValue(draft.version)).toBeInTheDocument();
     expect(api.publishPlugin).not.toHaveBeenCalled();
@@ -240,7 +240,7 @@ describe("SkillListPage", () => {
     {
       label: "plugin listed to the org",
       patch: { visibility: "space", listingState: "published", displayStatus: "published" },
-      editable: false,
+      editable: true,
     },
     {
       label: "plugin whose review is still pending",
@@ -846,7 +846,7 @@ describe("SkillListPage", () => {
     expect(api.getSkill).toHaveBeenCalledTimes(2);
   });
 
-  it("gates the detail modal's 编辑 for a listed-to-org row into 升级版本, not a direct edit", async () => {
+  it("opens the unified saved draft editor from an organization release detail", async () => {
     // The default fixture is published + space (listed to the org). Opening its
     // detail modal and clicking 编辑 must NOT reach updateSkill — it opens the
     // 升级版本 (review-submit) flow instead, so the edit becomes reviewed content.
@@ -865,7 +865,7 @@ describe("SkillListPage", () => {
     // The review-submit modal opened (its changelog placeholder is distinct from
     // EditSkillModal's), and no direct edit fired.
     expect(
-      await screen.findByPlaceholderText(reviewChangelogPlaceholder)
+      await screen.findByPlaceholderText(t("skillMarket.form.changelogPlaceholder"))
     ).toBeInTheDocument();
     expect(api.updateSkill).not.toHaveBeenCalled();
   });

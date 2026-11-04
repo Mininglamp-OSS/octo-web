@@ -16,7 +16,7 @@ import McpDeleteConfirmModal from "../components/McpDeleteConfirmModal";
 import ReviewSubmitModal, {
   type ReviewSubmitTarget,
 } from "../components/ReviewSubmitModal";
-import { MineTable, type MineRow } from "@dmwork/skillmarket";
+import { VisibilityModal, MineTable, type MineRow } from "@dmwork/skillmarket";
 import { cancelPluginReview, publishPluginListing } from "../api/pluginReview";
 import {
   MyReviewStateProbe,
@@ -38,6 +38,8 @@ const PAGE_SIZE = 20;
 const SCROLL_THRESHOLD_PX = 200;
 
 interface McpMarketListPageState {
+  visibilityId:string|null;
+  visibilityTarget?:"private"|"space";
   items: McpListItem[];
   categories: McpCategory[];
   loading: boolean;
@@ -119,6 +121,7 @@ export default class McpMarketListPage extends Component<
   declare context: React.ContextType<typeof I18nContext>;
 
   state: McpMarketListPageState = {
+    visibilityId:null,
     items: [],
     categories: [],
     loading: false,
@@ -760,7 +763,8 @@ export default class McpMarketListPage extends Component<
       category: item.category,
       dependencyIssues: item.dependencyIssues,
       version: item.version,
-      visibility: item.visibility,
+      visibility:item.visibility,
+      onVisibility:(item.listingState==="published"||item.listingState==="delisted")&&item.displayStatus!=="pending_review"&&(item.visibility==="private"||item.visibility==="space")?(target)=>this.setState({visibilityId:item.id,visibilityTarget:target}):undefined,
       views: item.viewCount,
       downloads: item.installCount,
       status: review.status,
@@ -1169,6 +1173,7 @@ export default class McpMarketListPage extends Component<
           </div>
         </div>
 
+        <VisibilityModal pluginId={this.state.visibilityId} target={this.state.visibilityTarget} onClose={()=>this.setState({visibilityId:null})} onSaved={this.handleListingOutcome}/>
         <McpDetailModal
           mcpId={detailId}
           onClose={() => this.setState({ detailId: null })}

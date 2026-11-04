@@ -123,12 +123,12 @@ export default function MineActionHost({
           return;
         }
         const [item, categories] = await Promise.all([
-          request.action === "edit" ? getSkillDraft(request.pluginId) : getSkill(request.pluginId),
+          getSkillDraft(request.pluginId),
           getCategories(),
         ]);
         if (!current()) return;
         setSkillCategories(categories);
-        setSkillFlow(request.action);
+        setSkillFlow("edit");
         setSkill(item);
         return;
       }
@@ -202,10 +202,10 @@ export default function MineActionHost({
           const generation = ++loadGeneration.current;
           const session = sessionKey();
           try {
-            const editable = listedToOrg ? item : await getSkillDraft(item.id);
+            const editable = await getSkillDraft(item.id);
             if (generation !== loadGeneration.current || session !== sessionKey()) return;
             setSkillDetailId(null);
-            setSkillFlow(listedToOrg ? "upgrade" : "edit");
+            setSkillFlow("edit");
             setSkill(editable);
           } catch (error) {
             if (generation !== loadGeneration.current || session !== sessionKey()) return;

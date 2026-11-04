@@ -2932,7 +2932,8 @@
 }
 .wk-mine-table__col--status {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
   min-width: 0;
 }
 /* Left-aligned, like the other eight columns. The track is a fixed width, so
@@ -3786,4 +3787,113 @@
 
 .skill-market-detail__dependency-detail {
   color: var(--wk-text-secondary);
+}
+
+.wk-mine-table__avatar { position: relative; }
+.wk-mine-table__dependency-dot { position: absolute; top: 0; right: 0; width: var(--wk-sp-2); height: var(--wk-sp-2); border-radius: var(--wk-r-circle); background: var(--wk-color-error); }
+.wk-mine-table__dependency-update { display: block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border: 0; background: transparent; color: var(--wk-color-accent); cursor: pointer; font-size: var(--wk-text-size-sm); margin-top: var(--wk-sp-1); }
+/* Keep the native select's keyboard semantics while matching the scope badges. */
+.wk-mine-table__scope-control {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-bg-selected);
+  color: var(--wk-text-secondary);
+}
+.wk-mine-table__scope-control:hover { background: var(--wk-bg-item-hover); }
+.wk-mine-table__scope-control:focus-within {
+  outline: 2px solid var(--wk-border-glow);
+  outline-offset: 2px;
+}
+.wk-mine-table__scope-select {
+  appearance: none;
+  max-width: 100%;
+  min-height: calc(var(--wk-sp-6) + var(--wk-sp-1));
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: var(--wk-text-size-sm);
+  padding: var(--wk-sp-1) var(--wk-sp-6);
+  cursor: pointer;
+}
+.wk-mine-table__scope-select:disabled { cursor: wait; opacity: .6; }
+.wk-mine-table__scope-icon,
+.wk-mine-table__scope-chevron { position: absolute; pointer-events: none; }
+.wk-mine-table__scope-icon { left: var(--wk-sp-2); display: flex; }
+.wk-mine-table__scope-chevron { right: var(--wk-sp-2); }
+
+/* Publication editors follow the prototype's separated header, body and footer.
+   The body owns scrolling; its padding keeps the scrollbar away from fields. */
+.publication-editor-modal,
+.skill-market-workflow-modal.publication-editor-modal {
+  max-width: calc(100vw - var(--wk-sp-8));
+}
+.publication-editor-modal .wk-modal-content,
+.skill-market-workflow-modal.publication-editor-modal .wk-modal-content {
+  width: 100%;
+  max-width: none;
+}
+.publication-editor-modal .wk-modal-shell {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  max-height: calc(100dvh - var(--wk-sp-12));
+  overflow: hidden;
+}
+.publication-editor-modal .wk-modal-title {
+  flex: none;
+  margin: 0;
+  padding: var(--wk-sp-5) calc(var(--wk-sp-12) + var(--wk-sp-2)) var(--wk-sp-5) var(--wk-sp-6);
+  border-bottom: 1px solid var(--wk-border-subtle);
+  font-size: var(--wk-text-size-lg);
+}
+.publication-editor-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--wk-sp-3); }
+.publication-editor-heading > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.publication-editor-heading .wk-mine-table__version { flex: none; font-weight: var(--wk-font-regular); }
+.publication-editor-modal .wk-modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: min(65vh, 640px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--wk-border-default) transparent;
+  padding: var(--wk-sp-6);
+}
+.publication-editor-modal .wk-modal-footer {
+  flex: none;
+  margin: 0;
+  padding: var(--wk-sp-4) var(--wk-sp-6);
+  border-top: 1px solid var(--wk-border-subtle);
+  background: var(--wk-bg-base);
+}
+.publication-editor-modal .skill-market-form--workflow { gap: var(--wk-sp-5); }
+.publication-editor-modal .skill-market-form__icon-row { align-items: center; }
+.publication-editor-modal .skill-market-scope-options { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; }
+.publication-editor-modal .skill-market-scope-options > h3 { grid-column: 1 / -1; }
+.publication-editor-modal .skill-market-scope-options label { min-width: 0; }
+.publication-editor-modal .skill-market-scope-options label > div span { overflow-wrap: anywhere; }
+.publication-editor-modal .skill-market-form__version-section { padding-top: var(--wk-sp-4); border-top: 1px solid var(--wk-border-subtle); }
+.publication-editor-identity { display: flex; align-items: center; gap: var(--wk-sp-3); }
+.publication-editor-identity__icon {
+  display: flex; align-items: center; justify-content: center;
+  width: var(--wk-sp-12); height: var(--wk-sp-12); flex: none;
+  border-radius: var(--wk-r-md); color: var(--wk-brand-primary); background: var(--wk-bg-selected);
+}
+.publication-editor-identity > div { display: grid; min-width: 0; gap: var(--wk-sp-1); }
+.publication-editor-identity strong { overflow-wrap: anywhere; }
+.publication-editor-identity > div > span { color: var(--wk-text-tertiary); font-size: var(--wk-text-size-sm); }
+.publication-editor-dependency {
+  padding: var(--wk-sp-3); border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-md); background: var(--wk-bg-base);
+}
+@media (max-width: 560px) {
+  .publication-editor-modal .wk-modal-body { padding: var(--wk-sp-4); }
+  .publication-editor-modal .skill-market-scope-options { grid-template-columns: minmax(0, 1fr); }
+  .publication-editor-modal .wk-modal-footer { padding: var(--wk-sp-3) var(--wk-sp-4); flex-wrap: wrap; }
 }

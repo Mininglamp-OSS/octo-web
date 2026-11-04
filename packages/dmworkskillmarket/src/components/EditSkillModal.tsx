@@ -8,7 +8,7 @@ import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 import IconCropModal from "./IconCropModal";
 import InlineConfirmBar from "./InlineConfirmBar";
 import { visibilityLabel } from "../utils/labels";
-import { isValidVersion, nextPatch, versionErrorKey } from "../utils/version";
+import { isValidVersion, nextPatch, versionErrorKey, upgradeVersionErrorKey } from "../utils/version";
 
 interface EditSkillModalProps {
   skill: Skill | null;
@@ -123,7 +123,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
     setActiveTagSuggestion(0);
     setTagError(null);
     setVisibility(skill.visibility);
-    setVersion(skill.version);
+    setVersion(skill.publishedVersion===skill.version?nextPatch(skill.publishedVersion):skill.version);
     setUploadStage("idle");
     setProgress(0);
     setUploadedFile(null);
@@ -143,6 +143,8 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
     ? savedDraft.current.key !== formKey || savedDraft.current.iconBlob !== iconBlob
     : Boolean(skill) && (
     name !== skill?.name ||
+    description !== skill?.description ||
+    version !== skill?.version ||
     displayName !== (skill?.displayName ?? "") ||
     categoryId !== skill?.categoryId ||
     JSON.stringify(tags) !== JSON.stringify(skill?.tags) ||
@@ -191,7 +193,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
   const willBeUnlisted =
     skill?.listingState !== "published" ||
     (skill?.visibility !== undefined && visibility !== skill.visibility);
-  const showDraftActions = willBeUnlisted || skill?.visibility === "private";
+  const showDraftActions = tenantVisibility;
   // 发布 does NOT inherit the grandfathering. On 本组织 it routes through
   // `Service.Publish` → `SubmitReview`, which gates on `validVersion` with no
   // stored-label exemption, so a legacy label that saves fine would 400 on
@@ -199,7 +201,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
   // server ignores the submitted version entirely (the immediate branch), so the
   // save rule is the right one there.
   const publishVersionError =
-    visibility === "space" ? versionErrorKey(skill?.version, version) : versionError;
+    skill?.publishedVersion ? upgradeVersionErrorKey(skill.publishedVersion,version) : visibility === "space" ? versionErrorKey(skill?.version, version) : versionError;
   // 发布 asks for a changelog only when the plugin is headed for organization
   // review, mirroring the create modal.
   const canPublishNow =
@@ -210,7 +212,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
   // a 本组织 publish (the org-review submit requires one — decision "3 强制").
   // Read-only otherwise, so a 仅自己 save does not present an editable field the
   // backend would ignore. Its `*` is only truthful when it is actually required.
-  const changelogRequired = Boolean(parseTaskId) || visibility === "space";
+  const changelogRequired = true;
 
   function updateTagSuggestionStyle() {
     const field = tagFieldRef.current;
@@ -249,7 +251,13 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
     if (f) setIconCropFile(f);
   }
 
+  const confirmingUpgrade = confirmClose && Boolean(skill?.publishedVersion || skill?.listingState === "published");
+
   function requestClose() {
+    if (confirmClose) {
+      setConfirmClose(false);
+      return;
+    }
     if (busy) {
       setConfirmClose(true);
       return;
@@ -510,7 +518,8 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
         const outcome = await publishPlugin({
           pluginId: skill.id,
           version,
-          ...(visibility === "space" ? { changelog } : {}),
+          changelog,
+          ...(updated.draftRevision?{expectedDraftRevision:updated.draftRevision}:{}),
         });
         if (!isCurrent()) return;
         onUpdated(updated);
@@ -535,11 +544,27 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
       <WKModal
         visible={Boolean(skill)}
         onCancel={requestClose}
-        title={skill ? t("skillMarket.form.editTitle", { values: { name: skill.name } }) : t("skillMarket.form.editTitleFallback")}
+        title={confirmingUpgrade ? t("skillMarket.confirm.leaveUpgradeTitle") : (
+          <div className="publication-editor-heading">
+            <span>{t("skillMarket.form.editTitleFallback")}</span>
+            {skill?.publishedVersion && <span className="wk-mine-table__version">v{skill.publishedVersion}</span>}
+          </div>
+        )}
         size="lg"
-        className="skill-market-workflow-modal"
+        width={confirmingUpgrade ? undefined : "min(720px, calc(100vw - var(--wk-sp-8)))"}
+        className={confirmingUpgrade ? "skill-market-workflow-modal skill-market-workflow-modal--leave-confirm" : "skill-market-workflow-modal publication-editor-modal"}
         footer={
-          confirmClose ? (
+          confirmingUpgrade ? (
+            <div className="skill-market-leave-confirm__actions">
+              <WKButton autoFocus variant="secondary" onClick={() => setConfirmClose(false)}>
+                {t(busy ? "skillMarket.confirm.keepUploading" : "skillMarket.confirm.keepEditing")}
+              </WKButton>
+              <WKButton variant="danger" onClick={confirmLeave}>{t("skillMarket.confirm.leave")}</WKButton>
+              {!busy && <WKButton variant="primary" disabled={!canSave || saving} onClick={() => { setConfirmClose(false); void submit(false); }}>
+                {t("skillMarket.confirm.saveAndLeave")}
+              </WKButton>}
+            </div>
+          ) : confirmClose ? (
             <InlineConfirmBar
               message={t(
                 busy ? "skillMarket.confirm.busyMessage" : "skillMarket.confirm.unsavedMessage"
@@ -596,6 +621,12 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
           )
         }
       >
+        {confirmingUpgrade ? (
+          <section className="skill-market-leave-confirm" role="alert">
+            <span className="skill-market-leave-confirm__icon" aria-hidden="true"><AlertCircle size={28} /></span>
+            <p>{t(busy ? "skillMarket.confirm.busyMessage" : "skillMarket.confirm.upgradeUnsavedMessage")}</p>
+          </section>
+        ) : (
         <div className="skill-market-form skill-market-form--workflow">
           {error && (
             <div className="skill-market-form__error">
@@ -608,7 +639,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
               <Box size={16} />
             </span>
             <div className="skill-market-upload-file__identity">
-              <span>{t("skillMarket.upload.skillName")}</span>
+              <span>{t("skillMarket.upload.skillName")} · {visibilityLabel(visibility)}</span>
               <strong title={name}>{name}</strong>
             </div>
             <button
@@ -649,85 +680,6 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
             <WKButton variant="secondary" onClick={() => fileInputRef.current?.click()}>{t("skillMarket.upload.reselect")}</WKButton>
           )}
 
-          <div className="skill-market-form__version-section">
-            <h3 className="skill-market-form__section-title">{t("skillMarket.form.versionSection")}</h3>
-            <div className="skill-market-form__row">
-              <label>
-                <span>{t("skillMarket.form.versionLabel")}<i className="skill-market-required">*</i></span>
-                <WKInput
-                  value={version}
-                  onChange={setVersion}
-                  placeholder={t("skillMarket.form.versionPlaceholder")}
-                />
-                {versionError && (
-                  <p className="skill-market-field-error">{t(versionError)}</p>
-                )}
-                {/* Save is fine but 发布 is not: the label is the row's own
-                    grandfathered one and organization publish will not take it.
-                    Say so, otherwise 发布 is a second dead button with no
-                    explanation — the exact failure this change exists to end. */}
-                {!versionError && publishVersionError && (
-                  <p className="skill-market-field-hint">
-                    {t("skillMarket.plugin.versionLegacyBlocksPublish")}
-                  </p>
-                )}
-              </label>
-              <label>
-                <span>{t("skillMarket.form.changelogLabel")}{changelogRequired && <i className="skill-market-required">*</i>}</span>
-                <WKInput
-                  value={changelog}
-                  onChange={setChangelog}
-                  placeholder={t("skillMarket.form.changelogPlaceholder")}
-                  readOnly={!changelogRequired}
-                  className={!changelogRequired ? "skill-market-input-readonly" : undefined}
-                />
-              </label>
-            </div>
-          </div>
-
-          <h3 className="skill-market-form__section-title">
-            {t("skillMarket.plugin.columnVisibility")}
-          </h3>
-          {skill?.listingState === "published" && tenantVisibility ? <p className="skill-market-form__hint">{t("skillMarket.visibility.useAction")}</p> : !tenantVisibility ? (
-            // Admin-managed audience. Shown, not editable: a tenant cannot mint
-            // or change 全平台, and the value has to survive the save.
-            <p className="skill-market-form__hint">
-              {visibilityLabel(visibility)} · {t("skillMarket.plugin.visibilityAdminManaged")}
-            </p>
-          ) : (
-          <div className="skill-market-scope-options">
-            {(["private", "space"] as const).map((option) => (
-              <label key={option} className={visibility === option ? "is-selected" : ""}>
-                <input
-                  type="radio"
-                  name="edit-visibility"
-                  value={option}
-                  checked={visibility === option}
-                  onChange={() => setVisibility(option)}
-                />
-                <div>
-                  <strong>
-                    {t(
-                      option === "private"
-                        ? "skillMarket.plugin.visibilityPrivate"
-                        : "skillMarket.plugin.visibilitySpace"
-                    )}
-                  </strong>
-                  <span>
-                    {t(
-                      option === "private"
-                        ? "skillMarket.plugin.visibilityPrivateHint"
-                        : "skillMarket.plugin.visibilitySpaceHint"
-                    )}
-                  </span>
-                </div>
-              </label>
-            ))}
-          </div>
-          )}
-
-          <h3 className="skill-market-form__section-title">{t("skillMarket.form.basicInfoSection")}</h3>
-
           <div className="skill-market-form__icon-row">
             <button
               type="button"
@@ -763,6 +715,8 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
               <WKInput value={displayName} onChange={(v: string) => setDisplayName(v.slice(0, 20))} placeholder={t("skillMarket.form.displayNamePlaceholder")} maxLength={20} />
             </label>
           </div>
+
+          <label><span>{t("skillMarket.publication.description")}</span><textarea value={description} onChange={event=>setDescription(event.target.value)} disabled={saving}/></label>
           <div className="skill-market-form__row">
             <label>
               <span>{t("skillMarket.form.category")}<i className="skill-market-required">*</i></span>
@@ -858,7 +812,85 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
               </div>
             </label>
           </div>
+          {!(skill?.listingState === "published" && tenantVisibility) && <h3 className="skill-market-form__section-title">
+            {t("skillMarket.plugin.columnVisibility")}
+          </h3>}
+          {skill?.listingState === "published" && tenantVisibility ? <p className="skill-market-form__hint">{t("skillMarket.visibility.useAction")}</p> : !tenantVisibility ? (
+            // Admin-managed audience. Shown, not editable: a tenant cannot mint
+            // or change 全平台, and the value has to survive the save.
+            <p className="skill-market-form__hint">
+              {visibilityLabel(visibility)} · {t("skillMarket.plugin.visibilityAdminManaged")}
+            </p>
+          ) : (
+          <div className="skill-market-scope-options">
+            {(["private", "space"] as const).map((option) => (
+              <label key={option} className={visibility === option ? "is-selected" : ""}>
+                <input
+                  type="radio"
+                  name="edit-visibility"
+                  value={option}
+                  checked={visibility === option}
+                  onChange={() => setVisibility(option)}
+                />
+                <div>
+                  <strong>
+                    {t(
+                      option === "private"
+                        ? "skillMarket.plugin.visibilityPrivate"
+                        : "skillMarket.plugin.visibilitySpace"
+                    )}
+                  </strong>
+                  <span>
+                    {t(
+                      option === "private"
+                        ? "skillMarket.plugin.visibilityPrivateHint"
+                        : "skillMarket.plugin.visibilitySpaceHint"
+                    )}
+                  </span>
+                </div>
+              </label>
+            ))}
+          </div>
+          )}
+
+          <div className="skill-market-form__version-section">
+            <h3 className="skill-market-form__section-title">{t("skillMarket.form.versionSection")}</h3>
+            <div className="skill-market-form__row">
+              <label>
+                <span>{t("skillMarket.form.versionLabel")}<i className="skill-market-required">*</i></span>
+                <WKInput
+                  value={version}
+                  onChange={setVersion}
+                  placeholder={t("skillMarket.form.versionPlaceholder")}
+                />
+                {versionError && (
+                  <p className="skill-market-field-error">{t(versionError)}</p>
+                )}
+                {/* Save is fine but 发布 is not: the label is the row's own
+                    grandfathered one and organization publish will not take it.
+                    Say so, otherwise 发布 is a second dead button with no
+                    explanation — the exact failure this change exists to end. */}
+                {!versionError && publishVersionError && (
+                  <p className="skill-market-field-hint">
+                    {t("skillMarket.plugin.versionLegacyBlocksPublish")}
+                  </p>
+                )}
+              </label>
+              <label>
+                <span>{t("skillMarket.form.changelogLabel")}{changelogRequired && <i className="skill-market-required">*</i>}</span>
+                <WKInput
+                  value={changelog}
+                  onChange={setChangelog}
+                  placeholder={t("skillMarket.form.changelogPlaceholder")}
+                  readOnly={!changelogRequired}
+                  className={!changelogRequired ? "skill-market-input-readonly" : undefined}
+                />
+              </label>
+            </div>
+          </div>
+
         </div>
+        )}
       </WKModal>
       <IconCropModal
         visible={!!iconCropFile}

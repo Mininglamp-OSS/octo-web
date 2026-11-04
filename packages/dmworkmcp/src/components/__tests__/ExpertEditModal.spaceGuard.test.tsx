@@ -1,352 +1,340 @@
 // @vitest-environment jsdom
-//
-// dmworkmcp has no vitest config (no jsdom env, no `@octo/base` alias), hence
-// the pragma above and the per-file `vi.mock`s below — same shape as
-// McpDetailModal.inlineDelete.test.tsx. React is pinned to 17 here, so this
-// drives ReactDOM.render + react-dom/test-utils act rather than RTL.
 import React from "react";
 import ReactDOM from "react-dom";
-import { Simulate, act } from "react-dom/test-utils";
-import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
-
-// Real subscription bookkeeping rather than a bare spy: this suite has to
-// INVOKE the `space-changed` handler the modal registered.
-const busHandlers: Record<string, Array<(payload?: unknown) => void>> = {};
-function emitBus(event: string, payload?: unknown) {
-  for (const handler of [...(busHandlers[event] ?? [])]) handler(payload);
-}
-
-const updateExpertVisibility = vi.fn();
-const getExpertEditMetadata = vi.fn();
-const publishPluginListing = vi.fn();
-
+import { act, Simulate } from "react-dom/test-utils";
+import { beforeEach, afterEach, describe, it, expect, vi } from "vitest";
+const api = vi.hoisted(() => ({
+  getUpdates: vi.fn(),
+  getDraft: vi.fn(),
+  getDependencies: vi.fn(),
+  getInstruction: vi.fn(),
+  saveDraft: vi.fn(),
+  publishDraft: vi.fn(),
+}));
+const handlers: Record<string, Array<() => void>> = {};
 vi.mock("@octo/base", () => ({
   t: (key: string) => key,
   useI18n: () => undefined,
   WKApp: {
     mittBus: {
-      on: (event: string, handler: (payload?: unknown) => void) => {
-        (busHandlers[event] ??= []).push(handler);
+      on: (name: string, fn: () => void) => {
+        (handlers[name] ??= []).push(fn);
       },
-      off: (event: string, handler: (payload?: unknown) => void) => {
-        busHandlers[event] = (busHandlers[event] ?? []).filter((fn) => fn !== handler);
+      off: (name: string, fn: () => void) => {
+        handlers[name] = (handlers[name] ?? []).filter((x) => x !== fn);
       },
-      emit: emitBus,
     },
   },
-  WKInput: ({ value, onChange, ...props }: any) => <input {...props} value={value} onChange={(e) => onChange(e.target.value)} />,
-  WKButton: ({
-    children,
-    onClick,
-    disabled,
-  }: {
-    children?: React.ReactNode;
-    onClick?: () => void;
-    disabled?: boolean;
-  }) => (
-    <button type="button" onClick={onClick} disabled={disabled}>
+  WKInput: ({ value, onChange, ...props }: any) => (
+    <input
+      {...props}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  ),
+  WKButton: ({ children, onClick, disabled }: any) => (
+    <button onClick={onClick} disabled={disabled}>
       {children}
     </button>
   ),
-  WKModal: ({
-    visible,
-    children,
-    footer,
-  }: {
-    visible?: boolean;
-    children?: React.ReactNode;
-    footer?: React.ReactNode;
-  }) => (visible ? <div>{children}{footer}</div> : null),
+  WKModal: ({ visible, children, footer }: any) =>
+    visible ? (
+      <section>
+        {children}
+        {footer}
+      </section>
+    ) : null,
 }));
-
-vi.mock("../../api/expertService", () => ({
-  getExpertEditMetadata: (...a: unknown[]) => getExpertEditMetadata(...a),
-  updateExpertVisibility: (...a: unknown[]) => updateExpertVisibility(...a),
+vi.mock("@dmwork/skillmarket/src/Service/PublicationService", () => ({
+  PublicationService: api,
 }));
-vi.mock("../../api/pluginReview", () => ({
-  publishPluginListing: (...a: unknown[]) => publishPluginListing(...a),
+vi.mock("../../features/publications/DependencyUpdateFlow", () => ({
+  DependencyUpdateFlow: () => null,
 }));
-vi.mock("lucide-react", () => ({
-  AlertCircle: () => null,
-  Bot: () => null,
-  UserRound: () => null,
-  Users: () => null,
-}));
-
 import ExpertEditModal from "../ExpertEditModal";
-
-let container: HTMLDivElement | null = null;
-
 const item = {
-  id: "expert-old-space",
-  name: "Old Space Expert",
-  visibility: "private",
+  id: "expert",
+  name: "Expert",
+  kind: "agent",
+  visibility: "space",
   version: "1.0.0",
-} as never;
-
-function button(label: string): HTMLButtonElement {
-  const found = [...container!.querySelectorAll("button")].find(
+  listingState: "published",
+  displayStatus: "published",
+} as any;
+const makeDraft = () => ({
+  draft_revision: "a".repeat(64),
+  plugin: {
+    plugin_id: "expert",
+    plugin_name: "Expert",
+    plugin_type: "expert",
+    visibility: "space",
+    current_version: "1.0.0",
+    published_version: "1.0.0",
+    manifest_json: { plugin_name: "Expert", description: "Description" },
+    plugin_json: {
+      attachments: [
+        { path: "AGENTS.md", content_type: "raw", raw_content: "Instructions" },
+      ],
+    },
+    tags: [],
+  },
+  relations: [],
+});
+let container: HTMLDivElement;
+const click = async (label: string) => {
+  const b = Array.from(container.querySelectorAll("button")).find(
     (b) => b.textContent === label
   );
-  if (!found) {
-    const have = [...container!.querySelectorAll("button")]
-      .map((b) => JSON.stringify(b.textContent))
-      .join(", ");
-    throw new Error(`no button labelled ${label}; have: ${have}`);
-  }
-  return found as HTMLButtonElement;
-}
-
-// Declaring 组织可见 on a private record means the save leaves a draft behind
-// pending review, so the secondary action renders as 保存草稿 rather than 保存.
-const SAVE = "skillMarket.plugin.actionSaveDraft";
-
+  expect(b).toBeTruthy();
+  await act(async () => {
+    b!.click();
+  });
+};
+const edit = async (index: number, value: string) => {
+  const input = container.querySelectorAll("input")[index];
+  await act(async () => {
+    Simulate.change(input, { target: { value } } as any);
+  });
+};
+const mount = async (props: any = {}) => {
+  const callbacks = {
+    onClose: vi.fn(),
+    onSaved: vi.fn(),
+    onEditContent: vi.fn(),
+    ...props,
+  };
+  await act(async () => {
+    ReactDOM.render(<ExpertEditModal item={item} {...callbacks} />, container);
+  });
+  return callbacks;
+};
 beforeEach(() => {
+  Object.values(api).forEach((fn) => fn.mockReset());
+  Object.keys(handlers).forEach((k) => delete handlers[k]);
+  api.getUpdates.mockResolvedValue({ updates: [] });
+  api.getDraft.mockResolvedValue(makeDraft());
+  api.getDependencies.mockResolvedValue([]);
+  api.getInstruction.mockResolvedValue("Instructions");
+  api.saveDraft.mockImplementation(async (_base, payload) => ({
+    ...makeDraft(),
+    draft_revision: "b".repeat(64),
+    plugin: {
+      ...makeDraft().plugin,
+      ...payload.plugin,
+      current_version: payload.plugin.version,
+    },
+    relations: payload.relations,
+  }));
+  api.publishDraft.mockResolvedValue({ display_status: "published" });
   container = document.createElement("div");
   document.body.appendChild(container);
 });
-
 afterEach(() => {
-  if (container) {
+  act(() => {
     ReactDOM.unmountComponentAtNode(container);
-    container.remove();
-    container = null;
-  }
-  for (const key of Object.keys(busHandlers)) delete busHandlers[key];
-  vi.clearAllMocks();
+  });
+  container.remove();
 });
-
-/**
- * `submit` is a multi-`await` mutation chain: the visibility write, then
- * optionally the publish, then `onSaved` / `onClose`. A Space switch landing
- * between those awaits must abandon the chain — the modal now belongs to the
- * new Space, so reporting the old Space's write into it (or closing it) is a
- * cross-Space state mutation. Mirrors the generation guard `ReviewSubmitModal`
- * uses for target switches.
- */
-describe("ExpertEditModal space-switch guard", () => {
-  it("does not add direct publication to an unchanged organization-listed container", async () => {
+describe("unified expert editor", () => {
+  it.each(["private", "space"])(
+    "offers draft save and publication for %s resources",
+    async (visibility) => {
+      api.getDraft.mockResolvedValue({
+        ...makeDraft(),
+        plugin: { ...makeDraft().plugin, visibility },
+      });
+      await mount();
+      expect(container.textContent).toContain(
+        "skillMarket.plugin.actionSaveDraft"
+      );
+      expect(container.textContent).toContain(
+        "skillMarket.publication.publishNewVersion"
+      );
+      expect(container.querySelectorAll("textarea")).toHaveLength(2);
+      expect(container.querySelectorAll("input")[1].value).toBe("1.0.1");
+    }
+  );
+  it("saves description and instructions without changing original release", async () => {
+    const callbacks = await mount();
+    const textareas = container.querySelectorAll("textarea");
     await act(async () => {
-      ReactDOM.render(<ExpertEditModal item={{ ...item, visibility: "space", listingState: "published" }} onClose={vi.fn()} onSaved={vi.fn()} onEditContent={vi.fn()} />, container);
+      Simulate.change(textareas[0], {
+        target: { value: "Edited description" },
+      } as any);
+      Simulate.change(textareas[1], {
+        target: { value: "Edited instructions" },
+      } as any);
     });
-    expect([...container!.querySelectorAll("button")].some(b => b.textContent === "skillMarket.plugin.actionPublish")).toBe(false);
-  });
-
-  it.each(["expert", "squad"])("publishes a saved private %s draft after closing and reopening", async kind => {
-    const original = { ...item, kind, listingState: "published", draftRevision: "a".repeat(64) };
-    let draft = original;
-    let released = original;
-    updateExpertVisibility.mockReset().mockImplementation(async (_id, _visibility, fields) => {
-      draft = { ...draft, name: fields.name, version: fields.version, draftRevision: "b".repeat(64) };
-      return draft.draftRevision;
-    });
-    getExpertEditMetadata.mockReset().mockImplementation(async () => draft);
-    publishPluginListing.mockReset().mockImplementation(async () => { released = draft; return { displayStatus: "published" }; });
-    const props = { onClose: vi.fn(), onSaved: vi.fn(), onEditContent: vi.fn() };
-    await act(async () => { ReactDOM.render(<ExpertEditModal {...props} item={original as any} />, container); });
-    const fields = container!.querySelectorAll('input:not([type="radio"])');
-    await act(async () => {
-      Simulate.change(fields[0], { target: { value: "Saved container" } } as any);
-      Simulate.change(fields[1], { target: { value: "1.0.1" } } as any);
-    });
-    await act(async () => { button(SAVE).click(); });
-    expect(props.onClose).toHaveBeenCalledOnce();
-    expect(publishPluginListing).not.toHaveBeenCalled();
-    expect(released.name).toBe(original.name);
-    await act(async () => { ReactDOM.render(<ExpertEditModal {...props} item={null} />, container); });
-    await act(async () => { ReactDOM.render(<ExpertEditModal {...props} item={draft as any} />, container); });
-    await act(async () => { button("skillMarket.plugin.actionPublish").click(); });
-    expect(getExpertEditMetadata).toHaveBeenCalledWith(original.id);
-    expect(updateExpertVisibility).toHaveBeenCalledOnce();
-    expect(publishPluginListing).toHaveBeenCalledWith(original.id, { version: "1.0.1" });
-    expect(released.name).toBe("Saved container");
-    expect(released.version).toBe("1.0.1");
-    expect(props.onClose).toHaveBeenCalledTimes(2);
-  });
-
-  it("abandons a save whose write settles after a Space switch", async () => {
-    let settle: (() => void) | undefined;
-    updateExpertVisibility.mockImplementation(
-      () => new Promise<void>((resolve) => { settle = () => resolve(); })
+    await click("skillMarket.plugin.actionSaveDraft");
+    expect(api.saveDraft).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        expected_draft_revision: "a".repeat(64),
+        plugin: expect.objectContaining({
+          manifest_json: expect.objectContaining({
+            description: "Edited description",
+          }),
+          plugin_json: expect.objectContaining({
+            attachments: expect.arrayContaining([
+              expect.objectContaining({ raw_content: "Edited instructions" }),
+            ]),
+          }),
+        }),
+      })
     );
-    const onSaved = vi.fn();
-    const onClose = vi.fn();
-
+    expect(api.publishDraft).not.toHaveBeenCalled();
+    expect(callbacks.onClose).toHaveBeenCalledOnce();
+  });
+  it("conditionally publishes the saved revision", async () => {
+    await mount();
+    await edit(2, "Release notes");
+    await click("skillMarket.publication.publishNewVersion");
+    expect(api.publishDraft).toHaveBeenCalledWith(
+      expect.any(String),
+      "expert",
+      "1.0.1",
+      "Release notes",
+      "b".repeat(64)
+    );
+  });
+  it("retains input and does not publish after a save conflict", async () => {
+    api.saveDraft.mockRejectedValueOnce(new Error("conflict"));
+    const callbacks = await mount();
+    await edit(0, "Edited");
+    await edit(2, "Notes");
+    await click("skillMarket.publication.publishNewVersion");
+    expect(container.textContent).toContain("conflict");
+    expect(container.querySelector("input")!.value).toBe("Edited");
+    expect(api.publishDraft).not.toHaveBeenCalled();
+    expect(callbacks.onClose).not.toHaveBeenCalled();
+  });
+  it("retains the committed draft and input when publication fails", async () => {
+    api.publishDraft.mockRejectedValueOnce(new Error("publication failed"));
+    const callbacks = await mount();
+    await edit(2, "Notes");
+    await click("skillMarket.publication.publishNewVersion");
+    expect(container.textContent).toContain("publication failed");
+    expect(callbacks.onClose).not.toHaveBeenCalled();
+    await click("skillMarket.publication.publishNewVersion");
+    expect(api.saveDraft.mock.calls[1][1].expected_draft_revision).toBe(
+      "b".repeat(64)
+    );
+    expect(callbacks.onClose).toHaveBeenCalledOnce();
+  });
+  it("saves the current draft before opening the original Bot chooser", async () => {
+    const callbacks = await mount();
+    await edit(0, "Before Bot");
+    await click("mcp.expert.botUpdateTitleAgent");
+    expect(api.saveDraft).toHaveBeenCalled();
+    expect(callbacks.onEditContent).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "expert", draftRevision: "b".repeat(64) })
+    );
+    expect(api.publishDraft).not.toHaveBeenCalled();
+  });
+  it("does not open the Bot chooser if saving fails", async () => {
+    api.saveDraft.mockRejectedValueOnce(new Error("save failed"));
+    const callbacks = await mount();
+    await click("mcp.expert.botUpdateTitleAgent");
+    expect(callbacks.onEditContent).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("save failed");
+  });
+  it("ignores a save settling after a Space switch", async () => {
+    let resolve: (value: any) => void = () => {};
+    api.saveDraft.mockImplementationOnce(
+      () =>
+        new Promise((r) => {
+          resolve = r;
+        })
+    );
+    const callbacks = await mount();
+    await click("skillMarket.plugin.actionSaveDraft");
+    await act(async () => {
+      handlers["space-changed"].forEach((fn) => fn());
+      resolve({ ...makeDraft(), draft_revision: "b".repeat(64) });
+    });
+    expect(callbacks.onSaved).not.toHaveBeenCalled();
+    expect(api.publishDraft).not.toHaveBeenCalled();
+  });
+  it("ignores a stale load after switching resources", async () => {
+    let resolve: (value: any) => void = () => {};
+    api.getDraft.mockImplementationOnce(
+      () =>
+        new Promise((r) => {
+          resolve = r;
+        })
+    );
+    const callbacks = await mount();
     await act(async () => {
       ReactDOM.render(
         <ExpertEditModal
-          item={item}
-          onClose={onClose}
-          onSaved={onSaved}
-          onEditContent={vi.fn()}
+          item={{ ...item, id: "next", name: "Next" }}
+          {...callbacks}
         />,
         container
       );
     });
-
-    // Declaring a different audience is what makes the save button live.
     await act(async () => {
-      (container!.querySelector(
-        'input[name="expert-edit-visibility"][value="space"]'
-      ) as HTMLInputElement).click();
+      resolve({
+        ...makeDraft(),
+        plugin: { ...makeDraft().plugin, plugin_name: "Stale" },
+      });
     });
-
+    expect(container.querySelector("input")!.value).not.toBe("Stale");
+  });
+  it("blocks editing and publication while a review is pending", async () => {
+    await mount({ item: { ...item, displayStatus: "pending_review" } });
+    expect(
+      Array.from(container.querySelectorAll("input")).every((i) => i.disabled)
+    ).toBe(true);
+    expect(container.textContent).toContain(
+      "skillMarket.publication.viewUpdates"
+    );
+  });
+  it("keeps connectors without a version selector", async () => {
+    api.getDependencies.mockResolvedValue([
+      { id: "connector", name: "Connector", type: "connector", versions: [] },
+    ]);
+    await mount();
+    expect(container.textContent).toContain(
+      "skillMarket.publication.connectorCurrent"
+    );
+    expect(container.querySelectorAll("select")).toHaveLength(0);
+  });
+  it("finishes saving when a parent rerenders with a fresh close callback", async () => {
+    let complete!: (value: any) => void;
+    api.saveDraft.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          complete = resolve;
+        })
+    );
+    const callbacks = await mount();
+    await click("skillMarket.plugin.actionSaveDraft");
+    await mount({ ...callbacks, onClose: vi.fn() });
     await act(async () => {
-      button(SAVE).click();
+      complete(makeDraft());
     });
-    expect(updateExpertVisibility).toHaveBeenCalledTimes(1);
-
-    // The user leaves the Space while the write is still in flight.
-    await act(async () => {
-      emitBus("space-changed", { space_id: "space-b", role: 1 });
-    });
-    await act(async () => {
-      settle?.();
-    });
-
-    // Neither the success report nor the close may land on the new Space's modal.
-    expect(onSaved).not.toHaveBeenCalled();
-    expect(onClose).not.toHaveBeenCalled();
+    expect(callbacks.onSaved).toHaveBeenCalled();
   });
 
-  it("still reports a save that settles inside the same Space", async () => {
-    updateExpertVisibility.mockResolvedValue(undefined);
-    const onSaved = vi.fn();
-    const onClose = vi.fn();
-
-    await act(async () => {
-      ReactDOM.render(
-        <ExpertEditModal
-          item={item}
-          onClose={onClose}
-          onSaved={onSaved}
-          onEditContent={vi.fn()}
-        />,
-        container
-      );
-    });
-    await act(async () => {
-      (container!.querySelector(
-        'input[name="expert-edit-visibility"][value="space"]'
-      ) as HTMLInputElement).click();
-    });
-    await act(async () => {
-      button(SAVE).click();
-    });
-
-    expect(onSaved).toHaveBeenCalledTimes(1);
-    expect(onClose).toHaveBeenCalledTimes(1);
-  });
-
-  it("edits the display name and version in the existing modal", async () => {
-    updateExpertVisibility.mockResolvedValue(undefined);
-    publishPluginListing.mockResolvedValue({ displayStatus: "published" });
-    await act(async () => {
-      ReactDOM.render(<ExpertEditModal item={item} onClose={vi.fn()} onSaved={vi.fn()} onEditContent={vi.fn()} />, container);
-    });
-    const fields = container!.querySelectorAll('input:not([type="radio"])');
-    await act(async () => {
-      Simulate.change(fields[0], { target: { value: "Renamed Expert" } } as any);
-      Simulate.change(fields[1], { target: { value: "1.0.1" } } as any);
-    });
-    await act(async () => { button("skillMarket.plugin.actionPublish").click(); });
-    expect(updateExpertVisibility).toHaveBeenCalledWith("expert-old-space", "private", { name: "Renamed Expert", version: "1.0.1", changelog: "" });
-    expect(publishPluginListing).toHaveBeenCalledWith("expert-old-space", { version: "1.0.1" });
-  });
-
-  it("prefills saved draft notes and persists a note-only edit", async () => {
-    updateExpertVisibility.mockResolvedValue(undefined);
-    await act(async () => {
-      ReactDOM.render(<ExpertEditModal item={{ ...item, draftChangelog: "Saved draft note" }} onClose={vi.fn()} onSaved={vi.fn()} onEditContent={vi.fn()} />, container);
-    });
-    const fields = container!.querySelectorAll('input:not([type="radio"])');
-    expect((fields[2] as HTMLInputElement).value).toBe("Saved draft note");
-    await act(async () => { Simulate.change(fields[2], { target: { value: "Revised note" } } as any); });
-    await act(async () => { button(SAVE).click(); });
-    expect(updateExpertVisibility).toHaveBeenCalledWith(item.id, "private", expect.objectContaining({ changelog: "Revised note" }));
-  });
-
-  it("retains edited fields and does not publish or close after a conditional save conflicts", async () => {
-    const onClose = vi.fn();
-    const onSaved = vi.fn();
-    const draftRevision = "a".repeat(64);
-    updateExpertVisibility.mockRejectedValue(new Error("Draft changed; reload before saving"));
-    await act(async () => {
-      ReactDOM.render(<ExpertEditModal item={{ ...item, draftRevision }} onClose={onClose} onSaved={onSaved} onEditContent={vi.fn()} />, container);
-    });
-    const name = container!.querySelector('input:not([type="radio"])') as HTMLInputElement;
-    await act(async () => { Simulate.change(name, { target: { value: "My unsaved expert" } } as any); });
-    await act(async () => { button(SAVE).click(); });
-    expect(updateExpertVisibility).toHaveBeenCalledWith(item.id, "private", expect.objectContaining({ draftRevision, name: "My unsaved expert" }));
-    expect(container!.textContent).toContain("Draft changed; reload before saving");
-    expect(name.value).toBe("My unsaved expert");
-    expect(publishPluginListing).not.toHaveBeenCalled();
-    expect(onClose).not.toHaveBeenCalled();
-    expect(onSaved).not.toHaveBeenCalled();
-    expect(updateExpertVisibility).toHaveBeenCalledTimes(1);
-  });
-
-  it.each([false, true])("retries publication after a committed save (edit again: %s)", async editAgain => {
-    const r1 = "a".repeat(64), r2 = "b".repeat(64);
-    const onClose = vi.fn(), onSaved = vi.fn();
-    updateExpertVisibility.mockReset().mockResolvedValue(r2);
-    getExpertEditMetadata.mockResolvedValue({ draftRevision: r2 });
-    publishPluginListing.mockReset().mockRejectedValueOnce(new Error("Temporary publication failure")).mockResolvedValue({ displayStatus: "published" });
-    await act(async () => {
-      ReactDOM.render(<ExpertEditModal item={{ ...item, draftRevision: r1, listingState: "draft" }} onClose={onClose} onSaved={onSaved} onEditContent={vi.fn()} />, container);
-    });
-    const name = container!.querySelector('input:not([type="radio"])') as HTMLInputElement;
-    await act(async () => { Simulate.change(name, { target: { value: "Saved expert" } } as any); });
-    await act(async () => { button("skillMarket.plugin.actionPublish").click(); });
-    expect(container!.textContent).toContain("Temporary publication failure");
-    expect(onClose).not.toHaveBeenCalled();
-    expect(name.value).toBe("Saved expert");
-    if (editAgain) await act(async () => { Simulate.change(name, { target: { value: "Edited again" } } as any); });
-    await act(async () => { button("skillMarket.plugin.actionPublish").click(); });
-    expect(onClose).toHaveBeenCalledTimes(1);
-    expect(publishPluginListing).toHaveBeenCalledTimes(2);
-    expect(updateExpertVisibility).toHaveBeenCalledTimes(editAgain ? 2 : 1);
-    if (editAgain) expect(updateExpertVisibility).toHaveBeenLastCalledWith(item.id, "private", expect.objectContaining({ draftRevision: r2, name: "Edited again" }));
-  });
-
-  it.each(["changed", "missing", "unavailable"])("blocks cached publication when remote draft is %s", async state => {
-    const onClose = vi.fn(), onSaved = vi.fn();
-    updateExpertVisibility.mockReset().mockResolvedValue("b".repeat(64));
-    publishPluginListing.mockReset().mockRejectedValueOnce(new Error("Temporary publication failure"));
-    if (state === "unavailable") getExpertEditMetadata.mockRejectedValueOnce(new Error("Draft unavailable"));
-    else getExpertEditMetadata.mockResolvedValueOnce({ draftRevision: state === "changed" ? "c".repeat(64) : undefined });
-    await act(async () => { ReactDOM.render(<ExpertEditModal item={{ ...item, draftRevision: "a".repeat(64) }} onClose={onClose} onSaved={onSaved} onEditContent={vi.fn()} />, container); });
-    const name = container!.querySelector('input:not([type="radio"])') as HTMLInputElement;
-    await act(async () => { Simulate.change(name, { target: { value: "My saved expert" } } as any); });
-    await act(async () => { button("skillMarket.plugin.actionPublish").click(); });
-    expect(container!.textContent).toContain("Temporary publication failure");
-    await act(async () => { button("skillMarket.plugin.actionPublish").click(); });
-    expect(container!.textContent).toContain(state === "unavailable" ? "Draft unavailable" : "skillMarket.errors.stateConflict");
-    expect(getExpertEditMetadata).toHaveBeenCalledWith(item.id);
-    expect(updateExpertVisibility).toHaveBeenCalledTimes(1);
-    expect(publishPluginListing).toHaveBeenCalledTimes(1);
-    expect(onClose).not.toHaveBeenCalled();
-    expect(onSaved).not.toHaveBeenCalled();
-    expect(name.value).toBe("My saved expert");
-  });
-
-  it("stops listening once unmounted", async () => {
-    await act(async () => {
-      ReactDOM.render(
-        <ExpertEditModal
-          item={item}
-          onClose={vi.fn()}
-          onSaved={vi.fn()}
-          onEditContent={vi.fn()}
-        />,
-        container
-      );
-    });
-
-    act(() => {
-      ReactDOM.unmountComponentAtNode(container!);
-    });
-
-    expect(busHandlers["space-changed"] ?? []).toHaveLength(0);
+  it("keeps own fields editable and the Bot handoff usable with an unavailable dependency", async () => {
+    api.getDependencies.mockResolvedValueOnce([
+      {
+        id: "hidden",
+        name: "",
+        type: "skill",
+        current: "old",
+        versions: [],
+        unavailable: true,
+      },
+    ]);
+    const cb = await mount();
+    expect(container.textContent).toContain(
+      "skillMarket.publication.unavailableDependency"
+    );
+    await edit(0, "Repair draft");
+    await click("mcp.expert.botUpdateTitleAgent");
+    expect(api.saveDraft).toHaveBeenCalled();
+    expect(cb.onEditContent).toHaveBeenCalled();
   });
 });

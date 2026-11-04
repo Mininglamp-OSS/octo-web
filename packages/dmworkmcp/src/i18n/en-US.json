@@ -235,6 +235,7 @@
       "delisted": "delisted",
       "deleted": "deleted",
       "release_missing": "release missing",
+      "visibility_restricted": "Audience is restricted",
       "unknown": "unavailable"
     }
   },

@@ -1,3 +1,4 @@
+import { DependencyUpdateFlow } from "../features/publications/DependencyUpdateFlow";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowDown, Check, HelpCircle, PackageOpen, Search, SlidersHorizontal, Upload, X } from "lucide-react";
@@ -151,6 +152,8 @@ export default function ExpertMarketListPage({
   /** 编辑 — the 可见范围 editor (ExpertEditModal). Metadata only; content still
    *  goes through the Bot prompt. */
   const editGeneration = useRef(0);
+  const [visibilityTarget,setVisibilityTarget]=useState<"private"|"space">();
+  const [dependencyTarget,setDependencyTarget]=useState<ExpertItem|null>(null);
   const [visibilityId, setVisibilityId] = useState<string | null>(null);
   const [editItem, setEditItem] = useState<ExpertItem | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ExpertItem | null>(null);
@@ -570,6 +573,9 @@ export default function ExpertMarketListPage({
       downloads: item.installCount,
       status: review.status,
       rejectReason: review.rejectReason,
+      dependencyUpdates:item.dependencyUpdates,
+      dependencySuspended:item.dependencySuspended,
+      onDependencyUpdates:()=>setDependencyTarget(item),
       dependencyIssues: item.dependencyIssues?.map((issue) => ({
         targetPluginId: issue.targetPluginId,
         targetName: issue.targetName,
@@ -582,14 +588,14 @@ export default function ExpertMarketListPage({
       // backend answers such a write with 409 listed_requires_review). A listed
       // record changes only through 升级版本, and while a request is pending it
       // does not change at all — the live version stays up until a decision lands.
-      onEdit: review.canEdit ? () => handleEdit(item) : undefined,
+      onEdit: item.displayStatus!=="pending_review" ? () => handleEdit(item) : undefined,
       onDelete: () => setDeleteTarget(item),
       editAria: t("skillMarket.plugin.ariaEdit", { values: { name: item.name } }),
       deleteAria: t("skillMarket.plugin.ariaDelete", { values: { name: item.name } }),
       onPublish: review.canPublish ? () => void handlePublish(item) : undefined,
       publishAria: t("skillMarket.plugin.ariaPublish", { values: { name: item.name } }),
-      onVisibility: item.listingState === "published" && item.displayStatus !== "pending_review" && (item.visibility === "private" || item.visibility === "space") ? () => setVisibilityId(item.id) : undefined,
-      onUpgrade: review.canUpgrade ? () => openReviewSubmit(item) : undefined,
+      onVisibility: (item.listingState === "published"||item.listingState === "delisted") && item.displayStatus !== "pending_review" && (item.visibility === "private" || item.visibility === "space") ? (target?:"private"|"space") => {setVisibilityTarget(target);setVisibilityId(item.id)} : undefined,
+      onUpgrade: undefined,
       upgradeAria: t("skillMarket.plugin.ariaUpgrade", { values: { name: item.name } }),
       onCancelReview: review.canCancelReview && reviewId
         ? () => void handleCancelReview(reviewId)
@@ -932,7 +938,8 @@ export default function ExpertMarketListPage({
         onClose={() => setBotEditTarget(null)}
         onToast={showToast}
       />
-      <VisibilityModal pluginId={visibilityId} onClose={() => setVisibilityId(null)} onSaved={handleListingChanged} />
+      {dependencyTarget&&<DependencyUpdateFlow pluginId={dependencyTarget.id} pending={dependencyTarget.displayStatus==="pending_review"} onClose={()=>setDependencyTarget(null)} onSaved={message=>{showToast(message);reload()}}/>}
+      <VisibilityModal target={visibilityTarget} pluginId={visibilityId} onClose={() => setVisibilityId(null)} onSaved={handleListingChanged} />
       <ExpertEditModal
         item={editItem}
         onClose={() => setEditItem(null)}

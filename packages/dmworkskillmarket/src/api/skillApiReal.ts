@@ -391,6 +391,9 @@ function mapSkill(raw: PluginListItemWire): Skill {
         ? raw.visibility
         : "private",
     version: raw.published_version ?? raw.current_version ?? "1.0.0",
+    publishedVersion:raw.published_version,
+    dependencyUpdates:raw.dependency_updates,
+    dependencySuspended:raw.dependency_suspended,
     draftVersion: raw.current_version,
     readmeContent: "",
     iconUrl: raw.icon_url ?? raw.icon ?? "",
@@ -1308,6 +1311,7 @@ function mapListingResult(raw: PluginListingResultWire): PluginListingResult {
 }
 
 export interface PublishPluginInput {
+	expectedDraftRevision?:string;
   pluginId: string;
   /**
    * Version label of this listing. Optional: the server reuses the plugin's
@@ -1342,6 +1346,7 @@ export function publishPlugin(
   // listing with an empty string, not a request to keep the current label.
   if (input.version) body.version = input.version;
   if (input.changelog) body.changelog = input.changelog;
+  if (input.expectedDraftRevision) body.expected_draft_revision=input.expectedDraftRevision;
   return request<PluginListingResultWire>("/plugins/publish", {
     method: "POST",
     body: JSON.stringify(body),
@@ -1410,10 +1415,10 @@ export interface PublishedAudience {
 }
 export async function getPublishedAudience(id: string): Promise<PublishedAudience> {
   const detail = await request<PluginDetailWire>(`/plugins/detail?plugin_id=${encodeURIComponent(id)}&include_relations=false`);
-  if (detail.plugin.listing_state !== "published" || !detail.plugin.current_version_id || (detail.plugin.visibility !== "private" && detail.plugin.visibility !== "space")) {
+  if (detail.plugin.listing_state === "draft" || (!detail.plugin.current_version_id&&detail.plugin.plugin_type!=="connector") || (detail.plugin.visibility !== "private" && detail.plugin.visibility !== "space")) {
     throw new Error(t("skillMarket.visibility.unavailable"));
   }
-  return { name: detail.plugin.plugin_name, visibility: detail.plugin.visibility, publishedVersionId: detail.plugin.current_version_id };
+  return { name: detail.plugin.plugin_name, visibility: detail.plugin.visibility, publishedVersionId: detail.plugin.current_version_id??"" };
 }
 export const changePublishedAudience = withReviewInvalidation(async (id: string, publishedVersionId: string, visibility: "private" | "space") => request<{ visibility: string; published_version_id: string; display_status: string; review_id?: string }>(`/plugins/${encodeURIComponent(id)}/visibility`, {
   method: "PATCH", body: JSON.stringify({ visibility, expected_published_version_id: publishedVersionId }),

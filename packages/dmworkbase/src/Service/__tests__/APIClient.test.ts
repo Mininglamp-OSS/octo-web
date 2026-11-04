@@ -93,6 +93,13 @@ describe("APIClient request interceptor — X-Space-Id (GH #1038)", () => {
         expect(captured.headers["X-Space-ID"]).toBe("authorization-space")
         expect(captured.headers["X-Space-Id"]).toBeUndefined()
     })
+    it.each(["get", "patch"] as const)("%s respects a service-specific baseURL", async (method) => {
+        client.config.apiURL = "https://host.example/api/v1";
+        if (method === "get") await client.get("/plugins/detail", { baseURL: "https://market.example/api/v1" });
+        else await client.patch("/plugins/id/visibility", { visibility: "space" }, { baseURL: "https://market.example/api/v1" });
+        expect(captured.baseURL).toBe("https://market.example/api/v1");
+    });
+
 })
 
 /**

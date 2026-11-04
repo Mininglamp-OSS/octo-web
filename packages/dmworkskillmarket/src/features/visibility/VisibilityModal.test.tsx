@@ -1,31 +1,35 @@
+import { PublicationService } from "../../Service/PublicationService";
 import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { WKApp } from "@octo/base";
 import VisibilityModal from "./VisibilityModal";
-import {
-  getPublishedAudience,
-  changePublishedAudience,
-} from "../../api/skillApi";
+import { getPublishedAudience } from "../../api/skillApi";
 vi.mock("../../api/skillApi", () => ({
   getPublishedAudience: vi.fn(),
   changePublishedAudience: vi.fn(),
 }));
+vi.mock("../../Service/PublicationService", () => ({
+  PublicationService: { getVisibilityPlan: vi.fn(), changeVisibility: vi.fn() },
+}));
 beforeEach(() => {
-  vi.mocked(getPublishedAudience)
-    .mockReset()
-    .mockResolvedValue({
-      name: "Published skill",
-      visibility: "private",
-      publishedVersionId: "released-v1",
-    });
-  vi.mocked(changePublishedAudience)
-    .mockReset()
-    .mockResolvedValue({
-      visibility: "private",
-      published_version_id: "released-v1",
-      display_status: "pending_review",
-    });
+  vi.mocked(PublicationService.getVisibilityPlan).mockResolvedValue({
+    plugin_id: "skill-1",
+    plan_revision: "plan",
+    changes: [],
+    affected: [],
+    blockers: [],
+  });
+  vi.mocked(getPublishedAudience).mockReset().mockResolvedValue({
+    name: "Published skill",
+    visibility: "private",
+    publishedVersionId: "released-v1",
+  });
+  vi.mocked(PublicationService.changeVisibility).mockReset().mockResolvedValue({
+    visibility: "private",
+    published_version_id: "released-v1",
+    display_status: "pending_review",
+  });
 });
 describe("published audience management", () => {
   it("changes audience using the displayed release, without version or changelog inputs", async () => {
@@ -39,14 +43,24 @@ describe("published audience management", () => {
       0
     );
     fireEvent.click(document.querySelector('input[value="space"]')!);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", {
+          name: /skillMarket.publication.submitScope/,
+        })
+      ).toBeEnabled()
+    );
     fireEvent.click(
-      screen.getByRole("button", { name: /保存|skillMarket.common.save/ })
+      screen.getByRole("button", {
+        name: /skillMarket.publication.submitScope/,
+      })
     );
     await waitFor(() =>
-      expect(changePublishedAudience).toHaveBeenCalledWith(
+      expect(PublicationService.changeVisibility).toHaveBeenCalledWith(
+        expect.any(String),
         "skill-1",
-        "released-v1",
-        "space"
+        "space",
+        "plan"
       )
     );
     expect(onSaved).toHaveBeenCalledWith(
@@ -55,7 +69,7 @@ describe("published audience management", () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
   it("retains the choice and surfaces a reference failure for retry", async () => {
-    vi.mocked(changePublishedAudience).mockRejectedValueOnce(
+    vi.mocked(PublicationService.changeVisibility).mockRejectedValueOnce(
       new Error("Published dependency prevents narrowing")
     );
     render(
@@ -64,8 +78,9 @@ describe("published audience management", () => {
     await screen.findByText("Published skill");
     fireEvent.click(document.querySelector('input[value="space"]')!);
     const save = screen.getByRole("button", {
-      name: /保存|skillMarket.common.save/,
+      name: /skillMarket.publication.submitScope/,
     });
+    await waitFor(() => expect(save).toBeEnabled());
     fireEvent.click(save);
     await screen.findByRole("alert");
     expect(document.querySelector('input[value="space"]')).toBeChecked();

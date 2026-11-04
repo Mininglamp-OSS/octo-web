@@ -1,20 +1,40 @@
 import React, { useEffect, useRef, useState } from "react";
-import { t, useI18n, WKApp, WKButton, WKModal } from "@octo/base";
+import {
+  extractErrorMsg,
+  t,
+  useI18n,
+  WKApp,
+  WKButton,
+  WKModal,
+} from "@octo/base";
 import {
   getPublishedAudience,
-  changePublishedAudience,
   type PublishedAudience,
 } from "../../api/skillApi";
 
+import {
+  PublicationService,
+  type VisibilityPlan,
+} from "../../Service/PublicationService";
+import { resolveSkillMarketApiBaseURL } from "../../api/constants";
+
 interface Props {
+  target?: "private" | "space";
   pluginId: string | null;
   onClose: () => void;
   onSaved: (message: string) => void;
 }
 
 /** Audience management is separate from editing or upgrading released content. */
-export default function VisibilityModal({ pluginId, onClose, onSaved }: Props) {
+export default function VisibilityModal({
+  pluginId,
+  target,
+  onClose,
+  onSaved,
+}: Props) {
   useI18n();
+  const [plan, setPlan] = useState<VisibilityPlan | null>(null);
+  const planGeneration = useRef(0);
   const [source, setSource] = useState<PublishedAudience | null>(null);
   const [visibility, setVisibility] = useState<"private" | "space">("private");
   const [error, setError] = useState<string | null>(null);
@@ -40,31 +60,63 @@ export default function VisibilityModal({ pluginId, onClose, onSaved }: Props) {
         .then((value) => {
           if (current !== generation.current) return;
           setSource(value);
-          setVisibility(value.visibility);
+          setVisibility(target ?? value.visibility);
         })
         .catch((err) => {
           if (current === generation.current)
             setError(
               err instanceof Error
                 ? err.message
-                : t("skillMarket.common.loadFailed")
+                : extractErrorMsg(err) || t("skillMarket.common.loadFailed")
             );
         });
     return () => {
       generation.current++;
     };
-  }, [pluginId, attempt]);
+  }, [pluginId, target, attempt]);
+  useEffect(() => {
+    const token = ++planGeneration.current;
+    setPlan(null);
+    if (!pluginId || !source || visibility === source.visibility) return;
+    void PublicationService.getVisibilityPlan(
+      resolveSkillMarketApiBaseURL(),
+      pluginId,
+      visibility
+    )
+      .then((value) => {
+        if (token === planGeneration.current) setPlan(value);
+      })
+      .catch((err) => {
+        if (token === planGeneration.current)
+          setError(
+            err instanceof Error
+              ? err.message
+              : extractErrorMsg(err) || t("skillMarket.common.loadFailed")
+          );
+      });
+    return () => {
+      planGeneration.current++;
+    };
+  }, [pluginId, source, visibility]);
   const save = async () => {
-    if (!pluginId || !source || busy || visibility === source.visibility)
+    if (
+      !pluginId ||
+      !source ||
+      !plan ||
+      plan.blockers.length > 0 ||
+      busy ||
+      visibility === source.visibility
+    )
       return;
     const current = generation.current;
     setBusy(true);
     setError(null);
     try {
-      const result = await changePublishedAudience(
+      const result = await PublicationService.changeVisibility(
+        resolveSkillMarketApiBaseURL(),
         pluginId,
-        source.publishedVersionId,
-        visibility
+        visibility,
+        plan.plan_revision
       );
       if (current !== generation.current) return;
       onSaved(
@@ -78,7 +130,9 @@ export default function VisibilityModal({ pluginId, onClose, onSaved }: Props) {
     } catch (err) {
       if (current === generation.current)
         setError(
-          err instanceof Error ? err.message : t("skillMarket.form.saveFailed")
+          err instanceof Error
+            ? err.message
+            : extractErrorMsg(err) || t("skillMarket.form.saveFailed")
         );
     } finally {
       if (current === generation.current) setBusy(false);
@@ -99,10 +153,20 @@ export default function VisibilityModal({ pluginId, onClose, onSaved }: Props) {
           <WKButton
             variant="primary"
             loading={busy}
-            disabled={!source || busy || visibility === source.visibility}
+            disabled={
+              !source ||
+              !plan ||
+              plan.blockers.length > 0 ||
+              busy ||
+              visibility === source.visibility
+            }
             onClick={() => void save()}
           >
-            {t("skillMarket.common.save")}
+            {t(
+              visibility === "space"
+                ? "skillMarket.publication.submitScope"
+                : "skillMarket.publication.confirmScope"
+            )}
           </WKButton>
         </>
       }
@@ -123,8 +187,58 @@ export default function VisibilityModal({ pluginId, onClose, onSaved }: Props) {
           <>
             <strong>{source.name}</strong>
             <p className="skill-market-form__hint">
-              {t("skillMarket.visibility.hint")}
+              {t("skillMarket.publication.scopeNotice")}
             </p>
+            <p>
+              {t(
+                source.visibility === "private"
+                  ? "skillMarket.plugin.visibilityPrivate"
+                  : "skillMarket.plugin.visibilitySpace"
+              )}{" "}
+              →{" "}
+              {t(
+                visibility === "private"
+                  ? "skillMarket.plugin.visibilityPrivate"
+                  : "skillMarket.plugin.visibilitySpace"
+              )}
+            </p>
+            {plan && (
+              <>
+                {plan.changes.some((c) => c.plugin_id !== pluginId) && (
+                  <section>
+                    <p>{t("skillMarket.publication.scopeLinked")}</p>
+                    <ul>
+                      {plan.changes
+                        .filter((c) => c.plugin_id !== pluginId)
+                        .map((c) => (
+                          <li key={c.plugin_id}>
+                            {c.name ||
+                              t("skillMarket.publication.privateAffected")}
+                          </li>
+                        ))}
+                    </ul>
+                  </section>
+                )}
+                {plan.affected.length > 0 && (
+                  <section>
+                    <p>{t("skillMarket.publication.scopeAffected")}</p>
+                    <ul>
+                      {plan.affected.map((c) => (
+                        <li key={c.plugin_id}>
+                          {c.name ||
+                            t("skillMarket.publication.privateAffected")}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
+                {plan.blockers.map((b, i) => (
+                  <p role="alert" key={`${b.plugin_id}-${i}`}>
+                    {b.name} · {t("skillMarket.visibility.unavailable")}
+                  </p>
+                ))}
+              </>
+            )}
             <div className="skill-market-scope-options">
               {(["private", "space"] as const).map((option) => (
                 <label

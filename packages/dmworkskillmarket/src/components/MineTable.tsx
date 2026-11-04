@@ -2,6 +2,7 @@ import React from "react";
 import {
   ArrowDownFromLine,
   Building2,
+  ChevronDown,
   Check,
   Clock,
   Globe,
@@ -54,6 +55,9 @@ const WIRE_TYPE: Record<MineAssetType, string> = {
  * markup or CSS, which is exactly the inconsistency this replaces.
  */
 export interface MineRow {
+  dependencySuspended?: boolean;
+  dependencyUpdates?: import("../Service/PublicationService").DependencyUpdate[];
+  onDependencyUpdates?: () => void;
   id: string;
   type: MineAssetType;
   /** Avatar node (image or color tile) rendered on the left. */
@@ -114,7 +118,7 @@ export interface MineRow {
    *  types. */
   onPublish?: () => void;
   onUpgrade?: () => void;
-  onVisibility?: () => void;
+  onVisibility?: (target?: "private" | "space") => void;
   onCancelReview?: () => void;
   onApprove?: () => void;
   onReject?: () => void;
@@ -138,10 +142,15 @@ interface MineTableProps {
 }
 
 /** system/public -> 全平台 globe, private -> lock, space -> org building. */
-function visibilityIcon(key: string): { cls: string; icon: React.ReactElement } {
+function visibilityIcon(key: string): {
+  cls: string;
+  icon: React.ReactElement;
+} {
   const v = key === "public" ? "system" : key;
-  if (v === "system") return { cls: "system", icon: <Globe size={13} aria-hidden="true" /> };
-  if (v === "private") return { cls: "private", icon: <Lock size={13} aria-hidden="true" /> };
+  if (v === "system")
+    return { cls: "system", icon: <Globe size={13} aria-hidden="true" /> };
+  if (v === "private")
+    return { cls: "private", icon: <Lock size={13} aria-hidden="true" /> };
   return { cls: "space", icon: <Building2 size={13} aria-hidden="true" /> };
 }
 
@@ -185,7 +194,10 @@ export default function MineTable({ rows, ariaLabel }: MineTableProps) {
             role="row"
             aria-label={r.ariaLabel ?? r.name}
           >
-            <span className="wk-mine-table__col wk-mine-table__col--name" role="cell">
+            <span
+              className="wk-mine-table__col wk-mine-table__col--name"
+              role="cell"
+            >
               {/* The row is structural (role="row"); the primary "open" action is
                   a real, keyboard-focusable button so screen readers announce it
                   and Enter/Space activate it natively. Tracking rides the button
@@ -201,25 +213,36 @@ export default function MineTable({ rows, ariaLabel }: MineTableProps) {
               >
                 <span className="wk-mine-table__avatar">
                   {r.icon}
+                  {r.dependencyUpdates?.some((u) => !u.is_skipped) && (
+                    <span
+                      className="wk-mine-table__dependency-dot"
+                      aria-label={t("skillMarket.publication.hasUpdates")}
+                    />
+                  )}
                 </span>
                 <span className="wk-mine-table__namecol">
                   {r.dependencyIssues?.length ? (
-                  <span className="wk-mine-table__dependency-warning">
-                    {t("skillMarket.plugin.dependencyWarning")}
-                    {": "}
-                    {r.dependencyIssues
-                      .map((issue) => {
-                        const target = issue.targetName || issue.targetPluginId;
-                        const reason = issue.reason
-                          ? t(`skillMarket.plugin.dependencyIssue.${dependencyIssueReasonKey(issue.reason)}`)
-                          : "";
-                        return reason ? `${target} · ${reason}` : target;
-                      })
-                      .filter(Boolean)
-                      .join(", ")}
-                  </span>
-                ) : null}
-                <span className="wk-mine-table__namerow" title={r.name}>
+                    <span className="wk-mine-table__dependency-warning">
+                      {t("skillMarket.plugin.dependencyWarning")}
+                      {": "}
+                      {r.dependencyIssues
+                        .map((issue) => {
+                          const target =
+                            issue.targetName || issue.targetPluginId;
+                          const reason = issue.reason
+                            ? t(
+                                `skillMarket.plugin.dependencyIssue.${dependencyIssueReasonKey(
+                                  issue.reason
+                                )}`
+                              )
+                            : "";
+                          return reason ? `${target} · ${reason}` : target;
+                        })
+                        .filter(Boolean)
+                        .join(", ")}
+                    </span>
+                  ) : null}
+                  <span className="wk-mine-table__namerow" title={r.name}>
                     <span className="wk-mine-table__name">{r.name}</span>
                     {/* The type is spelled out, not only shown as the avatar
                         marker: the 全部 tab mixes all four kinds in one table and
@@ -228,9 +251,14 @@ export default function MineTable({ rows, ariaLabel }: MineTableProps) {
                       {pluginTypeLabel(WIRE_TYPE[r.type])}
                     </span>
                   </span>
-                  {r.meta && <span className="wk-mine-table__meta">{r.meta}</span>}
+                  {r.meta && (
+                    <span className="wk-mine-table__meta">{r.meta}</span>
+                  )}
                   {rejected && r.rejectReason && (
-                    <span className="wk-mine-table__review-reason" title={r.rejectReason}>
+                    <span
+                      className="wk-mine-table__review-reason"
+                      title={r.rejectReason}
+                    >
                       {t("skillMarket.review.reasonInline", {
                         values: { reason: r.rejectReason },
                       })}
@@ -246,21 +274,54 @@ export default function MineTable({ rows, ariaLabel }: MineTableProps) {
             >
               {r.description || "—"}
             </span>
-            <span className="wk-mine-table__col wk-mine-table__col--category" role="cell">
+            <span
+              className="wk-mine-table__col wk-mine-table__col--category"
+              role="cell"
+            >
               {r.category || "—"}
             </span>
-            <span className="wk-mine-table__col wk-mine-table__col--version" role="cell">
+            <span
+              className="wk-mine-table__col wk-mine-table__col--version"
+              role="cell"
+            >
               {r.version ? (
                 <span className="wk-mine-table__version">
-                  {r.versionFrom ? `v${r.versionFrom} → v${r.version}` : `v${r.version}`}
+                  {r.versionFrom
+                    ? `v${r.versionFrom} → v${r.version}`
+                    : `v${r.version}`}
                 </span>
               ) : (
                 "—"
               )}
             </span>
-            <span className="wk-mine-table__col wk-mine-table__col--visibility" role="cell">
-              {vis && r.visibility ? (
-                <span className={`wk-mine-table__vis wk-mine-table__vis--${vis.cls}`}>
+            <span
+              className="wk-mine-table__col wk-mine-table__col--visibility"
+              role="cell"
+            >
+              {r.onVisibility &&
+              (r.visibility === "private" || r.visibility === "space") ? (
+                <span className={`wk-mine-table__scope-control wk-mine-table__vis--${vis?.cls}`}>
+                <span className="wk-mine-table__scope-icon" aria-hidden="true">{vis?.icon}</span>
+                <select
+                  className="wk-mine-table__scope-select"
+                  aria-label={`${r.name} ${t(
+                    "skillMarket.plugin.columnVisibility"
+                  )}`}
+                  value={r.visibility}
+                  disabled={r.busy}
+                  onChange={(e) =>
+                    r.onVisibility?.(e.target.value as "private" | "space")
+                  }
+                >
+                  <option value="private">{visibilityLabel("private")}</option>
+                  <option value="space">{visibilityLabel("space")}</option>
+                </select>
+                <ChevronDown className="wk-mine-table__scope-chevron" size={12} aria-hidden="true" />
+                </span>
+              ) : vis && r.visibility ? (
+                <span
+                  className={`wk-mine-table__vis wk-mine-table__vis--${vis.cls}`}
+                >
                   {vis.icon}
                   {visibilityLabel(r.visibility)}
                 </span>
@@ -268,29 +329,57 @@ export default function MineTable({ rows, ariaLabel }: MineTableProps) {
                 "—"
               )}
             </span>
-            <span className="wk-mine-table__col wk-mine-table__col--num" role="cell">
+            <span
+              className="wk-mine-table__col wk-mine-table__col--num"
+              role="cell"
+            >
               {formatCount(r.views ?? 0)}
             </span>
-            <span className="wk-mine-table__col wk-mine-table__col--num" role="cell">
+            <span
+              className="wk-mine-table__col wk-mine-table__col--num"
+              role="cell"
+            >
               {formatCount(r.downloads ?? 0)}
             </span>
-            <span className="wk-mine-table__col wk-mine-table__col--status" role="cell">
+            <span
+              className="wk-mine-table__col wk-mine-table__col--status"
+              role="cell"
+            >
               {r.statusLabel || r.status ? (
                 <span
                   className={`wk-plugin-status wk-plugin-status--${
-                    r.statusTone ?? (r.status ? displayStatusTone(r.status) : "draft")
+                    r.statusTone ??
+                    (r.status ? displayStatusTone(r.status) : "draft")
                   }`}
                   title={rejected ? r.rejectReason : undefined}
                 >
-                  {(r.statusTone ?? (r.status ? displayStatusTone(r.status) : "")) === "pending" ? (
+                  {(r.statusTone ??
+                    (r.status ? displayStatusTone(r.status) : "")) ===
+                  "pending" ? (
                     <Clock size={11} aria-hidden="true" />
                   ) : rejected ? (
                     <XCircle size={11} aria-hidden="true" />
                   ) : null}
-                  {r.statusLabel ?? (r.status ? displayStatusLabel(r.status) : "")}
+                  {r.statusLabel ??
+                    (r.status ? displayStatusLabel(r.status) : "")}
                 </span>
               ) : (
                 "—"
+              )}
+              {r.dependencySuspended && !r.dependencyIssues?.length && (
+                <span className="wk-mine-table__dependency-warning">
+                  {t("skillMarket.publication.dependencyRecovered")}
+                </span>
+              )}
+              {r.dependencyUpdates?.some((u) => !u.is_skipped) && (
+                <button
+                  type="button"
+                  className="wk-mine-table__dependency-update"
+                  title={t("skillMarket.publication.hasUpdates")}
+                  onClick={r.onDependencyUpdates}
+                >
+                  {t("skillMarket.publication.hasUpdates")}
+                </button>
               )}
             </span>
             <span
@@ -317,7 +406,7 @@ export default function MineTable({ rows, ariaLabel }: MineTableProps) {
                 label={t("skillMarket.review.reject")}
               />
               <RowAction
-                show={!!r.onPublish}
+                show={!!r.onPublish && !r.onEdit && !r.onUpgrade}
                 busy={r.busy}
                 primary
                 aria={r.publishAria}
@@ -329,12 +418,11 @@ export default function MineTable({ rows, ariaLabel }: MineTableProps) {
                 show={!!r.onUpgrade}
                 busy={r.busy}
                 primary
-                aria={r.upgradeAria}
+                aria={r.editAria ?? r.upgradeAria}
                 onClick={r.onUpgrade}
                 leading={<Upload size={13} aria-hidden="true" />}
-                label={t("skillMarket.plugin.actionUpgrade")}
+                label={t("skillMarket.plugin.actionEdit")}
               />
-              <RowAction show={!!r.onVisibility} busy={r.busy} onClick={r.onVisibility} leading={<Building2 size={13} aria-hidden="true" />} label={t("skillMarket.visibility.title")} />
               <RowAction
                 show={!!r.onCancelReview}
                 busy={r.busy}

@@ -258,11 +258,14 @@ describe("AllAssetsList parity with type tabs", () => {
     );
   });
 
-  it("requests edit and upgrade from the page-level modal host", async () => {
+  it("requests unified editing for both drafts and organization releases", async () => {
     const onRequestAction = vi.fn();
     h.getMySkills.mockResolvedValue(
       page([
         asset("draft-skill", "Draft skill"),
+        asset("listed-connector", "Listed connector", {
+          pluginType: "connector", visibility: "space", listingState: "published",
+        }),
         asset("listed-expert", "Listed expert", {
           pluginType: "expert",
           visibility: "space",
@@ -289,11 +292,20 @@ describe("AllAssetsList parity with type tabs", () => {
       ).click();
       (
         Array.from(container.querySelectorAll("button")).find(
-          (button) => button.textContent === "upgrade-Listed expert"
+          (button) => button.textContent === "edit-Listed expert"
         ) as HTMLButtonElement
       ).click();
     });
 
+    act(() => {
+      const edit = Array.from(container.querySelectorAll("button")).find(
+        (button) => button.textContent === "edit-Listed connector"
+      );
+      edit!.click();
+    });
+    expect(onRequestAction).toHaveBeenNthCalledWith(3, {
+      pluginId: "listed-connector", type: "connector", action: "upgrade",
+    });
     expect(onRequestAction).toHaveBeenNthCalledWith(1, {
       pluginId: "draft-skill",
       type: "skill",
@@ -302,7 +314,7 @@ describe("AllAssetsList parity with type tabs", () => {
     expect(onRequestAction).toHaveBeenNthCalledWith(2, {
       pluginId: "listed-expert",
       type: "expert",
-      action: "upgrade",
+      action: "edit",
     });
   });
 
