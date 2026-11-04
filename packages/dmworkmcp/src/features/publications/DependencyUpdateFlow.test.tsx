@@ -363,3 +363,31 @@ it("reconciles the actual parent editor with the latest draft before saving pres
     relations: [expect.objectContaining({ target_version_id: "s2" })],
   }));
 });
+
+it("reports uninitialized recovery inputs as null instead of cleared values", async () => {
+  api.getUpdates.mockRejectedValueOnce({ status: 500 });
+  const edit = vi.fn();
+  await mount({ draft: undefined, onEdit: edit });
+  expect(container.textContent).toContain("skillMarket.common.loadFailed");
+  await click("skillMarket.publication.editResource");
+  expect(edit).toHaveBeenCalledWith({ version: null, changelog: null, versions: {} });
+});
+
+it("keeps the selected target versions when the retry reload fails", async () => {
+  api.getUpdates
+    .mockResolvedValueOnce({ plugin_id: "expert", published_version_id: "e1", draft_revision: "original", updates })
+    .mockRejectedValueOnce({ status: 500 });
+  api.getDraft.mockResolvedValue({
+    expected_draft_revision: "original", draft_changelog: "Notes", relations: draft.relations,
+    plugin: { ...draft.plugin, plugin_name: "Expert", current_version: "1.0.1", published_version: "1.0.0" },
+  });
+  api.getInstruction.mockResolvedValue("Instructions");
+  api.adoptUpdates.mockRejectedValueOnce({ status: 409 });
+  const edit = vi.fn();
+  await mount({ draft: undefined, onEdit: edit });
+  await click("skillMarket.publication.confirmUpdate");
+  await click("skillMarket.list.retry");
+  expect(container.textContent).toContain("skillMarket.common.loadFailed");
+  await click("skillMarket.publication.editResource");
+  expect(edit).toHaveBeenCalledWith(expect.objectContaining({ versions: { skill: "s2" } }));
+});

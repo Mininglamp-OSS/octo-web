@@ -33,6 +33,8 @@ export interface PublicationEditorProps {
   onClose: () => void;
   onSaved: (message: string) => void;
   onEditContent: (item: ExpertItem) => void;
+  /** Unsaved update inputs carried from a list conflict; consumed once after load. */
+  recovery?: DependencyRecovery;
 }
 const empty: PublicationFields = {
   name: "",
@@ -48,6 +50,7 @@ export function PublicationEditor({
   onClose,
   onSaved,
   onEditContent,
+  recovery,
 }: PublicationEditorProps) {
   const [initialVisibility, setInitialVisibility] = useState<
     "private" | "space"
@@ -73,6 +76,10 @@ export function PublicationEditor({
   const generation = useRef(0);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
+  const pendingRecovery = useRef<DependencyRecovery | undefined>(undefined);
+  useEffect(() => {
+    pendingRecovery.current = recovery;
+  }, [recovery]);
   const [alerts, setAlerts] = useState<DependencyUpdate[]>([]);
   const refreshAlerts = () => {
     if (!item) return;
@@ -125,7 +132,7 @@ export function PublicationEditor({
         setDeps(dependencies);
         setAlerts([]);
         refreshAlerts();
-        setFields({
+        const loaded: PublicationFields = {
           name: value.plugin.plugin_name,
           description: value.plugin.manifest_json.description ?? "",
           instruction,
@@ -136,7 +143,21 @@ export function PublicationEditor({
               .filter((r) => r.target_version_id)
               .map((r) => [r.target_plugin_id, r.target_version_id!])
           ),
-        });
+        };
+        setFields(loaded);
+        // A list-originated recovery rides in with the edit request. Apply it
+        // once, against the draft just loaded, so the author compares real
+        // values instead of the empty form defaults.
+        const wanted = pendingRecovery.current;
+        pendingRecovery.current = undefined;
+        if (
+          wanted &&
+          (wanted.version !== null ||
+            wanted.changelog !== null ||
+            Object.keys(wanted.versions).length > 0)
+        ) {
+          void reconcile(wanted, loaded);
+        }
       })
       .catch((err) => {
         if (token === generation.current)
@@ -148,7 +169,10 @@ export function PublicationEditor({
       generation.current++;
     };
   }, [item, attempt]);
-  const reconcile = async (recovery: DependencyRecovery) => {
+  const reconcile = async (
+    recovery: DependencyRecovery,
+    baseFields?: PublicationFields
+  ) => {
     if (!item) return;
     const token = generation.current;
     const base = resolveSkillMarketApiBaseURL();
@@ -158,10 +182,14 @@ export function PublicationEditor({
       PublicationService.getInstruction(base, latest),
     ]);
     if (token !== generation.current) return;
+    const local = baseFields ?? fields;
     setReconciliation({
       latest, dependencies,
-      local: { ...fields, version: recovery.version, changelog: recovery.changelog,
-        versions: { ...fields.versions, ...recovery.versions } },
+      // null means the update form never owned that field: keep the editor value.
+      local: { ...local,
+        version: recovery.version ?? local.version,
+        changelog: recovery.changelog ?? local.changelog,
+        versions: { ...local.versions, ...recovery.versions } },
       remote: {
         name: latest.plugin.plugin_name,
         description: latest.plugin.manifest_json.description ?? "",

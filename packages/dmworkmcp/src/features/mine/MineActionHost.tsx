@@ -295,6 +295,7 @@ export default function MineActionHost({
       />
       <ExpertEditModal
         item={expert}
+        recovery={request?.recovery}
         onClose={close}
         onSaved={(message) => {
           Toast.success(message);
