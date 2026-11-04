@@ -370,6 +370,8 @@ export function PublicationEditor({
       </WKModal>
       {reconciliation && <WKModal
         visible
+        width="min(720px, calc(100vw - var(--wk-sp-8)))"
+        className="publication-editor-modal publication-reconciliation-modal"
         title={t("skillMarket.publication.reconcileTitle")}
         onCancel={onClose}
         footer={<>
