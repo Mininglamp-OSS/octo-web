@@ -179,11 +179,17 @@ export default function ExpertAddToLoopModal({
     // Surface a non-ready status so the user isn't silently defaulted onto (or
     // left picking) a runtime that can't run the agent. The status value itself
     // is fleet data (shown raw); the surrounding chrome is localized.
-    label: isRuntimeReady(rt)
-      ? rt.name
-      : t("mcp.expert.runtimeWithStatus", {
-          values: { name: rt.name, status: rt.status ?? "" },
-        }),
+    // Semi keys its selection map by label, even in single-select mode. Give
+    // each runtime its own React label so equal names cannot share a checkmark.
+    label: (
+      <span key={rt.id}>
+        {isRuntimeReady(rt)
+          ? rt.name
+          : t("mcp.expert.runtimeWithStatus", {
+              values: { name: rt.name, status: rt.status ?? "" },
+            })}
+      </span>
+    ),
     value: rt.id,
     disabled: !isRuntimeReady(rt),
   }));
