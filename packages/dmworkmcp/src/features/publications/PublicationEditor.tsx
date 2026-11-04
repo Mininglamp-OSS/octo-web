@@ -26,13 +26,15 @@ import {
 import { resolveSkillMarketApiBaseURL } from "@dmwork/skillmarket/src/api/constants";
 import type { PluginDetailWire } from "@dmwork/skillmarket/src/api/pluginWire";
 import type { ExpertItem } from "../../mock/expertMock";
-import { DependencyUpdateFlow } from "./DependencyUpdateFlow";
+import { DependencyUpdateFlow, type DependencyRecovery } from "./DependencyUpdateFlow";
 
 export interface PublicationEditorProps {
   item: ExpertItem | null;
   onClose: () => void;
   onSaved: (message: string) => void;
   onEditContent: (item: ExpertItem) => void;
+  /** Unsaved update inputs carried from a list conflict; consumed once after load. */
+  recovery?: DependencyRecovery;
 }
 const empty: PublicationFields = {
   name: "",
@@ -48,6 +50,7 @@ export function PublicationEditor({
   onClose,
   onSaved,
   onEditContent,
+  recovery,
 }: PublicationEditorProps) {
   const [initialVisibility, setInitialVisibility] = useState<
     "private" | "space"
@@ -64,9 +67,19 @@ export function PublicationEditor({
     () => updatesOpen && draft ? editPublicationDraft(draft, fields) : null,
     [updatesOpen, draft, fields]
   );
+  const [reconciliation, setReconciliation] = useState<{
+    latest: PluginDetailWire;
+    dependencies: PublicationDependency[];
+    local: PublicationFields;
+    remote: PublicationFields;
+  } | null>(null);
   const generation = useRef(0);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
+  const pendingRecovery = useRef<DependencyRecovery | undefined>(undefined);
+  useEffect(() => {
+    pendingRecovery.current = recovery;
+  }, [recovery]);
   const [alerts, setAlerts] = useState<DependencyUpdate[]>([]);
   const refreshAlerts = (source = draft) => {
     if (
@@ -104,6 +117,7 @@ export function PublicationEditor({
     setBusy(false);
     setError("");
     setUpdatesOpen(false);
+    setReconciliation(null);
     if (!item) return;
     const base = resolveSkillMarketApiBaseURL();
     void PublicationService.getDraft(base, item.id)
@@ -122,7 +136,7 @@ export function PublicationEditor({
         setDeps(dependencies);
         setAlerts([]);
         refreshAlerts(value);
-        setFields({
+        const loaded: PublicationFields = {
           name: value.plugin.plugin_name,
           description: value.plugin.manifest_json.description ?? "",
           instruction,
@@ -133,7 +147,29 @@ export function PublicationEditor({
               .filter((r) => r.target_version_id)
               .map((r) => [r.target_plugin_id, r.target_version_id!])
           ),
-        });
+        };
+        setFields(loaded);
+        // A list-originated recovery rides in with the edit request. Apply it
+        // once, against the draft just loaded, so the author compares real
+        // values instead of the empty form defaults.
+        const wanted = pendingRecovery.current;
+        if (
+          wanted &&
+          (wanted.version !== null ||
+            wanted.changelog !== null ||
+            Object.keys(wanted.versions).length > 0)
+        ) {
+          setReconciliation({
+            latest: value, dependencies, remote: loaded,
+            local: {
+              ...loaded,
+              version: wanted.version ?? loaded.version,
+              changelog: wanted.changelog ?? loaded.changelog,
+              versions: { ...loaded.versions, ...wanted.versions },
+            },
+          });
+        }
+        pendingRecovery.current = undefined;
       })
       .catch((err) => {
         if (token === generation.current)
@@ -145,6 +181,47 @@ export function PublicationEditor({
       generation.current++;
     };
   }, [item, attempt]);
+  const reconcile = async (
+    recovery: DependencyRecovery,
+    baseFields?: PublicationFields
+  ) => {
+    if (!item) return;
+    const token = generation.current;
+    const base = resolveSkillMarketApiBaseURL();
+    const latest = await PublicationService.getDraft(base, item.id);
+    const [dependencies, instruction] = await Promise.all([
+      PublicationService.getDependencies(base, latest),
+      PublicationService.getInstruction(base, latest),
+    ]);
+    if (token !== generation.current) return;
+    const local = baseFields ?? fields;
+    setReconciliation({
+      latest, dependencies,
+      // null means the update form never owned that field: keep the editor value.
+      local: { ...local,
+        version: recovery.version ?? local.version,
+        changelog: recovery.changelog ?? local.changelog,
+        versions: { ...local.versions, ...recovery.versions } },
+      remote: {
+        name: latest.plugin.plugin_name,
+        description: latest.plugin.manifest_json.description ?? "",
+        instruction,
+        version: latest.plugin.current_version === latest.plugin.published_version
+          ? nextPatch(latest.plugin.published_version) : latest.plugin.current_version ?? "1.0.0",
+        changelog: latest.draft_changelog ?? "",
+        versions: Object.fromEntries(latest.relations.filter(r => r.target_version_id).map(r => [r.target_plugin_id, r.target_version_id!])),
+      },
+    });
+  };
+  const acceptReconciliation = (chosen: PublicationFields) => {
+    if (!reconciliation) return;
+    setDraft(reconciliation.latest);
+    setDeps(reconciliation.dependencies);
+    setInitialVisibility(reconciliation.latest.plugin.visibility === "space" ? "space" : "private");
+    setFields(chosen);
+    setError("");
+    setReconciliation(null);
+  };
   const set = <K extends keyof PublicationFields>(
     key: K,
     value: PublicationFields[K]
@@ -164,7 +241,7 @@ export function PublicationEditor({
     (!!draft &&
       draft.plugin.visibility !== "private" &&
       draft.plugin.visibility !== "space");
-  const canSave =
+  const canSave = !reconciliation &&
     !!draft &&
     !busy &&
     !blocked &&
@@ -295,11 +372,36 @@ export function PublicationEditor({
           onInitialVisibilityChange={setInitialVisibility}
         />
       </WKModal>
+      {reconciliation && <WKModal
+        visible
+        title={t("skillMarket.publication.reconcileTitle")}
+        onCancel={() => { setFields(reconciliation.local); setReconciliation(null); }}
+        footer={<>
+          <WKButton onClick={() => acceptReconciliation(reconciliation.remote)}>{t("skillMarket.publication.useLatest")}</WKButton>
+          <WKButton onClick={() => acceptReconciliation(reconciliation.local)}>{t("skillMarket.publication.keepLocal")}</WKButton>
+        </>}
+      >
+        <p>{t("skillMarket.publication.reconcileHint")}</p>
+        {(["remote", "local"] as const).map(side => {
+          const values = reconciliation[side];
+          return <section key={side}>
+            <h3>{t(side === "remote" ? "skillMarket.publication.latestDraft" : "skillMarket.publication.localEdits")}</h3>
+            <dl>
+              {(["name", "description", "instruction", "version", "changelog"] as const).map(key =>
+                <React.Fragment key={key}><dt>{t("skillMarket.publication.compare." + key)}</dt><dd>{values[key]}</dd></React.Fragment>
+              )}
+              {reconciliation.dependencies.filter(dep => dep.type !== "connector").map(dep =>
+                <React.Fragment key={dep.id}><dt>{dep.name}</dt><dd>{dep.versions.find(v => v.id === values.versions[dep.id])?.label ?? t("skillMarket.publication.boundVersion")}</dd></React.Fragment>
+              )}
+            </dl>
+          </section>;
+        })}
+      </WKModal>}
       {item && updateDraft && (
         <DependencyUpdateFlow
           pluginId={item.id}
           listingState={draft?.plugin.listing_state}
-          onEdit={() => setUpdatesOpen(false)}
+          onEdit={reconcile}
           pending={blocked}
           draft={updateDraft}
           onClose={() => setUpdatesOpen(false)}

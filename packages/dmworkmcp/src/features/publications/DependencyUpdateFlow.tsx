@@ -21,11 +21,16 @@ import {
 } from "@dmwork/skillmarket/src/features/publications/publicationDraft";
 import { notifyReviewsChanged } from "@dmwork/skillmarket/src/api/reviewSignal";
 
+import type { MineActionRecovery } from "@dmwork/skillmarket/src/components/MineTable";
+
+/** Recovery inputs are the shared list→editor contract; null means the update
+ *  form never initialized that field and the editor must keep its own value. */
+export type DependencyRecovery = MineActionRecovery;
 interface Props {
   pluginId: string;
   pending?: boolean;
   listingState?: string;
-  onEdit?: () => void;
+  onEdit?: (recovery: DependencyRecovery) => void | Promise<void>;
   draft?: PublicationWrite;
   onClose: () => void;
   onSaved: (message: string) => void;
@@ -50,7 +55,11 @@ export function DependencyUpdateFlow({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [attempt, setAttempt] = useState(0);
-  const reloadEdits = useRef<{ pluginId: string; version: string; notes: string; selected: Record<string, boolean>; draft: PublicationWrite } | null>(null);
+  // Set once the form owns a version/notes value: seeded from the editor draft
+  // or loaded from the server. A failed initial load must not report empty
+  // strings as if the author had cleared them.
+  const initialized = useRef(false);
+  const reloadEdits = useRef<{ pluginId: string; version: string; notes: string; selected: Record<string, boolean>; draft: PublicationWrite; versions: Record<string, string> } | null>(null);
   const generation = useRef(0);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
@@ -70,6 +79,17 @@ export function DependencyUpdateFlow({
     setError("");
     setSource(null);
     setDraft(null);
+    // The editor already supplies its current version/notes; seed from them so a
+    // failed refresh still has real values to recover.
+    const retained = reloadEdits.current?.pluginId === pluginId ? reloadEdits.current : null;
+    initialized.current = Boolean(edited || retained);
+    if (retained) {
+      setVersion(retained.version);
+      setNotes(retained.notes);
+    } else if (edited) {
+      setVersion(edited.plugin.version ?? "");
+      setNotes(edited.changelog ?? "");
+    }
     if (listingState && listingState !== "published") {
       setError(t("skillMarket.publication.editBeforeUpdates"));
       return;
@@ -102,8 +122,13 @@ export function DependencyUpdateFlow({
           });
         }
         if (token !== generation.current) return;
+        if (preserved && payload?.expected_draft_revision &&
+            updates.draft_revision && payload.expected_draft_revision !== updates.draft_revision) {
+          setError(t("skillMarket.publication.draftConflict"));
+        }
         setSource(updates);
         setDraft(payload ?? null);
+        initialized.current = true;
         setVersion(preserved?.version ?? payload?.plugin.version ?? "1.0.0");
         setNotes(
           preserved?.notes ?? (payload?.changelog || t("skillMarket.publication.updateNotes"))
@@ -125,8 +150,13 @@ export function DependencyUpdateFlow({
     };
   }, [pluginId, edited, listingState, attempt]);
   const changes = source?.updates.filter((u) => selected[u.plugin_id]) ?? [];
+  const chosenVersions = Object.fromEntries(
+    changes
+      .filter((u) => u.plugin_type !== "connector")
+      .map((u) => [u.plugin_id, u.target_version_id])
+  );
   async function run(skip: boolean) {
-    if (!source || busy) return;
+    if (!source || busy || error) return;
     const token = generation.current;
     setBusy(true);
     setError("");
@@ -212,11 +242,29 @@ export function DependencyUpdateFlow({
           <WKButton variant="secondary" onClick={onClose} disabled={busy}>
             {t("skillMarket.common.cancel")}
           </WKButton>
-          {error && onEdit && <WKButton variant="primary" onClick={() => { onEdit(); onClose(); }}>
+          {error && onEdit && <WKButton variant="primary" disabled={busy} onClick={async () => {
+            const token = generation.current;
+            setBusy(true);
+            try {
+              await onEdit({
+                version: initialized.current ? version : null,
+                changelog: initialized.current ? notes : null,
+                // A failed reload clears `source`; keep the targets the author
+                // selected before the attempt instead of reporting none.
+                versions: source ? chosenVersions : reloadEdits.current?.versions ?? {},
+              });
+              if (token === generation.current) onClose();
+            } catch (err) {
+              if (token === generation.current)
+                setError(publicationErrorMessage(err, "skillMarket.common.loadFailed"));
+            } finally {
+              if (token === generation.current) setBusy(false);
+            }
+          }}>
             {t("skillMarket.publication.editResource")}
           </WKButton>}
-          {error && (!listingState || listingState === "published") && <WKButton variant="secondary" onClick={() => {
-            if (source && draft) reloadEdits.current = { pluginId, version, notes, selected, draft };
+          {error && (!listingState || listingState === "published") && <WKButton variant="secondary" disabled={busy} onClick={() => {
+            if (source && draft) reloadEdits.current = { pluginId, version, notes, selected, draft, versions: chosenVersions };
             setAttempt(value => value + 1);
           }}>
             {t("skillMarket.list.retry")}
@@ -226,6 +274,7 @@ export function DependencyUpdateFlow({
               variant="primary"
               disabled={
                 busy ||
+                Boolean(error) ||
                 !draft ||
                 !changes.length ||
                 !version.trim() ||
@@ -282,7 +331,10 @@ export function DependencyUpdateFlow({
                   <span>{t("skillMarket.form.versionLabel")}</span>
                   <WKInput
                     value={version}
-                    onChange={setVersion}
+                    onChange={value => {
+                      setVersion(value);
+                      if (error === t(upgradeVersionErrorKey(undefined, version) || "")) setError("");
+                    }}
                     disabled={busy}
                   />
                 </label>

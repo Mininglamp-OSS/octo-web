@@ -50,6 +50,8 @@ vi.mock("@octo/base", () => ({
   t: (key: string) => key,
   useI18n: () => undefined,
   WKApp: h.app,
+  WKButton: ({ children, ...props }: any) => <button {...props}>{children}</button>,
+  WKModal: ({ children, footer }: any) => <section>{children}{footer}</section>,
 }));
 
 vi.mock("@douyinfe/semi-ui", () => ({
@@ -160,8 +162,8 @@ vi.mock("../../components/McpDetailModal", () => ({
 }));
 
 vi.mock("../../components/ExpertEditModal", () => ({
-  default: ({ item }: { item: typeof expert | null }) =>
-    item ? <div data-testid="expert-edit" data-id={item.id} data-issues={JSON.stringify((item as any).dependencyIssues)} data-suspended={String((item as any).dependencySuspended ?? false)} /> : null,
+  default: ({ item, recovery }: { item: typeof expert | null; recovery?: unknown }) =>
+    item ? <div data-testid="expert-edit" data-recovery={JSON.stringify(recovery)} data-id={item.id} data-issues={JSON.stringify((item as any).dependencyIssues)} data-suspended={String((item as any).dependencySuspended ?? false)} /> : null,
 }));
 vi.mock("../../components/ExpertDetailModal", () => ({
   default: ({ item }: { item: typeof expert | typeof squad | null }) =>
@@ -412,4 +414,26 @@ it("carries owner-list diagnostics into the editor when draft metadata omits the
   const editor = container.querySelector('[data-testid="expert-edit"]');
   expect(editor?.getAttribute("data-issues")).toContain("内容创作规范");
   expect(editor?.getAttribute("data-suspended")).toBe("true");
+});
+
+it("keeps mixed-list recovery while hydrating editor metadata", async () => {
+  const recovery = { version: "1.0.3", changelog: "List notes", versions: { skill: "s2" } };
+  renderHost({ requestId: 101, pluginId: expert.id, type: "expert", action: "edit", recovery });
+  await act(async () => undefined);
+  const editor = container.querySelector('[data-testid="expert-edit"]');
+  expect(JSON.parse(editor!.getAttribute("data-recovery")!)).toEqual(recovery);
+});
+
+it("retains mixed-list recovery and retries failed editor hydration", async () => {
+  const recovery = { version: "1.0.9", changelog: "Retained notes", versions: { skill: "s2" } };
+  h.getExpertEditMetadata.mockRejectedValueOnce(new Error("offline")).mockResolvedValue(expert);
+  renderHost({ requestId: 103, pluginId: expert.id, type: "expert", action: "edit", recovery });
+  await act(async () => undefined);
+  expect(container.textContent).toContain("skillMarket.common.loadFailed");
+  expect(container.querySelector('[data-testid="expert-edit"]')).toBeNull();
+  await act(async () => {
+    Array.from(container.querySelectorAll("button")).find(button => button.textContent === "skillMarket.list.retry")!.click();
+  });
+  expect(h.getExpertEditMetadata).toHaveBeenCalledTimes(2);
+  expect(JSON.parse(container.querySelector('[data-testid="expert-edit"]')!.getAttribute("data-recovery")!)).toEqual(recovery);
 });

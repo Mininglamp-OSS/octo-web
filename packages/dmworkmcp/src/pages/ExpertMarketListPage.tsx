@@ -1,4 +1,4 @@
-import { DependencyUpdateFlow } from "../features/publications/DependencyUpdateFlow";
+import { DependencyUpdateFlow, type DependencyRecovery } from "../features/publications/DependencyUpdateFlow";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowDown, Check, HelpCircle, PackageOpen, Search, SlidersHorizontal, Upload, X } from "lucide-react";
@@ -152,6 +152,7 @@ export default function ExpertMarketListPage({
   /** 编辑 — the 可见范围 editor (ExpertEditModal). Metadata only; content still
    *  goes through the Bot prompt. */
   const editGeneration = useRef(0);
+  const [editRecovery, setEditRecovery] = useState<DependencyRecovery | null>(null);
   const [visibilityTarget,setVisibilityTarget]=useState<"private"|"space">();
   const [dependencyTarget,setDependencyTarget]=useState<ExpertItem|null>(null);
   const [visibilityId, setVisibilityId] = useState<string | null>(null);
@@ -417,13 +418,18 @@ export default function ExpertMarketListPage({
   // marketplace metadata that 发布 reads, so making an author round-trip it
   // through an agent would be absurd. A list projection carries everything the
   // modal reads, so no hydrate is required here either.
-  const handleEdit = async (item: ExpertItem) => {
+  const handleEdit = async (item: ExpertItem, recovery?: DependencyRecovery) => {
     const generation = ++editGeneration.current;
+    setEditRecovery(recovery ?? null);
     try {
       const draft = await getExpertEditMetadata(item.id);
       if (generation === editGeneration.current) setEditItem({ ...draft, dependencyIssues: draft.dependencyIssues ?? item.dependencyIssues, dependencySuspended: draft.dependencySuspended ?? item.dependencySuspended });
     } catch (err) {
-      if (generation === editGeneration.current) showToast(err instanceof Error ? err.message : t("mcp.expert.loadError"));
+      if (generation === editGeneration.current) {
+        if (recovery) throw err;
+        setEditRecovery(null);
+        showToast(err instanceof Error ? err.message : t("mcp.expert.loadError"));
+      }
     }
   };
 
@@ -938,12 +944,13 @@ export default function ExpertMarketListPage({
         onClose={() => setBotEditTarget(null)}
         onToast={showToast}
       />
-      {dependencyTarget&&<DependencyUpdateFlow pluginId={dependencyTarget.id} listingState={dependencyTarget.listingState} onEdit={()=>void handleEdit(dependencyTarget)} pending={dependencyTarget.displayStatus==="pending_review"} onClose={()=>setDependencyTarget(null)} onSaved={message=>{showToast(message);reload()}}/>}
+      {dependencyTarget&&<DependencyUpdateFlow pluginId={dependencyTarget.id} listingState={dependencyTarget.listingState} onEdit={(recovery)=>handleEdit(dependencyTarget, recovery)} pending={dependencyTarget.displayStatus==="pending_review"} onClose={()=>setDependencyTarget(null)} onSaved={message=>{showToast(message);reload()}}/>}
       <VisibilityModal target={visibilityTarget} pluginId={visibilityId} onClose={() => setVisibilityId(null)} onSaved={handleListingChanged} />
       <ExpertEditModal
         item={editItem}
-        onClose={() => setEditItem(null)}
-        onSaved={handleListingChanged}
+        recovery={editRecovery ?? undefined}
+        onClose={() => { setEditItem(null); setEditRecovery(null); }}
+        onSaved={message => { setEditRecovery(null); handleListingChanged(message); }}
         onEditContent={handleEditContent}
       />
       <ExpertDeleteConfirmModal

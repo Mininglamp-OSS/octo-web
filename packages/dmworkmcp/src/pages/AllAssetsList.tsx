@@ -412,7 +412,7 @@ export default function AllAssetsList({
 
   return (
     <div className="wk-mcp-mine__all">
-      {dependencyTarget&&<DependencyUpdateFlow pluginId={dependencyTarget.id} listingState={dependencyTarget.listingState} onEdit={()=>onRequestAction?.({pluginId: dependencyTarget.id, type: dependencyTarget.pluginType === "expert_team" ? "squad" : "expert", action: "edit", dependencyIssues: dependencyTarget.dependencyIssues, dependencySuspended: dependencyTarget.dependencySuspended})} pending={dependencyTarget.displayStatus==="pending_review"} onClose={()=>setDependencyTarget(null)} onSaved={message=>{Toast.success(message);void load()}}/>}
+      {dependencyTarget&&<DependencyUpdateFlow pluginId={dependencyTarget.id} listingState={dependencyTarget.listingState} onEdit={(recovery)=>onRequestAction?.({pluginId: dependencyTarget.id, type: dependencyTarget.pluginType === "expert_team" ? "squad" : "expert", action: "edit", dependencyIssues: dependencyTarget.dependencyIssues, dependencySuspended: dependencyTarget.dependencySuspended, recovery})} pending={dependencyTarget.displayStatus==="pending_review"} onClose={()=>setDependencyTarget(null)} onSaved={message=>{Toast.success(message);void load()}}/>}
       <VisibilityModal target={visibilityTarget} pluginId={visibilityId} onClose={() => setVisibilityId(null)} onSaved={message => { Toast.success(message); void load(); }} />
       <MineTable rows={rows} ariaLabel={t("mcp.mine.allAriaLabel")} />
       {(cursor || loadingMore || moreError) && (

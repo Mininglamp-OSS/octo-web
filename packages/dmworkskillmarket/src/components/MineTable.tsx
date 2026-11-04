@@ -28,6 +28,18 @@ import { formatCount } from "../utils/format";
  *  `expert_team` wire type. */
 export type MineAssetType = "skill" | "connector" | "expert" | "squad";
 
+/** Unsaved dependency-update inputs a list hands to the editor after a conflict.
+ *
+ * `version`/`changelog` are `null` when the update form never initialized them
+ * (its initial load failed), so the editor keeps its own values instead of
+ * overwriting them with empty strings. `versions` maps plugin id to the target
+ * version the author selected. */
+export interface MineActionRecovery {
+  version: string | null;
+  changelog: string | null;
+  versions: Record<string, string>;
+}
+
 /** A one-shot request from the mixed “全部” list to its modal action host. */
 export interface MineActionRequest {
   requestId: number;
@@ -37,6 +49,8 @@ export interface MineActionRequest {
   /** Preserve owner-list diagnostics when the draft projection omits them. */
   dependencyIssues?: MineRow["dependencyIssues"];
   dependencySuspended?: boolean;
+  /** Carry recovery inputs into the editor when Edit resource follows a conflict. */
+  recovery?: MineActionRecovery;
 }
 
 const WIRE_TYPE: Record<MineAssetType, string> = {
