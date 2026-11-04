@@ -82,6 +82,16 @@ export async function registerS11SummaryAgentContinueRefine(page: Page): Promise
     };
 
     worker.use(
+      http.get("*/summary/api/v1/summary-workbench/capabilities", () =>
+        env({ enabled: true, contract_version: "2", max_time_range_days: 90 })
+      ),
+      http.get("*/summary/api/v1/summaries/11011/optimization-target", () =>
+        env({
+          target: { task_id: taskId, result_kind: "team", expected_revision: "s11-original" },
+          title: listItem.title,
+          can_save_version: true,
+        })
+      ),
       http.get("*/summary/api/v1/summaries", () =>
         env({ items: [listItem], total: 1, attention_count: 0, unread_count: 1, pending_invitation_count: 0 })
       ),
@@ -90,7 +100,19 @@ export async function registerS11SummaryAgentContinueRefine(page: Page): Promise
       ),
       http.get("*/summary/api/v1/agent/chat/history", ({ request }: any) => {
         const url = new URL(request.url);
-        return env({ session_id: url.searchParams.get("session_id") || "", messages: [] });
+        return env({
+          contract_version: "2",
+          session_id: url.searchParams.get("session_id") || "",
+          messages: [],
+          state: {
+            scope_version: 1,
+            summary_context: {
+              selected_channels: [], documents: [], participants: [],
+              template: null, time_range: null, referenced_task_ids: [taskId],
+            },
+            current_preview: null, pending_proposal: null, workflow: null,
+          },
+        });
       }),
       http.get("*/summary/api/v1/summaries/11011", () => env(detail)),
       http.post("*/summary/api/v1/summaries/11011/read", () =>
