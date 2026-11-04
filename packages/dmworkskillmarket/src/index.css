@@ -3966,3 +3966,25 @@
   .publication-editor-bot-action { margin-inline-start: 0; }
   .publication-editor-dependency { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Keep comparison content scrollable while every decision remains reachable. */
+.publication-reconciliation-modal .wk-modal-title {
+  flex: none;
+}
+.publication-reconciliation-modal .wk-modal-body {
+  overflow-wrap: anywhere;
+}
+.publication-reconciliation-modal dd {
+  white-space: pre-wrap;
+}
+.publication-reconciliation-modal .wk-modal-footer {
+  flex-wrap: wrap;
+}
+.publication-reconciliation-modal .wk-modal-footer .wk-btn {
+  max-width: 100%;
+  min-height: var(--wk-sp-9);
+  height: auto;
+  padding-block: var(--wk-sp-2);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

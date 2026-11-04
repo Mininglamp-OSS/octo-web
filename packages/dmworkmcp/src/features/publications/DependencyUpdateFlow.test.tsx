@@ -25,7 +25,7 @@ vi.mock("@octo/base", () => ({
     </button>
   ),
   WKModal: ({ children, footer, title, onCancel }: any) => (
-    <section>
+    <section data-modal-title={title}>
       {title === "skillMarket.publication.reconcileTitle" && <button onClick={onCancel}>Dismiss comparison</button>}
       {children}
       {footer}
@@ -557,7 +557,11 @@ it.each([
     expect(api.getDraft).toHaveBeenCalledTimes(2);
   }
   expect(container.textContent).toContain("skillMarket.publication.latestDraft");
-  await click(action);
+  const comparison = container.querySelector('[data-modal-title="skillMarket.publication.reconcileTitle"]');
+  expect(comparison).toBeTruthy();
+  const actionButton = Array.from(comparison!.querySelectorAll("button")).find(button => button.textContent === action);
+  expect(actionButton).toBeTruthy();
+  await act(async () => actionButton!.click());
   expect(close).toHaveBeenCalledOnce();
   // Even before the owner unmounts the editor, dismissal must not accept
   // the local payload or release the explicit reconciliation save blocker.
