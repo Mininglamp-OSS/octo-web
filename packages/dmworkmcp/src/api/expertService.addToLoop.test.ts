@@ -148,7 +148,7 @@ describe("expertService add-to-loop wire contract", () => {
 
     expect(mock.instance.post).toHaveBeenCalledWith(
       "/market/api/v1/plugins/expert-1/installations",
-      { runtime_id: "rt1" },
+      { runtime_id: "rt1", workspace_connectors: true },
       {
         headers: {
           "X-Workspace-ID": "w1",
@@ -185,7 +185,7 @@ describe("expertService add-to-loop wire contract", () => {
 
     expect(mock.instance.post).toHaveBeenCalledWith(
       "/market/api/v1/plugins/squad-1/installations",
-      { runtime_id: "rt1" },
+      { runtime_id: "rt1", workspace_connectors: true },
       {
         headers: {
           "X-Workspace-ID": "w1",
@@ -210,7 +210,7 @@ describe("expertService add-to-loop wire contract", () => {
 
     expect(mock.instance.post).toHaveBeenCalledWith(
       "/market/api/v1/plugins/a%2Fb%20c/installations",
-      { runtime_id: "r" },
+      { runtime_id: "r", workspace_connectors: true },
       {
         headers: { "X-Workspace-ID": "w", "Idempotency-Key": "key" },
         timeout: 150_000,
