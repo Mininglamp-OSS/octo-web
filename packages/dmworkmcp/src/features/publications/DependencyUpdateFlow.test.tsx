@@ -25,7 +25,7 @@ vi.mock("@octo/base", () => ({
     </button>
   ),
   WKModal: ({ children, footer, title, onCancel }: any) => (
-    <section>
+    <section data-modal-title={title}>
       {title === "skillMarket.publication.reconcileTitle" && <button onClick={onCancel}>Dismiss comparison</button>}
       {children}
       {footer}
@@ -230,7 +230,7 @@ it("finishes adoption when the editor's initial reminder request completes durin
   api.adoptUpdates.mockImplementationOnce(() => new Promise(resolve => { finishAdoption = resolve; }));
   api.getDraft.mockResolvedValue({
     draft_revision: "original", draft_changelog: "Notes", relations: draft.relations,
-    plugin: { ...draft.plugin, plugin_name: "Expert", visibility: "space", current_version: "1.0.1", published_version: "1.0.0" },
+    plugin: { ...draft.plugin, plugin_name: "Expert", visibility: "space", current_version: "1.0.1", published_version: "1.0.0", published_version_id: "released", listing_state: "published" },
   });
   api.getInstruction.mockResolvedValue("Instructions");
   api.getDependencies.mockResolvedValue([]);
@@ -397,7 +397,7 @@ it("keeps the selected target versions when the retry reload fails", async () =>
 it.each(["initial-load", "reload"])("preserves parent inputs through %s failure and reconciliation", async failure => {
   const value = {
     draft_revision: "original", draft_changelog: "Parent notes", relations: draft.relations,
-    plugin: { ...draft.plugin, plugin_name: "Expert", visibility: "space", current_version: "1.0.1", published_version: "1.0.0" },
+    plugin: { ...draft.plugin, plugin_name: "Expert", visibility: "space", listing_state: "published", published_version_id: "e1", current_version: "1.0.1", published_version: "1.0.0" },
   };
   api.getDraft.mockResolvedValue(value);
   api.getDependencies.mockResolvedValue([]);
@@ -528,7 +528,12 @@ it.each(["resolve", "reject"])("blocks Retry during pending edit recovery until 
   }
 });
 
-it("abandons list recovery on comparison dismissal without accepting local edits", async () => {
+it.each([
+  ["list", "Dismiss comparison"],
+  ["list", "skillMarket.common.cancel"],
+  ["nested", "Dismiss comparison"],
+  ["nested", "skillMarket.common.cancel"],
+])("abandons %s recovery via %s without accepting local edits", async (entry, action) => {
   const value = {
     draft_revision: "latest", draft_changelog: "Server notes", relations: draft.relations,
     plugin: { ...draft.plugin, plugin_name: "Expert", visibility: "space", current_version: "1.0.1", published_version: "1.0.0" },
@@ -536,11 +541,27 @@ it("abandons list recovery on comparison dismissal without accepting local edits
   api.getDraft.mockResolvedValue(value);
   api.getDependencies.mockResolvedValue([]);
   api.getInstruction.mockResolvedValue("Instructions");
+  if (entry === "nested") {
+    api.getDraft.mockResolvedValueOnce({ ...value, draft_revision: "original" });
+    api.adoptUpdates.mockRejectedValueOnce({ status: 409 });
+    api.getUpdates.mockResolvedValue({ published_version_id: "e1", draft_revision: "latest", updates });
+  }
   const close = vi.fn();
   await act(async () => {
-    ReactDOM.render(<PublicationEditor item={{ id: "expert" } as any} recovery={{ version: "1.0.9", changelog: "Local notes", versions: { skill: "s2" } }} onSaved={vi.fn()} onClose={close} onEditContent={vi.fn()} />, container);
+    ReactDOM.render(<PublicationEditor item={{ id: "expert" } as any} recovery={entry === "list" ? { version: "1.0.9", changelog: "Local notes", versions: { skill: "s2" } } : undefined} onSaved={vi.fn()} onClose={close} onEditContent={vi.fn()} />, container);
   });
-  await click("Dismiss comparison");
+  if (entry === "nested") {
+    await click("View updates");
+    await click("skillMarket.publication.confirmUpdate");
+    await click("skillMarket.publication.editResource");
+    expect(api.getDraft).toHaveBeenCalledTimes(2);
+  }
+  expect(container.textContent).toContain("skillMarket.publication.latestDraft");
+  const comparison = container.querySelector('[data-modal-title="skillMarket.publication.reconcileTitle"]');
+  expect(comparison).toBeTruthy();
+  const actionButton = Array.from(comparison!.querySelectorAll("button")).find(button => button.textContent === action);
+  expect(actionButton).toBeTruthy();
+  await act(async () => actionButton!.click());
   expect(close).toHaveBeenCalledOnce();
   // Even before the owner unmounts the editor, dismissal must not accept
   // the local payload or release the explicit reconciliation save blocker.

@@ -1,3 +1,4 @@
+import { usePublicationAttention } from "../bridge/usePublicationAttention";
 import React, { Component, useEffect, useRef } from "react";
 import { Plug, ShieldCheck, Sparkles, UserRound, Users } from "lucide-react";
 import { I18nContext, t, WKApp, Dap } from "@octo/base";
@@ -22,6 +23,7 @@ import MyAssetsPage from "../pages/MyAssetsPage";
  * cannot take. Never treat it as an authorization boundary.
  */
 interface ReviewGate {
+  needsAttention: boolean;
   /** True only once the role has resolved AND the user may review. */
   isReviewer: boolean;
   /** True while the role is still in flight. The row stays hidden (no flash for
@@ -33,6 +35,7 @@ interface ReviewGate {
 }
 
 const INITIAL_REVIEW_GATE: ReviewGate = {
+  needsAttention: false,
   isReviewer: false,
   roleLoading: true,
   pendingCount: 0,
@@ -153,6 +156,7 @@ function findMarketItemByRoutePath(
  * that runs the hooks and reports upward. `onChange` must be a stable callback.
  */
 function ReviewGateProbe({ onChange }: { onChange: (gate: ReviewGate) => void }) {
+  const needsAttention = usePublicationAttention();
   const { isReviewer, loading } = useSpaceRole();
   // Badge-only probe: one row, and held back entirely until the role resolves
   // so a plain member never fires the 403-ing `mode=space` read.
@@ -191,8 +195,8 @@ function ReviewGateProbe({ onChange }: { onChange: (gate: ReviewGate) => void })
   }, []);
 
   useEffect(() => {
-    onChange({ isReviewer, roleLoading: loading, pendingCount: isReviewer ? pendingCount : 0 });
-  }, [onChange, isReviewer, loading, pendingCount]);
+    onChange({ needsAttention, isReviewer, roleLoading: loading, pendingCount: isReviewer ? pendingCount : 0 });
+  }, [onChange, isReviewer, loading, pendingCount, needsAttention]);
 
   return null;
 }
@@ -298,7 +302,8 @@ export default class MarketSidebar extends Component<{}, MarketSidebarState> {
     if (
       current.isReviewer === gate.isReviewer &&
       current.roleLoading === gate.roleLoading &&
-      current.pendingCount === gate.pendingCount
+      current.pendingCount === gate.pendingCount &&
+      current.needsAttention === gate.needsAttention
     ) {
       return;
     }
@@ -371,6 +376,11 @@ export default class MarketSidebar extends Component<{}, MarketSidebarState> {
                       <span className="wk-mcp-sidebar__item-icon">{item.icon}</span>
                       <span className="wk-mcp-sidebar__item-label">{item.label()}</span>
                     </span>
+                    {item.id === "mine" && gate.needsAttention && (
+                      <span className="wk-mcp-sidebar__attention" role="img"
+                        aria-label={t("mcp.sidebar.mineAttention")}
+                        title={t("mcp.sidebar.mineAttention")} />
+                    )}
                     {badge && <span className="wk-mcp-sidebar__badge">{badge}</span>}
                   </button>
                 </li>
