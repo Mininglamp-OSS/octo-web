@@ -391,3 +391,61 @@ it("keeps the selected target versions when the retry reload fails", async () =>
   await click("skillMarket.publication.editResource");
   expect(edit).toHaveBeenCalledWith(expect.objectContaining({ versions: { skill: "s2" } }));
 });
+
+it.each(["initial-load", "reload"])("preserves parent inputs through %s failure and reconciliation", async failure => {
+  const value = {
+    draft_revision: "original", draft_changelog: "Parent notes", relations: draft.relations,
+    plugin: { ...draft.plugin, plugin_name: "Expert", visibility: "space", current_version: "1.0.1", published_version: "1.0.0" },
+  };
+  api.getDraft.mockResolvedValue(value);
+  api.getDependencies.mockResolvedValue([]);
+  api.getInstruction.mockResolvedValue("Instructions");
+  if (failure === "initial-load") api.getUpdates.mockRejectedValue(new Error("unavailable"));
+  else {
+    api.getUpdates.mockResolvedValueOnce({ updates })
+      .mockResolvedValueOnce({ updates, draft_revision: "original" })
+      .mockRejectedValue(new Error("reload unavailable"));
+  }
+  api.adoptUpdates.mockRejectedValueOnce({ status: 409 });
+  api.saveDraft.mockResolvedValue(value);
+  await act(async () => {
+    ReactDOM.render(<PublicationEditor item={{ id: "expert" } as any} onSaved={vi.fn()} onClose={vi.fn()} onEditContent={vi.fn()} />, container);
+  });
+  await click("View updates");
+  if (failure === "reload") {
+    await act(async () => {
+      Simulate.change(container.querySelectorAll('input:not([type="checkbox"])')[1], { target: { value: "Updated recovery notes" } } as any);
+    });
+    await click("skillMarket.publication.confirmUpdate");
+    await click("skillMarket.list.retry");
+  }
+  await click("skillMarket.publication.editResource");
+  expect(container.textContent).toContain("Parent notes");
+  await click("skillMarket.publication.keepLocal");
+  await click("skillMarket.plugin.actionSaveDraft");
+  const payload = api.saveDraft.mock.calls[0][1];
+  expect(payload.plugin.version).toBe("1.0.1");
+  expect(payload.changelog).toBe(failure === "reload" ? "Updated recovery notes" : "Parent notes");
+  expect(payload.relations[0].target_version_id).toBe(failure === "reload" ? "s2" : "s1");
+});
+
+it("reconciles recovery passed by a list with the freshly loaded editor draft", async () => {
+  const value = {
+    draft_revision: "latest", draft_changelog: "Server notes", relations: draft.relations,
+    plugin: { ...draft.plugin, plugin_name: "Expert", visibility: "space", current_version: "1.0.1", published_version: "1.0.0" },
+  };
+  api.getDraft.mockResolvedValue(value);
+  api.getDependencies.mockResolvedValue([]);
+  api.getInstruction.mockResolvedValue("Instructions");
+  api.saveDraft.mockResolvedValue(value);
+  await act(async () => {
+    ReactDOM.render(<PublicationEditor item={{ id: "expert" } as any} recovery={{ version: "1.0.3", changelog: "List notes", versions: { skill: "s2" } }} onSaved={vi.fn()} onClose={vi.fn()} onEditContent={vi.fn()} />, container);
+  });
+  expect(container.textContent).toContain("List notes");
+  await click("skillMarket.publication.keepLocal");
+  await click("skillMarket.plugin.actionSaveDraft");
+  expect(api.saveDraft.mock.calls[0][1]).toMatchObject({
+    expected_draft_revision: "latest", changelog: "List notes", plugin: { version: "1.0.3" },
+    relations: [expect.objectContaining({ target_version_id: "s2" })],
+  });
+});

@@ -8,6 +8,7 @@ import type { ExpertCategoryCount, ExpertListResult, ListExpertParams } from "..
 import type { MineRow } from "@dmwork/skillmarket";
 
 const api = vi.hoisted(() => ({
+  recoveryControls: false,
   listExperts: vi.fn(),
   listSquads: vi.fn(),
   listMyExperts: vi.fn(),
@@ -60,6 +61,7 @@ vi.mock("@dmwork/skillmarket", async () => ({
         <div data-item={row.id} data-status={row.status} key={row.id}>
           {row.name}
           {row.onEdit && <button onClick={row.onEdit}>edit</button>}
+          {api.recoveryControls && row.onDependencyUpdates && <button onClick={row.onDependencyUpdates}>updates</button>}
           {row.onPublish && <button onClick={row.onPublish}>publish</button>}
           {row.onUpgrade && <button onClick={row.onUpgrade}>upgrade</button>}
           {row.onCancelReview && <button onClick={row.onCancelReview}>cancel</button>}
@@ -84,9 +86,12 @@ vi.mock("../components/ExpertAddToLoopModal", () => ({
     return item ? <button onClick={onClose}>close recruitment</button> : null;
   },
 }));
-vi.mock("../components/ExpertEditModal", () => ({ default: ({ item }: { item?: ExpertItem }) => item ? <div data-edited-notes={item.draftChangelog} /> : null }));
+vi.mock("../components/ExpertEditModal", () => ({ default: ({ item, recovery }: { item?: ExpertItem; recovery?: unknown }) => item ? <div data-edited-notes={item.draftChangelog} data-recovery={JSON.stringify(recovery)} /> : null }));
 vi.mock("../components/ReviewSubmitModal", () => ({ default: () => null }));
 
+vi.mock("../features/publications/DependencyUpdateFlow", () => ({
+  DependencyUpdateFlow: ({ onEdit }: any) => <button onClick={() => onEdit({ version: "1.0.3", changelog: "List notes", versions: { skill: "s2" } })}>recover</button>,
+}));
 import ExpertMarketListPage from "./ExpertMarketListPage";
 import { EXPERT_CATEGORIES } from "../mock/expertMock";
 
@@ -176,6 +181,7 @@ function scrollLoadMore(parent: ParentNode = root) {
 }
 
 beforeEach(() => {
+  api.recoveryControls = false;
   recruitment.config.dmloopOn = false;
   observers.length = 0;
   vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
@@ -763,4 +769,18 @@ describe.each(["agent", "squad"] as const)("personal %s review cancellation", (m
     await tick();
     expect(pluginReview.cancelPluginReview).toHaveBeenCalledExactlyOnceWith("lookup-review-1");
   });
+});
+
+it("passes recovery through the real expert-list edit callback", async () => {
+  api.recoveryControls = true;
+  const item = { ...records[0], visibility: "private", listingState: "published", displayStatus: "published" } as ExpertItem;
+  api.listMyExperts.mockResolvedValue({ items: [item], total: 1 });
+  api.getExpertEditMetadata.mockResolvedValue(item);
+  await render({ variant: "mine", mineType: "agent" });
+  const clickText = async (text: string) => {
+    await act(async () => { Array.from(root.querySelectorAll("button")).find(b => b.textContent === text)!.click(); });
+  };
+  await clickText("updates");
+  await clickText("recover");
+  expect(JSON.parse(root.querySelector('[data-recovery]')!.getAttribute('data-recovery')!)).toEqual({ version: "1.0.3", changelog: "List notes", versions: { skill: "s2" } });
 });

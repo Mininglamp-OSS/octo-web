@@ -81,8 +81,12 @@ export function DependencyUpdateFlow({
     setDraft(null);
     // The editor already supplies its current version/notes; seed from them so a
     // failed refresh still has real values to recover.
-    initialized.current = Boolean(edited);
-    if (edited) {
+    const retained = reloadEdits.current?.pluginId === pluginId ? reloadEdits.current : null;
+    initialized.current = Boolean(edited || retained);
+    if (retained) {
+      setVersion(retained.version);
+      setNotes(retained.notes);
+    } else if (edited) {
       setVersion(edited.plugin.version ?? "");
       setNotes(edited.changelog ?? "");
     }
