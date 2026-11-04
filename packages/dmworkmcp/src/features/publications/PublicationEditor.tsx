@@ -68,8 +68,12 @@ export function PublicationEditor({
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   const [alerts, setAlerts] = useState<DependencyUpdate[]>([]);
-  const refreshAlerts = () => {
-    if (!item) return;
+  const refreshAlerts = (source = draft) => {
+    if (
+      !item ||
+      source?.plugin.listing_state !== "published" ||
+      !source.plugin.published_version_id
+    ) return;
     const token = generation.current;
     void PublicationService.getUpdates(resolveSkillMarketApiBaseURL(), item.id)
       .then((result) => {
@@ -117,7 +121,7 @@ export function PublicationEditor({
         );
         setDeps(dependencies);
         setAlerts([]);
-        refreshAlerts();
+        refreshAlerts(value);
         setFields({
           name: value.plugin.plugin_name,
           description: value.plugin.manifest_json.description ?? "",
@@ -299,7 +303,7 @@ export function PublicationEditor({
           pending={blocked}
           draft={updateDraft}
           onClose={() => setUpdatesOpen(false)}
-          onSkipped={refreshAlerts}
+          onSkipped={() => refreshAlerts()}
           onSaved={(message) => {
             onSaved(message);
             onClose();

@@ -356,3 +356,16 @@ describe("unified expert editor", () => {
     expect(cb.onEditContent).toHaveBeenCalled();
   });
 });
+
+it.each(["draft", "delisted"])("does not query published-only updates while editing %s", async listing_state => {
+  api.getDraft.mockResolvedValue({ ...makeDraft(), plugin: {
+    ...makeDraft().plugin, listing_state, published_version_id: listing_state === "draft" ? undefined : "released",
+  } });
+  await mount();
+  expect(api.getUpdates).not.toHaveBeenCalled();
+  expect(container.textContent).toContain("skillMarket.plugin.actionSaveDraft");
+});
+it("queries updates for a published baseline", async () => {
+  await mount();
+  expect(api.getUpdates).toHaveBeenCalledOnce();
+});

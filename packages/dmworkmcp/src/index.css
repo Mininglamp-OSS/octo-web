@@ -4731,3 +4731,11 @@
   overflow-wrap: anywhere;
 }
 .wk-mcp-dependency-metadata p { margin: 0; }
+
+.wk-mcp-sidebar__attention {
+  flex: 0 0 auto;
+  width: var(--wk-sp-2);
+  height: var(--wk-sp-2);
+  border-radius: var(--wk-r-full);
+  background: var(--wk-color-danger);
+}

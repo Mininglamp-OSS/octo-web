@@ -227,7 +227,7 @@ it("finishes adoption when the editor's initial reminder request completes durin
   api.adoptUpdates.mockImplementationOnce(() => new Promise(resolve => { finishAdoption = resolve; }));
   api.getDraft.mockResolvedValue({
     draft_revision: "original", draft_changelog: "Notes", relations: draft.relations,
-    plugin: { ...draft.plugin, plugin_name: "Expert", visibility: "space", current_version: "1.0.1", published_version: "1.0.0" },
+    plugin: { ...draft.plugin, plugin_name: "Expert", visibility: "space", current_version: "1.0.1", published_version: "1.0.0", published_version_id: "released", listing_state: "published" },
   });
   api.getInstruction.mockResolvedValue("Instructions");
   api.getDependencies.mockResolvedValue([]);

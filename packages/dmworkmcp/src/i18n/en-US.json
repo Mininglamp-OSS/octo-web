@@ -11,6 +11,7 @@
     "skills": "Skills",
     "experts": "Experts",
     "expertsBadge": "Loop",
+    "mineAttention": "Publications need attention: delisted assets, affected dependencies or updates",
     "mine": "My publications",
     "review": "Publication management"
   },

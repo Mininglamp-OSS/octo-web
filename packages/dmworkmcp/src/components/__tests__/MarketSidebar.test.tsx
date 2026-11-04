@@ -16,6 +16,7 @@ const mineLabel = /我的发布|mcp\.sidebar\.mine/;
 
 const h = vi.hoisted(() => ({
   spaceRole: { role: 0 as number | undefined, isReviewer: false, loading: false },
+  attention: false,
   pendingCount: 0,
   reviewOptions: [] as Array<Record<string, unknown>>,
   reviewRefresh: vi.fn(),
@@ -61,6 +62,8 @@ vi.mock("@octo/base", () => ({
     },
   },
 }));
+
+vi.mock("../../bridge/usePublicationAttention", () => ({ usePublicationAttention: () => h.attention }));
 
 vi.mock("@dmwork/skillmarket", () => ({
   SkillListPage: () => React.createElement("div", { "data-testid": "skills-page" }),
@@ -117,6 +120,7 @@ function rowLabels(): string[] {
 beforeEach(() => {
   h.spaceRole = { role: 0, isReviewer: false, loading: false };
   h.pendingCount = 0;
+  h.attention = false;
   h.reviewOptions = [];
   h.busHandlers = {};
   h.reviewRefresh.mockClear();
@@ -182,6 +186,7 @@ describe("MarketSidebar 组织发布管理 entry", () => {
   it("hides the badge when the queue is empty", () => {
     h.spaceRole = { role: 1, isReviewer: true, loading: false };
     h.pendingCount = 0;
+  h.attention = false;
     render();
 
     expect(container!.querySelectorAll(".wk-mcp-sidebar__badge")).toHaveLength(0);
@@ -270,4 +275,16 @@ describe("MarketSidebar review badge across a Space switch", () => {
 
     expect(h.reviewRefresh).not.toHaveBeenCalled();
   });
+});
+
+ it("keeps an accessible mine dot after navigation, then removes it when resolved", () => {
+  h.attention = true;
+  render();
+  expect(container!.querySelector('[aria-label="mcp.sidebar.mineAttention"]')).not.toBeNull();
+  const mine = Array.from(container!.querySelectorAll("button")).find(button => mineLabel.test(button.textContent ?? ""))!;
+  act(() => { mine.click(); });
+  expect(container!.querySelector('[aria-label="mcp.sidebar.mineAttention"]')).not.toBeNull();
+  h.attention = false;
+  render();
+  expect(container!.querySelector('[aria-label="mcp.sidebar.mineAttention"]')).toBeNull();
 });
