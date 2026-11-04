@@ -21,11 +21,16 @@ import {
 } from "@dmwork/skillmarket/src/features/publications/publicationDraft";
 import { notifyReviewsChanged } from "@dmwork/skillmarket/src/api/reviewSignal";
 
+export interface DependencyRecovery {
+  version: string;
+  changelog: string;
+  versions: Record<string, string>;
+}
 interface Props {
   pluginId: string;
   pending?: boolean;
   listingState?: string;
-  onEdit?: () => void;
+  onEdit?: (recovery: DependencyRecovery) => void | Promise<void>;
   draft?: PublicationWrite;
   onClose: () => void;
   onSaved: (message: string) => void;
@@ -216,7 +221,20 @@ export function DependencyUpdateFlow({
           <WKButton variant="secondary" onClick={onClose} disabled={busy}>
             {t("skillMarket.common.cancel")}
           </WKButton>
-          {error && onEdit && <WKButton variant="primary" onClick={() => { onEdit(); onClose(); }}>
+          {error && onEdit && <WKButton variant="primary" disabled={busy} onClick={async () => {
+            setBusy(true);
+            try {
+              await onEdit({
+                version, changelog: notes,
+                versions: Object.fromEntries(changes.filter(u => u.plugin_type !== "connector").map(u => [u.plugin_id, u.target_version_id])),
+              });
+              onClose();
+            } catch (err) {
+              setError(publicationErrorMessage(err, "skillMarket.common.loadFailed"));
+            } finally {
+              setBusy(false);
+            }
+          }}>
             {t("skillMarket.publication.editResource")}
           </WKButton>}
           {error && (!listingState || listingState === "published") && <WKButton variant="secondary" onClick={() => {
@@ -287,7 +305,10 @@ export function DependencyUpdateFlow({
                   <span>{t("skillMarket.form.versionLabel")}</span>
                   <WKInput
                     value={version}
-                    onChange={setVersion}
+                    onChange={value => {
+                      setVersion(value);
+                      if (error === t(upgradeVersionErrorKey(undefined, version) || "")) setError("");
+                    }}
                     disabled={busy}
                   />
                 </label>

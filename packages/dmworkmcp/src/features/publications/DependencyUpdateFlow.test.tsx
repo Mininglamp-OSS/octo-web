@@ -10,6 +10,7 @@ const api = vi.hoisted(() => ({
   getDependencies: vi.fn(),
   adoptUpdates: vi.fn(),
   skipUpdates: vi.fn(),
+  saveDraft: vi.fn(),
 }));
 vi.mock("@octo/base", () => ({
   t: (k: string) => k,
@@ -310,4 +311,55 @@ it.each(["list", "editor"])("keeps a changed draft in explicit conflict after re
   expect(api.adoptUpdates).toHaveBeenCalledOnce();
   await click("skillMarket.publication.editResource");
   expect(edit).toHaveBeenCalledOnce();
+});
+
+it("submits after correcting a locally invalid version without reloading", async () => {
+  await mount();
+  const input = () => container.querySelectorAll('input:not([type="checkbox"])')[0];
+  await act(async () => { Simulate.change(input(), { target: { value: "invalid" } } as any); });
+  await click("skillMarket.publication.confirmUpdate");
+  expect(api.adoptUpdates).not.toHaveBeenCalled();
+  await act(async () => { Simulate.change(input(), { target: { value: "1.0.2" } } as any); });
+  await click("skillMarket.publication.confirmUpdate");
+  expect(api.adoptUpdates).toHaveBeenCalledOnce();
+  expect(api.getUpdates).toHaveBeenCalledOnce();
+});
+
+it("reconciles the actual parent editor with the latest draft before saving preserved inputs", async () => {
+  const original = {
+    draft_revision: "original", draft_changelog: "Notes", relations: draft.relations,
+    plugin: { ...draft.plugin, plugin_name: "Expert", visibility: "space", listing_state: "published", current_version: "1.0.1", published_version: "1.0.0" },
+  };
+  const latest = { ...original, draft_revision: "latest", plugin: { ...original.plugin, manifest_json: { description: "Concurrent description", extra: "keep remote metadata" } } };
+  api.getDraft.mockResolvedValueOnce(original).mockResolvedValue(latest);
+  api.getDependencies.mockResolvedValue([]);
+  api.getInstruction.mockResolvedValue("Instructions");
+  api.getUpdates.mockResolvedValueOnce({ published_version_id: "e1", draft_revision: "original", updates })
+    .mockResolvedValue({ published_version_id: "e1", draft_revision: "latest", updates });
+  api.adoptUpdates.mockRejectedValueOnce({ status: 409 });
+  api.saveDraft.mockResolvedValue({ ...latest, draft_revision: "saved" });
+  await act(async () => {
+    ReactDOM.render(<PublicationEditor item={{ id: "expert" } as any} onSaved={vi.fn()} onClose={vi.fn()} onEditContent={vi.fn()} />, container);
+  });
+  await click("View updates");
+  const inputs = container.querySelectorAll('input:not([type="checkbox"])');
+  await act(async () => {
+    Simulate.change(inputs[0], { target: { value: "1.0.2" } } as any);
+    Simulate.change(inputs[1], { target: { value: "Preserved update notes" } } as any);
+  });
+  await click("skillMarket.publication.confirmUpdate");
+  await click("skillMarket.list.retry");
+  await click("skillMarket.publication.editResource");
+  expect(api.getDraft).toHaveBeenCalledTimes(2);
+  expect(container.textContent).toContain("Concurrent description");
+  expect(container.textContent).toContain("Preserved update notes");
+  await click("skillMarket.plugin.actionSaveDraft");
+  expect(api.saveDraft).not.toHaveBeenCalled();
+  await click("skillMarket.publication.keepLocal");
+  await click("skillMarket.plugin.actionSaveDraft");
+  expect(api.saveDraft).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
+    expected_draft_revision: "latest", changelog: "Preserved update notes",
+    plugin: expect.objectContaining({ version: "1.0.2", manifest_json: expect.objectContaining({ extra: "keep remote metadata", description: "Unsaved edit" }) }),
+    relations: [expect.objectContaining({ target_version_id: "s2" })],
+  }));
 });
