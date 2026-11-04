@@ -243,6 +243,7 @@ export function DependencyUpdateFlow({
             {t("skillMarket.common.cancel")}
           </WKButton>
           {error && onEdit && <WKButton variant="primary" disabled={busy} onClick={async () => {
+            const token = generation.current;
             setBusy(true);
             try {
               await onEdit({
@@ -252,11 +253,12 @@ export function DependencyUpdateFlow({
                 // selected before the attempt instead of reporting none.
                 versions: source ? chosenVersions : reloadEdits.current?.versions ?? {},
               });
-              onClose();
+              if (token === generation.current) onClose();
             } catch (err) {
-              setError(publicationErrorMessage(err, "skillMarket.common.loadFailed"));
+              if (token === generation.current)
+                setError(publicationErrorMessage(err, "skillMarket.common.loadFailed"));
             } finally {
-              setBusy(false);
+              if (token === generation.current) setBusy(false);
             }
           }}>
             {t("skillMarket.publication.editResource")}

@@ -39,6 +39,7 @@ vi.mock("../../ui/PublicationEditor", () => ({
     <><button onClick={onShowUpdates}>View updates</button>{error && <p>{error}</p>}<button onClick={onRetry}>Retry editor</button></>
   ),
 }));
+import { WKApp } from "@octo/base";
 import { PublicationEditor } from "./PublicationEditor";
 import { DependencyUpdateFlow } from "./DependencyUpdateFlow";
 let container: HTMLDivElement;
@@ -481,4 +482,22 @@ it.each(["delayed", "failed"])("keeps list recovery safe during %s draft initial
     expected_draft_revision: "latest", changelog: "Retained list notes", plugin: { version: "1.0.9" },
     relations: [expect.objectContaining({ target_version_id: "s2" })],
   });
+});
+
+it.each(["resolve", "reject"])("ignores stale recovery %s after Space navigation", async outcome => {
+  let finish!: () => void;
+  const pending = new Promise<void>((resolve, reject) => {
+    finish = outcome === "resolve" ? resolve : () => reject(new Error("late failure"));
+  });
+  api.getUpdates.mockRejectedValue(new Error("load failed"));
+  const cb = await mount({ onEdit: () => pending });
+  await click("skillMarket.publication.editResource");
+  const spaceChange = vi.mocked(WKApp.mittBus.on).mock.calls.filter(call => call[0] === "space-changed").pop()![1] as () => void;
+  act(() => spaceChange());
+  expect(cb.onClose).toHaveBeenCalledOnce();
+  await act(async () => {
+    ReactDOM.render(<DependencyUpdateFlow key="replacement" pluginId="new-expert" draft={draft} onClose={cb.onClose} onSaved={vi.fn()} />, container);
+  });
+  await act(async () => finish());
+  expect(cb.onClose).toHaveBeenCalledOnce();
 });
