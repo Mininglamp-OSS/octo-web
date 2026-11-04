@@ -24,8 +24,9 @@ vi.mock("@octo/base", () => ({
       {children}
     </button>
   ),
-  WKModal: ({ children, footer }: any) => (
+  WKModal: ({ children, footer, title, onCancel }: any) => (
     <section>
+      {title === "skillMarket.publication.reconcileTitle" && <button onClick={onCancel}>Dismiss comparison</button>}
       {children}
       {footer}
     </section>
@@ -525,4 +526,24 @@ it.each(["resolve", "reject"])("blocks Retry during pending edit recovery until 
     await click("skillMarket.list.retry");
     expect(api.getUpdates).toHaveBeenCalledTimes(2);
   }
+});
+
+it("abandons list recovery on comparison dismissal without accepting local edits", async () => {
+  const value = {
+    draft_revision: "latest", draft_changelog: "Server notes", relations: draft.relations,
+    plugin: { ...draft.plugin, plugin_name: "Expert", visibility: "space", current_version: "1.0.1", published_version: "1.0.0" },
+  };
+  api.getDraft.mockResolvedValue(value);
+  api.getDependencies.mockResolvedValue([]);
+  api.getInstruction.mockResolvedValue("Instructions");
+  const close = vi.fn();
+  await act(async () => {
+    ReactDOM.render(<PublicationEditor item={{ id: "expert" } as any} recovery={{ version: "1.0.9", changelog: "Local notes", versions: { skill: "s2" } }} onSaved={vi.fn()} onClose={close} onEditContent={vi.fn()} />, container);
+  });
+  await click("Dismiss comparison");
+  expect(close).toHaveBeenCalledOnce();
+  // Even before the owner unmounts the editor, dismissal must not accept
+  // the local payload or release the explicit reconciliation save blocker.
+  await click("skillMarket.plugin.actionSaveDraft");
+  expect(api.saveDraft).not.toHaveBeenCalled();
 });

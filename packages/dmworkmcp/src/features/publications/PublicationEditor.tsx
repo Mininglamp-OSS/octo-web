@@ -371,8 +371,9 @@ export function PublicationEditor({
       {reconciliation && <WKModal
         visible
         title={t("skillMarket.publication.reconcileTitle")}
-        onCancel={() => { setFields(reconciliation.local); setReconciliation(null); }}
+        onCancel={onClose}
         footer={<>
+          <WKButton variant="secondary" onClick={onClose}>{t("skillMarket.common.cancel")}</WKButton>
           <WKButton onClick={() => acceptReconciliation(reconciliation.remote)}>{t("skillMarket.publication.useLatest")}</WKButton>
           <WKButton onClick={() => acceptReconciliation(reconciliation.local)}>{t("skillMarket.publication.keepLocal")}</WKButton>
         </>}
