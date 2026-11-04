@@ -9,6 +9,7 @@ export {
   type MineRow,
   type MineAssetType,
   type MineActionRequest,
+  type MineActionRecovery,
 } from "./components/MineTable";
 export { default as SearchBar } from "./components/SearchBar";
 export { default as EditSkillModal } from "./components/EditSkillModal";

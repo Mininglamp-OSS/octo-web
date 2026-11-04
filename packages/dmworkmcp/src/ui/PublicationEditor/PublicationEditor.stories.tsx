@@ -152,3 +152,13 @@ export const Team: Story = {
     alerts: [],
   },
 };
+
+export const UnavailableDependency: Story = {
+  args: {
+    ...initial,
+    dependencyIssues: [{ targetName: "内容创作规范", reason: "delisted" }],
+    dependencySuspended: true,
+    draft: { ...draft, plugin: { ...draft.plugin, listing_state: "delisted" } },
+    deps: [{ id: "skill", name: "内容创作规范", type: "skill", current: "s1", versions: [{ id: "s1", label: "1.0.0" }], unavailable: true }],
+  },
+};

@@ -1,5 +1,8 @@
 import React from "react";
-import { Bot, Users } from "lucide-react";
+import { getMcpAvatarColor, getMcpAvatarText } from "../../utils/mcpAvatar";
+import { Select } from "@douyinfe/semi-ui";
+import { dependencyIssueReasonKey } from "@dmwork/skillmarket/src/components/dependencyIssueReason";
+import { Bot, ChevronRight } from "lucide-react";
 import { visibilityLabel } from "@dmwork/skillmarket/src/utils/labels";
 import { t, useI18n, WKButton, WKInput } from "@octo/base";
 import type { PluginDetailWire } from "@dmwork/skillmarket/src/api/pluginWire";
@@ -9,7 +12,9 @@ import type {
   DependencyUpdate,
 } from "@dmwork/skillmarket/src/Service/PublicationService";
 export interface PublicationEditorFieldsProps {
-  item?: { name: string; kind: string } | null;
+  item?: { id?: string; name: string; kind: string } | null;
+  dependencyIssues?: Array<{ targetName?: string; reason?: string }>;
+  dependencySuspended?: boolean;
   draft: PluginDetailWire | null;
   fields: PublicationFields;
   deps: PublicationDependency[];
@@ -32,6 +37,8 @@ export interface PublicationEditorFieldsProps {
 }
 export function PublicationEditorFields({
   item,
+  dependencyIssues = [],
+  dependencySuspended,
   draft,
   fields,
   deps,
@@ -50,6 +57,7 @@ export function PublicationEditorFields({
   onInitialVisibilityChange,
 }: PublicationEditorFieldsProps) {
   useI18n();
+  const issues = dependencyIssues.length ? dependencyIssues : deps.filter(dep => dep.unavailable).map(dep => ({ targetName: dep.name, reason: "unknown" }));
   return (
     <div className="skill-market-form skill-market-form--workflow">
       {error && (
@@ -64,11 +72,25 @@ export function PublicationEditorFields({
       {draft && (
         <>
           <div className="publication-editor-identity">
-            <span className="publication-editor-identity__icon" aria-hidden="true">{item?.kind === "squad" ? <Users size={22} /> : <Bot size={22} />}</span>
+            <span className="publication-editor-identity__icon" style={{ background: getMcpAvatarColor(item?.id || item?.name || "") }} aria-hidden="true">{getMcpAvatarText(item?.name || "")}</span>
             <div>
               <strong>{item?.name}</strong>
               <span>{t(item?.kind === "squad" ? "mcp.expert.typeSquad" : "mcp.expert.typeAgent")} · {visibilityLabel(draft.plugin.published_version_id ? draft.plugin.visibility : initialVisibility)}</span>
             </div>
+          <WKButton
+            variant="secondary"
+            className="publication-editor-bot-action"
+            icon={<Bot size={16} />}
+            onClick={onBotUpdate}
+            disabled={!canSave}
+          >
+            {t(
+              item?.kind === "squad"
+                ? "mcp.expert.botUpdateTitle"
+                : "mcp.expert.botUpdateTitleAgent"
+            )}
+            <ChevronRight size={14} aria-hidden="true" />
+          </WKButton>
           </div>
           <label>
             <span>{t("skillMarket.form.displayName")}</span>
@@ -101,17 +123,14 @@ export function PublicationEditorFields({
               disabled={busy || blocked}
             />
           </label>
-          <WKButton
-            variant="secondary"
-            onClick={onBotUpdate}
-            disabled={!canSave}
-          >
-            {t(
-              item?.kind === "squad"
-                ? "mcp.expert.botUpdateTitle"
-                : "mcp.expert.botUpdateTitleAgent"
-            )}
-          </WKButton>
+          {!!issues.length && <section className="publication-editor-warning" role="status">
+            <strong>{t("skillMarket.publication.invalidDependencies")}</strong>
+            {issues.map((issue, index) => <p key={index}>
+              {issue.targetName || t("skillMarket.publication.unavailableDependency")} · {t(`skillMarket.plugin.dependencyIssue.${dependencyIssueReasonKey(issue.reason)}`)}
+            </p>)}
+            <span>{t("skillMarket.publication.repairWithBot")}</span>
+          </section>}
+          {!issues.length && dependencySuspended && <p className="skill-market-form__hint">{t("skillMarket.publication.dependencyRecovered")}</p>}
           {!draft.plugin.published_version_id &&
             draft.plugin.listing_state === "draft" && (
               <div className="skill-market-scope-options">
@@ -138,51 +157,40 @@ export function PublicationEditorFields({
               </div>
             )}
           {deps.map((dep) => (
-            <label key={dep.id} className="publication-editor-dependency">
+            <div key={dep.id} className="publication-editor-dependency">
               <span>
-                {dep.name || t("skillMarket.publication.unavailableDependency")}
+                <span id={`publication-dependency-${draft.plugin.plugin_id}-${dep.id}`}>
+                  {dep.name || t("skillMarket.publication.unavailableDependency")}
+                </span>
                 {alerts.some((u) => u.plugin_id === dep.id) && (
-                  <span className="wk-mine-table__dependency-update">
+                  <button type="button" className="wk-mine-table__dependency-update" onClick={onShowUpdates} disabled={busy}>
                     {t("skillMarket.publication.hasUpdates")}
-                  </span>
+                  </button>
                 )}
               </span>
               {dep.type === "connector" ? (
                 <span>{t("skillMarket.publication.connectorCurrent")}</span>
               ) : (
-                <select
-                  aria-label={
-                    dep.name ||
-                    t("skillMarket.publication.unavailableDependency")
-                  }
+                <Select
+                  className="publication-editor-version-select"
+                  aria-labelledby={`publication-dependency-${draft.plugin.plugin_id}-${dep.id}`}
                   value={fields.versions[dep.id] ?? dep.current ?? ""}
-                  onChange={(e) =>
-                    set("versions", {
-                      ...fields.versions,
-                      [dep.id]: e.target.value,
-                    })
-                  }
+                  position="bottomLeft"
+                  autoAdjustOverflow
+                  maxHeight={240}
+                  onChange={(value) => typeof value === "string" && set("versions", { ...fields.versions, [dep.id]: value })}
                   disabled={busy || blocked || dep.unavailable}
-                >
-                  {!dep.versions.some(
-                    (v) => v.id === (fields.versions[dep.id] ?? dep.current)
-                  ) && (
-                    <option value={fields.versions[dep.id] ?? dep.current}>
-                      {t("skillMarket.publication.boundVersion")}
-                    </option>
-                  )}
-                  {dep.versions.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      v{v.label}
-                    </option>
-                  ))}
-                </select>
+                  optionList={[
+                    ...(!dep.versions.some(v => v.id === (fields.versions[dep.id] ?? dep.current)) ? [{ value: fields.versions[dep.id] ?? dep.current ?? "", label: t("skillMarket.publication.boundVersion") }] : []),
+                    ...dep.versions.map(v => ({ value: v.id, label: `v${v.label}` })),
+                  ]}
+                />
               )}
-            </label>
+            </div>
           ))}
-          <WKButton variant="ghost" onClick={onShowUpdates} disabled={busy}>
+          {draft.plugin.listing_state === "published" && <WKButton variant="ghost" onClick={onShowUpdates} disabled={busy}>
             {t("skillMarket.publication.viewUpdates")}
-          </WKButton>
+          </WKButton>}
           <h3 className="skill-market-form__section-title">{t("skillMarket.form.versionSection")}</h3>
           <div className="skill-market-form__row">
             <label>

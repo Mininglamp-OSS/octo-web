@@ -120,6 +120,15 @@ describe("updateExpertVisibility — the full-replace echo", () => {
     mock.instance.post.mockReset();
   });
 
+  it("keeps current top-level dependency diagnostics when hydrating the editor", async () => {
+    mock.instance.get.mockResolvedValueOnce({ data: { data: {
+      ...SQUAD_WIRE,
+      dependency_issues: [{ target_plugin_id: "member-a", target_name: "内容创作规范", relation_type: "expert_team_expert", reason: "delisted" }],
+    } } });
+    const item = await getExpertEditMetadata("squad-1");
+    expect(item.dependencyIssues).toEqual([expect.objectContaining({ targetName: "内容创作规范", reason: "delisted" })]);
+  });
+
   it("seeds the edit form from the saved draft name and version", async () => {
     wire();
     const item = await getExpertEditMetadata("squad-1");

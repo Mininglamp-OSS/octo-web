@@ -154,6 +154,7 @@ export interface PluginRelationWire {
 }
 
 export interface PluginDetailWire {
+  dependency_issues?: PluginDependencyIssueWire[];
   draft_revision?: string;
   draft_changelog?: string;
   plugin: PluginDetailPluginWire;

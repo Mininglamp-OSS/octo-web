@@ -135,6 +135,7 @@ vi.mock("@dmwork/skillmarket", () => ({
           { key: `${row.id}-metric`, "data-testid": `metric-${row.id}` },
           String(row.downloads)
         ),
+        row.onDependencyUpdates ? React.createElement("button", { key: row.id + "-updates", onClick: row.onDependencyUpdates as () => void }, "updates") : null,
         row.onPublish
           ? React.createElement(
               "button",
@@ -186,6 +187,9 @@ vi.mock("../../utils/mcpAvatar", () => ({
   getMcpAvatarText: () => "A",
 }));
 
+vi.mock("../../features/publications/DependencyUpdateFlow", () => ({
+  DependencyUpdateFlow: ({ onEdit }: any) => <button onClick={() => onEdit({ version: "1.0.3", changelog: "List notes", versions: { skill: "s2" } })}>recover</button>,
+}));
 import AllAssetsList from "../AllAssetsList";
 
 const asset = (id: string, name: string, patch: Record<string, unknown> = {}) => ({
@@ -635,4 +639,13 @@ describe("AllAssetsList Space isolation", () => {
     expect(h.getMySkills).toHaveBeenCalledTimes(2);
     expect(container.textContent).toContain("Space B asset");
   });
+});
+
+it("passes recovery through the real mixed-list edit request", async () => {
+  const onRequestAction = vi.fn();
+  h.getMySkills.mockResolvedValue(page([asset("expert", "Expert", { pluginType: "expert", visibility: "space", listingState: "published", displayStatus: "published" })]));
+  await act(async () => { ReactDOM.render(<AllAssetsList onOpenType={vi.fn()} onRequestAction={onRequestAction} />, container); });
+  await act(async () => { Array.from(container.querySelectorAll("button")).find(b => b.textContent === "updates")!.click(); });
+  await act(async () => { Array.from(container.querySelectorAll("button")).find(b => b.textContent === "recover")!.click(); });
+  expect(onRequestAction).toHaveBeenCalledWith(expect.objectContaining({ pluginId: "expert", recovery: { version: "1.0.3", changelog: "List notes", versions: { skill: "s2" } } }));
 });

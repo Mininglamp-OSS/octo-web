@@ -1,6 +1,7 @@
+import { dependencyIssueReasonKey } from "@dmwork/skillmarket/src/components/dependencyIssueReason";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Toast } from "@douyinfe/semi-ui";
-import { t, useI18n, WKApp } from "@octo/base";
+import { t, useI18n, WKApp, WKButton, WKModal } from "@octo/base";
 import {
   EditSkillModal,
   DeleteConfirmModal,
@@ -63,12 +64,15 @@ export default function MineActionHost({
     null
   );
   const [botTarget, setBotTarget] = useState<ExpertItem | null>(null);
+  const [recoveryLoadFailed, setRecoveryLoadFailed] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const changedRef = useRef(false);
   const loadGeneration = useRef(0);
   const sessionKey = () => `${WKApp.loginInfo.token}:${WKApp.shared.currentSpaceId}`;
 
 
   const clear = useCallback(() => {
+    setRecoveryLoadFailed(false);
     setSkill(null);
     setSkillFlow(null);
     setSkillDetailId(null);
@@ -103,6 +107,7 @@ export default function MineActionHost({
 
   useEffect(() => {
     const generation = ++loadGeneration.current;
+    setRecoveryLoadFailed(false);
     if (!request) {
       clear();
       return undefined;
@@ -148,7 +153,11 @@ export default function MineActionHost({
 
       if (request.action === "edit") {
         const draft = await getExpertEditMetadata(request.pluginId);
-        if (current()) setExpert(draft);
+        if (current()) setExpert({
+          ...draft,
+          dependencyIssues: draft.dependencyIssues ?? request.dependencyIssues?.map(issue => ({ ...issue, relationType: "", reason: dependencyIssueReasonKey(issue.reason) })),
+          dependencySuspended: draft.dependencySuspended ?? request.dependencySuspended,
+        });
         return;
       }
 
@@ -178,15 +187,23 @@ export default function MineActionHost({
           ? error.message
           : t("skillMarket.common.loadFailed")
       );
-      close();
+      if (request.recovery) setRecoveryLoadFailed(true);
+      else close();
     });
     return () => {
       active = false;
     };
-  }, [clear, close, request?.requestId]);
+  }, [clear, close, request?.requestId, loadAttempt]);
 
   return (
     <>
+      {recoveryLoadFailed && <WKModal visible onCancel={close}
+        title={t("skillMarket.common.loadFailed")}
+        footer={<>
+          <WKButton onClick={close}>{t("skillMarket.common.cancel")}</WKButton>
+          <WKButton onClick={() => setLoadAttempt(value => value + 1)}>{t("skillMarket.list.retry")}</WKButton>
+        </>}
+      ><p role="alert">{t("skillMarket.common.loadFailed")}</p></WKModal>}
       <SkillDetailModal
         skillId={skillDetailId}
         categories={skillCategories}
@@ -290,6 +307,7 @@ export default function MineActionHost({
       />
       <ExpertEditModal
         item={expert}
+        recovery={request?.recovery}
         onClose={close}
         onSaved={(message) => {
           Toast.success(message);
