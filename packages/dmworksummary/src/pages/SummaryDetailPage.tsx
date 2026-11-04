@@ -245,6 +245,13 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     private renderSourceMetadata = (sources: SourceItem[], snapshotAt?: string, currentSnapshot?: SummaryGenerationSnapshot) => {
+        if (this.state.showVersionDetailModal) {
+            const { versionDetail, versionDetailLoading } = this.state;
+            // Historical bodies must never inherit the current result's sources.
+            if (versionDetailLoading || !versionDetail?.snapshot) return null;
+            currentSnapshot = versionDetail.snapshot;
+            snapshotAt = versionDetail.generated_at;
+        }
         if (currentSnapshot?.provenance_status === "unknown") return null;
         if (currentSnapshot) sources = currentSnapshot.scope.sources ?? [];
         if (!sources.length) return null;

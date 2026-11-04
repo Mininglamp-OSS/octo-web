@@ -3988,3 +3988,42 @@ describe("completed-summary optimization capability fallback", () => {
     } finally { resolve.mockRestore(); onContinue.mockRestore(); }
   });
 });
+
+
+describe("historical preview source identity", () => {
+  for (const kind of ["completed", "team", "personal"]) {
+    it.each(["known", "empty", "unknown", "legacy", "loading"])(`${kind} uses the selected historical snapshot (%s) and restores current sources on close`, (mode) => {
+      const page = makePage(1);
+      const source = (id: string) => ({source_type: 4, source_id: id, source_name: id, source_version: "v1"});
+      const currentSnapshot = {scope: {sources: [source("current-source-B")]}};
+      const historicalSnapshot = mode === "legacy" ? undefined : mode === "unknown"
+        ? {provenance_status: "unknown", scope: {}}
+        : {scope: {sources: mode === "empty" ? [] : [source("historical-source-A")]}};
+      page.state = {
+        ...page.state,
+        detail: multiCollabDetail({}, {
+          sources: [source("task-source-C")],
+          participants: [{user_id: "test-uid"}, {user_id: "u_b"}],
+          result: {content: "current body", version: 2, citations: [], team_citations: [], snapshot: currentSnapshot},
+        }),
+        members: [submittedMember("test-uid", "Me", "personal body"), submittedMember("u_b", "Other", "other body")],
+        personalResult: {content: "personal body", worker_status: 2, citations: [], snapshot: currentSnapshot} as any,
+        personalLoading: false, personalExpanded: true,
+        showVersionDetailModal: true, versionDetailLoading: mode === "loading",
+        versionDetail: {result_id: 10, version: 1, content: "historical body", generated_at: "2026-10-01T00:00:00Z", operation_type: "generate", snapshot: historicalSnapshot} as any,
+      };
+      const render = () => kind === "completed" ? page.renderCompleted() : kind === "team" ? page.renderTeamSummary() : page.renderPersonalSummary();
+      const tree = render();
+      expect(tree).not.toBeNull();
+      const historical = JSON.stringify(tree);
+      expect(historical).not.toContain("current-source-B");
+      expect(historical).not.toContain("task-source-C");
+      if (mode === "known") expect(historical).toContain("historical-source-A");
+      else expect(historical).not.toContain("historical-source-A");
+      page.state = {...page.state, showVersionDetailModal: false};
+      const current = JSON.stringify(render());
+      expect(current).toContain("current-source-B");
+      expect(current).not.toContain("historical-source-A");
+    });
+  }
+});
