@@ -1582,7 +1582,7 @@ const CAPABILITY_INSTALL_TIMEOUT_MS = 150_000;
 function installLoopPlugin(pluginId: string, opts: LoopInstallationOptions) {
   return expertAxios.post(
     `${BASE}/plugins/${encodeURIComponent(pluginId)}/installations`,
-    { runtime_id: opts.runtimeId },
+    { runtime_id: opts.runtimeId, workspace_connectors: true },
     {
       headers: {
         "X-Workspace-ID": opts.workspaceId,
