@@ -3928,6 +3928,8 @@ describe("version-specific source metadata", () => {
     it.each([
       {scope: {sources: []}},
       {provenance_status: "unknown", scope: {}},
+      // Go's sources,omitempty omits a reader-filtered empty source array.
+      JSON.parse('{"content_version":2,"scope":{"channel_ids":[],"channel_names":[],"time_range":{"start":"2026-11-01","end":"2026-11-02"}}}'),
     ])(`${kind} does not borrow task sources for an empty or unknown version`, (snapshot) => {
       const page = makePage(1);
       const taskSources = [{source_type: 4, source_id: "old-document", source_name: "Old document", source_version: "v1"}];
