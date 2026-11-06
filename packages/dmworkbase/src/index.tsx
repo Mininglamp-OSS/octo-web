@@ -207,3 +207,7 @@ export { Channel, ChannelTypePerson } from 'wukongimjssdk'
 export { hasSpacePrefix, stripSpacePrefix, isDriveTransferSupportedChannel, normaliseImDriveChannelID, imDriveTransferSourceKey } from './Service/SpacePrefix'
 export { resolveCardActionChannelId } from './Messages/InteractiveCard/cardAction'
 export * from "./im-runtime/readAttentionHost"
+export { default as NameSearchService } from "./Service/NameSearchService";
+export type { NameSearchQuery, NameSearchItem, NameSearchPage, NameMatchRange, NameSearchKind, ContactSearchType } from "./Service/NameSearchTypes";
+export { default as useNameSearch } from "./bridge/nameSearch/useNameSearch";
+export { nameDisplayLines, splitNameMatches } from "./bridge/nameSearch/nameResultMapper";
