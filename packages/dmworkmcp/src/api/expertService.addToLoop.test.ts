@@ -135,6 +135,23 @@ describe("expertService add-to-loop wire contract", () => {
     expect(res).toEqual([{ id: "rt1", name: "Runtime One", status: "online" }]);
   });
 
+  it("preserves machine, configuration, ownership and diagnostic fields", async () => {
+    mock.instance.get.mockResolvedValue({ data: [{
+      id: "runtime", name: "Research", status: "online", daemon_id: "machine",
+      device_info: "localhost · version", custom_name: "My Mac", provider: "codex",
+      runtime_mode: "local", launch_header: "Codex CLI", owner_id: "owner",
+      can_bind: true, visibility: "private", profile_id: "profile",
+      metadata: { version: "0.164", runtime_profile_registration_error: true, runtime_profile_failure_reason: "missing" },
+    }] });
+    expect(await listLoopRuntimes("w1")).toEqual([{
+      id: "runtime", name: "Research", status: "online", daemonId: "machine",
+      deviceInfo: "localhost · version", customName: "My Mac", provider: "codex",
+      runtimeMode: "local", launchHeader: "Codex CLI", ownerId: "owner",
+      canBind: true, visibility: "private", profileId: "profile",
+      metadata: { version: "0.164", runtime_profile_registration_error: true, runtime_profile_failure_reason: "missing" },
+    }]);
+  });
+
   it("installs an expert through the capability endpoint with workspace/key headers", async () => {
     mock.instance.post.mockResolvedValue({
       data: { data: { agent_id: "agent-123" } },
@@ -297,6 +314,15 @@ describe("expertService add-to-loop wire contract", () => {
     expect(mock.instance.get).toHaveBeenCalledTimes(1);
 
     await getLoopRuntimes("w2"); // a different workspace is a distinct fetch
+    expect(mock.instance.get).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps Mine and All caches isolated and omits owner only for All", async () => {
+    mock.instance.get.mockImplementation((_url, config) => Promise.resolve({ data: config.params.owner === "me" ? [{ id: "mine" }] : [{ id: "other" }, { id: "mine" }] }));
+    expect((await getLoopRuntimes("w1"))[0].id).toBe("mine");
+    expect((await getLoopRuntimes("w1", { scope: "all" }))[0].id).toBe("other");
+    expect(mock.instance.get).toHaveBeenLastCalledWith("/fleet/api/v1/runtimes", { params: { workspace_id: "w1" } });
+    expect((await getLoopRuntimes("w1"))[0].id).toBe("mine");
     expect(mock.instance.get).toHaveBeenCalledTimes(2);
   });
 

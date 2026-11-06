@@ -11,17 +11,12 @@ import {
 } from "../api/expertService";
 import type { LoopRuntime, LoopWorkspace } from "../api/expertService";
 
-// A runtime is "ready" to run an agent when it has no status (older fleet builds
-// omit it) or reports one of the known healthy states. Anything else (offline /
-// error / provisioning) is treated as not-ready: skipped for default selection
-// and annotated in the picker. The status domain is fleet-owned, so we match
-// leniently rather than enumerate it exhaustively.
-function isRuntimeReady(rt: LoopRuntime): boolean {
-  if (!rt.status) return true;
-  return ["online", "ready", "running", "active"].includes(
-    rt.status.toLowerCase()
-  );
-}
+import LoopRuntimePicker from "../ui/LoopRuntimePicker";
+import {
+  buildRuntimeGroups,
+  canInstallRuntime,
+  isRuntimeReady,
+} from "../bridge/loopRuntimePicker/model";
 
 interface ExpertAddToLoopModalProps {
   item: ExpertItem | null;
@@ -45,6 +40,10 @@ export default function ExpertAddToLoopModal({
   const [runtimes, setRuntimes] = useState<LoopRuntime[]>([]);
   const [workspaceId, setWorkspaceId] = useState<string>("");
   const [runtimeId, setRuntimeId] = useState<string>("");
+  const [runtimeScope, setRuntimeScope] = useState<"mine" | "all">("mine");
+  const [allRuntimes, setAllRuntimes] = useState<LoopRuntime[]>([]);
+  const [loadingAllRuntimes, setLoadingAllRuntimes] = useState(false);
+  const [allRuntimeError, setAllRuntimeError] = useState(false);
   const [loadingWorkspaces, setLoadingWorkspaces] = useState(false);
   const [loadingRuntimes, setLoadingRuntimes] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -58,6 +57,8 @@ export default function ExpertAddToLoopModal({
   // Load workspaces when the dialog opens; reset all selection state so a
   // second open (possibly for a different expert) starts clean.
   useEffect(() => {
+    setRuntimeScope("mine");
+    setAllRuntimes([]);
     setWorkspaceId("");
     setRuntimeId("");
     setRuntimes([]);
@@ -124,14 +125,78 @@ export default function ExpertAddToLoopModal({
     };
   }, [item, workspaceId]);
 
+  // Fetch All only on demand. Scope is part of the cache key; its response must
+  // never supply the owned-list default or overwrite a newer workspace/tab.
+  useEffect(() => {
+    if (!item || !workspaceId || runtimeScope !== "all") return;
+    let cancelled = false;
+    setLoadingAllRuntimes(true);
+    setAllRuntimeError(false);
+    setAllRuntimes([]);
+    getLoopRuntimes(workspaceId, { refresh: true, scope: "all" })
+      .then((list) => {
+        if (cancelled) return;
+        setAllRuntimes(list);
+        // Keep an explicit selection if still present, never pick the first
+        // All result (which can be another member's machine).
+        setRuntimeId((previous) =>
+          list.some((r) => r.id === previous) ? previous : ""
+        );
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setAllRuntimeError(true);
+        setAllRuntimes([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingAllRuntimes(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [item, workspaceId, runtimeScope]);
+
+  const ownedIds = new Set(
+    runtimes.filter((rt) => rt.canBind !== false).map((rt) => rt.id)
+  );
+  const visibleRuntimes = runtimeScope === "mine" ? runtimes : allRuntimes;
+  const loadingTargets =
+    loadingRuntimes || (runtimeScope === "all" && loadingAllRuntimes);
+  const validSelection = visibleRuntimes.some(
+    (rt) =>
+      rt.id === runtimeId &&
+      (runtimeScope === "mine"
+        ? ownedIds.has(rt.id) && isRuntimeReady(rt)
+        : canInstallRuntime(rt, ownedIds))
+  );
+
+  const changeRuntimeScope = (scope: "mine" | "all") => {
+    if (scope === runtimeScope) return;
+    setRuntimeScope(scope);
+    if (scope === "all") {
+      setAllRuntimes([]);
+      setAllRuntimeError(false);
+      setLoadingAllRuntimes(true);
+    } else if (!ownedIds.has(runtimeId)) {
+      setRuntimeId("");
+    }
+  };
+
   const handleClose = () => {
     if (inFlight.current) return;
     onClose();
   };
 
   const handleConfirm = async () => {
-    if (!item || !workspaceId || loadingWorkspaces || loadingRuntimes ||
-      !runtimes.some((rt) => rt.id === runtimeId && isRuntimeReady(rt)) || inFlight.current) return;
+    if (
+      !item ||
+      !workspaceId ||
+      loadingWorkspaces ||
+      loadingTargets ||
+      !validSelection ||
+      inFlight.current
+    )
+      return;
     inFlight.current = true;
     setSubmitting(true);
     try {
@@ -175,27 +240,12 @@ export default function ExpertAddToLoopModal({
     label: w.name,
     value: w.id,
   }));
-  const runtimeOptions = runtimes.map((rt) => ({
-    // Surface a non-ready status so the user isn't silently defaulted onto (or
-    // left picking) a runtime that can't run the agent. The status value itself
-    // is fleet data (shown raw); the surrounding chrome is localized.
-    // Semi keys its selection map by label, even in single-select mode. Give
-    // each runtime its own React label so equal names cannot share a checkmark.
-    label: (
-      <span key={rt.id}>
-        {isRuntimeReady(rt)
-          ? rt.name
-          : t("mcp.expert.runtimeWithStatus", {
-              values: { name: rt.name, status: rt.status ?? "" },
-            })}
-      </span>
-    ),
-    value: rt.id,
-    disabled: !isRuntimeReady(rt),
-  }));
-  const canSubmit = Boolean(workspaceId) &&
-    runtimes.some((rt) => rt.id === runtimeId && isRuntimeReady(rt)) &&
-    !loadingWorkspaces && !loadingRuntimes && !submitting;
+  const canSubmit =
+    Boolean(workspaceId) &&
+    validSelection &&
+    !loadingWorkspaces &&
+    !loadingTargets &&
+    !submitting;
 
   return (
     <WKModal
@@ -242,6 +292,8 @@ export default function ExpertAddToLoopModal({
           placeholder={t("mcp.expert.selectWorkspacePlaceholder")}
           emptyContent={t("mcp.expert.noWorkspaces")}
           onChange={(v) => {
+            setRuntimeScope("mine");
+            setAllRuntimes([]);
             setRuntimeId("");
             setRuntimes([]);
             setLoadingRuntimes(true);
@@ -252,15 +304,23 @@ export default function ExpertAddToLoopModal({
         <label className="wk-mcp-add-to-loop__label">
           {t("mcp.expert.selectRuntime")}
         </label>
-        <Select
-          style={{ width: "100%" }}
-          value={runtimeId || undefined}
-          optionList={runtimeOptions}
-          loading={loadingRuntimes}
+        <LoopRuntimePicker
+          key={workspaceId}
+          value={runtimeId}
+          groups={buildRuntimeGroups(visibleRuntimes, {
+            ownedIds,
+            scope: runtimeScope,
+          })}
+          scope={runtimeScope}
+          onScopeChange={changeRuntimeScope}
+          loading={loadingTargets}
+          error={
+            runtimeScope === "all" && allRuntimeError
+              ? t("mcp.runtimePicker.loadFailed")
+              : undefined
+          }
           disabled={!workspaceId || submitting}
-          placeholder={t("mcp.expert.selectRuntimePlaceholder")}
-          emptyContent={t("mcp.expert.noRuntimes")}
-          onChange={(v) => setRuntimeId(v as string)}
+          onChange={setRuntimeId}
         />
 
         <p className="wk-mcp-add-to-loop__note">
