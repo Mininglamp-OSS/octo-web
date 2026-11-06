@@ -5,6 +5,7 @@ import { t } from "../i18n";
 import { getImChannelInfo } from "../im-runtime/channelRuntime";
 import { ChannelTypeCommunityTopic } from "../Service/Const";
 import { isEffectivelyMuted, parseThreadChannelId } from "../Service/Thread";
+import { getNotificationSenderName } from "../features/notifications/notificationSender";
 import { hasNotificationProvider } from "../features/notifications/notificationPolicy";
 import {
   getElectronNotificationBridge,
@@ -64,6 +65,7 @@ export interface NotificationOptions {
   tag?: string;
   channel?: Channel;
   fromUid?: string;
+  senderName?: string;
   onClick?: () => void;
   onShow?: () => void;
   onClose?: () => void;
@@ -192,6 +194,7 @@ export class NotificationUtil {
           tag: options.tag,
           channel: options.channel,
           fromUid: options.fromUid,
+          ...(options.senderName ? { senderName: options.senderName } : {}),
           silent: false,
           urgency: "normal" as const,
           timeoutType: "default" as const,
@@ -402,6 +405,7 @@ export class NotificationUtil {
         body: description,
         channel: message.channel,
         fromUid: message.fromUID,
+        senderName: getNotificationSenderName(message),
         tag,
         icon: this.getNotificationIcon(message.channel),
         onClick: () => {
