@@ -28,7 +28,7 @@ jobs:
     if: github.event_name == 'pull_request'
     # Pinned to a main-branch SHA (not a tag) because the export-results input is not yet
     # in a released tag; re-pin to v2.3.9+ once the flag ships in a tagged release.
-    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@a82132c0bd6c7261ffcb78e754c46c70ab57ad9a # main
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@9a96bc4d2b09685b6142bcfe25a3dc17cb2d7347 # main
     with:
       scan-args: |-
         -r
