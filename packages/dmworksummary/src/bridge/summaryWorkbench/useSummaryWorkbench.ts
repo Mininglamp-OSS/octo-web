@@ -1,3 +1,4 @@
+import type { SummaryOptimizationTarget } from "./protocol";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { t } from "@octo/base";
 import type {
@@ -77,6 +78,7 @@ export interface SummaryWorkbenchController {
   progressEvents: AgentProgressEvent[];
   latestProgress: AgentProgressEvent | null;
   isHydrating: boolean;
+  canCaptureOptimizationBase: boolean;
   isConfirming: boolean;
   isSaving: boolean;
   error: SummaryWorkspaceApiError | null;
@@ -91,7 +93,7 @@ export interface SummaryWorkbenchController {
   ) => Promise<SummaryWorkbenchResponse | undefined>;
   confirmWorkflow: () => Promise<SummaryWorkbenchResponse | undefined>;
   savePreview: (
-    title?: string
+    title?: string, target?: SummaryOptimizationTarget
   ) => Promise<CreateAgentSummaryResult | undefined>;
   hydrateSession: (
     sessionId?: string,
@@ -119,6 +121,7 @@ interface RuntimeState {
   model: SummaryWorkbenchModel;
   progressEvents: AgentProgressEvent[];
   isHydrating: boolean;
+  canCaptureOptimizationBase: boolean;
   isConfirming: boolean;
   isSaving: boolean;
   error: SummaryWorkspaceApiError | null;
@@ -231,7 +234,8 @@ export default function useSummaryWorkbench(
       createInitialSummaryWorkbenchModel({
         layout: options.layout,
         contextItems: contextItemsFromScope(scope),
-      })
+      }),
+      !normalizeSessionId(options.initialSessionId)
     );
   }
 
@@ -700,9 +704,7 @@ export default function useSummaryWorkbench(
   }, [commit, notifySessionId]);
 
   const savePreview = useCallback(
-    (title?: string): Promise<CreateAgentSummaryResult | undefined> => {
-      const existing = saveRef.current;
-      if (existing) return existing.promise;
+    (title?: string, target?: SummaryOptimizationTarget): Promise<CreateAgentSummaryResult | undefined> => {
       if (
         generationRef.current ||
         hydrationRef.current ||
@@ -717,7 +719,6 @@ export default function useSummaryWorkbench(
         return Promise.resolve(undefined);
       }
 
-      operationVersionRef.current += 1;
       const normalizedTitle = title?.trim() || undefined;
       const identity = [
         current.sessionId,
@@ -726,7 +727,13 @@ export default function useSummaryWorkbench(
         preview.scopeVersion,
         preview.version,
         normalizedTitle ?? "",
+        JSON.stringify(target ?? null),
       ].join(":");
+      const existing = saveRef.current;
+      if (existing) {
+        return existing.identity === identity ? existing.promise : Promise.resolve(undefined);
+      }
+      operationVersionRef.current += 1;
       const key = idempotencyKeyFor(`save:${identity}`);
       const controller = new AbortController();
       const epoch = epochRef.current;
@@ -743,6 +750,7 @@ export default function useSummaryWorkbench(
       const promise = serviceRef.current
         .savePreview(
           {
+            ...(target ? { target } : {}),
             sessionId: current.sessionId,
             messageId: preview.messageId,
             snapshotVersion: preview.snapshotVersion,
@@ -827,6 +835,7 @@ export default function useSummaryWorkbench(
         ...clearRuntimeError(current),
         sessionId,
         isHydrating: true,
+        canCaptureOptimizationBase: false,
         model: updateSummaryComposer(current.model, {
           isSending: false,
           errorMessage: undefined,
@@ -861,7 +870,8 @@ export default function useSummaryWorkbench(
                 createInitialSummaryWorkbenchModel({
                   layout: current.model.layout,
                   contextItems: contextItemsFromScope(current.scope),
-                })
+                }),
+                true
               )
             );
             notifySessionId("");
@@ -962,7 +972,8 @@ export default function useSummaryWorkbench(
           createInitialSummaryWorkbenchModel({
             layout: current.model.layout,
             contextItems: contextItemsFromScope(scope),
-          })
+          }),
+          true
         )
       );
       return sessionId;
@@ -1206,6 +1217,7 @@ export default function useSummaryWorkbench(
     latestProgress:
       runtime.progressEvents[runtime.progressEvents.length - 1] ?? null,
     isHydrating: runtime.isHydrating,
+    canCaptureOptimizationBase: runtime.canCaptureOptimizationBase,
     isConfirming: runtime.isConfirming,
     isSaving: runtime.isSaving,
     error: runtime.error,
@@ -1260,13 +1272,15 @@ function applyControllerResponse(
 function createRuntimeState(
   sessionId: string,
   scope: SummaryWorkbenchScope,
-  model: SummaryWorkbenchModel
+  model: SummaryWorkbenchModel,
+  canCaptureOptimizationBase = false
 ): RuntimeState {
   return {
     sessionId,
     scope,
     model,
     progressEvents: [],
+    canCaptureOptimizationBase,
     isHydrating: false,
     isConfirming: false,
     isSaving: false,

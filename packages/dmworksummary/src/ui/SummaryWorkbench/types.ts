@@ -98,6 +98,7 @@ export function visibleSummaryWorkbenchActions(
 }
 
 export interface SummaryWorkbenchViewState {
+  optimizationTitle?: string;
   layout: "full" | "panel";
   messages: SummaryWorkbenchMessageView[];
   contextItems: SummaryWorkbenchContextItem[];
@@ -121,6 +122,7 @@ export interface SummaryWorkbenchViewState {
 }
 
 export interface SummaryWorkbenchActions {
+  onSaveAsNew?: () => void;
   onInputChange: (value: string) => void;
   onSend: () => void;
   onOpenContext: (kind: SummaryWorkbenchContextKind) => void;

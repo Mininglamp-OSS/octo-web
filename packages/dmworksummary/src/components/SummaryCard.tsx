@@ -325,16 +325,11 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                                         {/* Both engines share the personal action set. */}
                                         {task.status === TaskStatus.COMPLETED && (
                                             <>
-                                                {isReferenceable(task) && onContinueOptimize && (
-                                                    <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onContinueOptimize(task.task_id); }}>
+                                                {(isReferenceable(task) ? onContinueOptimize : onRegenerate) && (
+                                                    <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); (isReferenceable(task) ? onContinueOptimize : onRegenerate)?.(task.task_id); }}>
                                                         {t("summary.detail.continueRefine")}
                                                     </Dropdown.Item>
                                                 )}
-                                                    {onRegenerate && (
-                                                        <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onRegenerate(task.task_id); }}>
-                                                            {t("summary.summaryCard.regenerate")}
-                                                        </Dropdown.Item>
-                                                    )}
                                                     {onEdit && (
                                                         <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onEdit(task.task_id); }}>
                                                             {t("summary.summaryCard.edit")}

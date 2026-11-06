@@ -11,6 +11,7 @@ import {
   adaptSummaryWorkspaceTurn,
   contextItemsFromScope,
   decodeSummaryWorkspaceCapabilities,
+  decodeSummaryOptimizationTarget,
   decodeSummaryWorkspaceSaveResult,
   decodeSummaryWorkspaceStreamError,
 } from "./adapter";
@@ -1144,4 +1145,13 @@ describe("summary workspace adapter", () => {
       retryable: true,
     });
   });
+});
+
+
+it("rejects malformed or mismatched optimization targets", () => {
+  const context = {target: {task_id: 17, result_kind: "team", expected_revision: "base"}, title: "Original", can_save_version: true};
+  expect(decodeSummaryOptimizationTarget(context, 17)).toEqual(context);
+  for (const value of [null, {}, {...context, target: null}, {...context, target: {...context.target, task_id: 18}}, {...context, target: {...context.target, result_kind: "other"}}, {...context, target: {...context.target, expected_revision: ""}}]) {
+    expect(() => decodeSummaryOptimizationTarget(value, 17)).toThrow();
+  }
 });

@@ -6,6 +6,7 @@ import type {
 import {
   confirmSummaryWorkspaceProposal,
   getSummaryDetail,
+  getSummaryOptimizationTarget as fetchOptimizationTarget,
   getSummaryWorkspaceCapabilities,
   getSummaryWorkspaceHistory,
   postSummaryWorkspaceTurn,
@@ -16,6 +17,7 @@ import {
 import {
   adaptSummaryWorkspaceHistory,
   adaptSummaryWorkspaceTurn,
+  decodeSummaryOptimizationTarget,
   decodeSummaryWorkspaceCapabilities,
   decodeSummaryWorkspaceSaveResult,
   decodeSummaryWorkspaceStreamError,
@@ -58,6 +60,7 @@ export interface SummaryWorkbenchConfirmInput {
 }
 
 export interface SummaryWorkbenchSaveInput {
+  target?: import("../bridge/summaryWorkbench/protocol").SummaryOptimizationTarget;
   sessionId: string;
   messageId: string;
   snapshotVersion: number;
@@ -249,6 +252,7 @@ export class SummaryWorkbenchService {
       });
     }
     const request: SummaryWorkspaceSavePreviewRequestDTO = {
+      ...(input.target ? { save_mode: "new_version" as const, target: input.target } : {}),
       session_id: input.sessionId,
       agent_message_id: messageId,
       snapshot_version: SUMMARY_WORKSPACE_SNAPSHOT_VERSION,
@@ -322,3 +326,7 @@ function normalizeWorkspaceError(error: unknown): SummaryWorkspaceApiError {
 }
 
 export default new SummaryWorkbenchService();
+
+export async function getSummaryOptimizationTarget(taskId: number) {
+  return decodeSummaryOptimizationTarget(await fetchOptimizationTarget(taskId), taskId);
+}

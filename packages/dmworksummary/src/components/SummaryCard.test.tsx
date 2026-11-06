@@ -443,12 +443,12 @@ describe('SummaryCard engine-neutral personal classification', () => {
 });
 
 describe('SummaryCard completed actions', () => {
-    it.each([TriggerType.AGENT, TriggerType.MANUAL])('offers all five personal actions for engine %s', (trigger_type) => {
+    it.each([TriggerType.AGENT, TriggerType.MANUAL])('offers four personal actions without regenerate for engine %s', (trigger_type) => {
         render(<SummaryCard task={makeItem({ trigger_type, referenceable: true }) as any}
             onClick={noop} onDelete={noop} onEdit={noop} onContinueOptimize={noop}
             onRegenerate={noop} onSchedule={noop} />);
         openCardMenu();
-        for (const label of ['编辑', '继续优化', '重新生成', '定时更新', '删除']) {
+        for (const label of ['编辑', '继续优化', '定时更新', '删除']) {
             expect(screen.getByText(label)).toBeInTheDocument();
         }
     });
@@ -505,12 +505,12 @@ describe('SummaryCard completed actions', () => {
         );
 
         openCardMenu();
-        expect(screen.getByText('重新生成')).toBeInTheDocument();
+        expect(screen.queryByText('重新生成')).not.toBeInTheDocument();
         expect(screen.getByText('编辑')).toBeInTheDocument();
         expect(screen.queryByText('继续优化')).not.toBeInTheDocument();
     });
 
-    it('hides continue refining when an Agent summary is not referenceable', () => {
+    it('routes non-referenceable summaries through the legacy generation fallback', () => {
         const onRegenerate = vi.fn();
         render(
             <SummaryCard
@@ -524,13 +524,13 @@ describe('SummaryCard completed actions', () => {
         );
 
         openCardMenu();
-        expect(screen.queryByText('继续优化')).not.toBeInTheDocument();
-        expect(screen.getByText('重新生成')).toBeInTheDocument();
+        expect(screen.getByText('继续优化')).toBeInTheDocument();
+        expect(screen.queryByText('重新生成')).not.toBeInTheDocument();
         expect(screen.getByText('编辑')).toBeInTheDocument();
         expect(screen.getByText('删除')).toBeInTheDocument();
 
-        fireEvent.click(screen.getByText('重新生成'));
-        expect(onRegenerate).toHaveBeenCalledWith(1);
+        fireEvent.click(screen.getByText('继续优化'));
+        expect(onRegenerate).toHaveBeenCalledTimes(1);
     });
 
     it('hides action items whose handlers are not provided', () => {
@@ -548,7 +548,7 @@ describe('SummaryCard completed actions', () => {
         expect(screen.getByText('删除')).toBeInTheDocument();
     });
 
-    it('Workflow summary keeps regenerate, edit, and delete', () => {
+    it('Workflow summary retains the unified optimization entry', () => {
         render(
             <SummaryCard
                 task={makeItem({ status: TaskStatus.COMPLETED, trigger_type: TriggerType.MANUAL }) as any}
@@ -560,10 +560,10 @@ describe('SummaryCard completed actions', () => {
         );
 
         openCardMenu();
-        expect(screen.getByText('重新生成')).toBeInTheDocument();
+        expect(screen.queryByText('重新生成')).not.toBeInTheDocument();
         expect(screen.getByText('编辑')).toBeInTheDocument();
         expect(screen.getByText('删除')).toBeInTheDocument();
-        expect(screen.queryByText('继续优化')).not.toBeInTheDocument();
+        expect(screen.getByText('继续优化')).toBeInTheDocument();
     });
 });
 

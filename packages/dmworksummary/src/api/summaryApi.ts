@@ -1729,3 +1729,7 @@ export async function convertSummaryToDoc(title: string, markdown: string): Prom
         || t('summary.detail.defaultTitle');
     return convertMarkdownToDoc({ title: documentTitle, markdown });
 }
+
+export async function getSummaryOptimizationTarget(taskId: number): Promise<unknown> {
+    return get(`/summaries/${taskId}/optimization-target`);
+}

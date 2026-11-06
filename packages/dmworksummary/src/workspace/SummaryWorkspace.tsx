@@ -27,6 +27,7 @@ export default function SummaryWorkspace({
   messaging,
 }: SummaryWorkspaceProps) {
   const { t } = useI18n();
+  const [detailSequence, setDetailSequence] = useState(0);
   const [listRefreshKey, setListRefreshKey] = useState(0);
   const [backgroundRefreshKey, setBackgroundRefreshKey] = useState(0);
   // 每次「+ / 新建会话」+1：拼进 create 视图的 React key，保证即使路由形状
@@ -80,8 +81,10 @@ export default function SummaryWorkspace({
     setCreateSeq((value: number) => value + 1);
     onRouteChange({ view: "create", mode: mode === "unified" ? "normal" : mode, source: "summary_list", fresh: true });
   };
-  const showDetail = (taskId: number) =>
+  const showDetail = (taskId: number) => {
+    setDetailSequence((value) => value + 1);
     onRouteChange({ view: "detail", taskId });
+  };
   const refreshListAndShow = () => {
     refreshList();
     showList();
@@ -118,7 +121,7 @@ export default function SummaryWorkspace({
       case "detail":
         return (
           <SummaryDetailPage
-            key={currentRoute.taskId}
+            key={`${currentRoute.taskId}:${detailSequence}`}
             taskId={currentRoute.taskId}
             originChannel={currentRoute.originConversation}
             emitSelection

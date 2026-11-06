@@ -1,3 +1,5 @@
+import { SummaryWorkbenchAvailability, summaryWorkbenchAvailability } from "../../features/summaryWorkbench/availability";
+import { SummaryWorkspaceApiError } from "../../bridge/summaryWorkbench/protocol";
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 vi.mock("../../components/ChatSelectorModal", () => ({ default: () => null }));
 vi.mock("../../components/TimeRangePicker", () => ({ default: () => null }));
@@ -233,13 +235,14 @@ describe('shared detail actions after navigation', () => {
         consumeSummaryDetailAction(1, WKApp.shared.currentSpaceId);
     });
 
-    it('waits for slow detail and personal loading before prefilling regeneration', async () => {
+    it('routes a legacy regenerate intent to optimization after detail and personal loading', async () => {
         let resolveDetail!: (value: any) => void;
         let resolvePersonal!: (value: any) => void;
         vi.mocked(api.getSummaryDetail).mockReturnValue(new Promise(resolve => { resolveDetail = resolve; }));
         vi.mocked(api.getPersonalResult).mockReturnValue(new Promise(resolve => { resolvePersonal = resolve; }));
         vi.mocked(api.getMembers).mockResolvedValue([]);
         const page = makePage(1);
+        const optimize = vi.spyOn(page, "handleContinueRefine").mockImplementation(async () => {});
         requestSummaryDetailAction(1, WKApp.shared.currentSpaceId, 'regenerate');
         const loading = page.loadDetail();
         expect(page.state.showRegenerateModal).toBe(false);
@@ -248,12 +251,13 @@ describe('shared detail actions after navigation', () => {
         await loading;
         expect(page.state.showRegenerateModal).toBe(false);
         resolvePersonal({ id: 7, content: 'old body', worker_status: 2 });
-        await vi.waitFor(() => expect(page.state.showRegenerateModal).toBe(true));
-        expect(page.state.regenerateTopic).toBe('Saved original instruction');
+        await vi.waitFor(() => expect(optimize).toHaveBeenCalledTimes(1));
+        expect(page.state.showRegenerateModal).toBe(false);
         expect(consumeSummaryDetailAction(1, WKApp.shared.currentSpaceId)).toBeNull();
     });
 
-    it('list retry and detail retry both open full regeneration, even with no personal result', async () => {
+    it('list retry and detail retry use the saved configuration without a regeneration dialog', async () => {
+        vi.mocked(api.regenerateSummary).mockResolvedValue({task_id: 1});
         const detail = baseDetail({ summary_mode: SummaryMode.BY_PERSON, status: TaskStatus.FAILED,
             trigger_type: TriggerType.AGENT, generation_requirement: 'Saved original instruction' });
         const fromList = makePage(1);
@@ -263,21 +267,22 @@ describe('shared detail actions after navigation', () => {
         const fromDetail = makePage(1);
         fromDetail.state = { ...fromDetail.state, loading: false, detail } as any;
         await fromDetail.handleRetry();
+        expect(api.regenerateSummary).toHaveBeenCalledWith(1, undefined, TaskStatus.FAILED);
+        expect(api.regenerateSummary).toHaveBeenCalledTimes(2);
         for (const page of [fromList, fromDetail]) {
-            expect(page.state.showRegenerateModal).toBe(true);
-            expect(page.state.regenerateMode).toBe('full');
-            expect(page.state.regenerateTopic).toBe('Saved original instruction');
+            expect(page.state.showRegenerateModal).toBe(false);
         }
     });
 
-    it('reports an older backend instead of opening a disabled retry dialog', async () => {
+    it('surfaces a retry failure without opening a regeneration dialog', async () => {
+        vi.mocked(api.regenerateSummary).mockRejectedValueOnce(new Error('Retry unavailable'));
         const page = makePage(1);
         page.state = { ...page.state, loading: false,
             detail: baseDetail({ trigger_type: TriggerType.AGENT, status: TaskStatus.FAILED }) } as any;
         await page.handleRetry();
         expect(page.state.showRegenerateModal).toBe(false);
-        expect(Toast.error).toHaveBeenCalledWith(t('summary.generation.serviceUpgradeRequired'));
-        expect(api.regenerateSummary).not.toHaveBeenCalled();
+        expect(Toast.error).toHaveBeenCalledWith('Retry unavailable');
+        expect(api.regenerateSummary).toHaveBeenCalledWith(1, undefined, TaskStatus.FAILED);
     });
 
     it('retries a failed Workflow summary without replacing its saved instruction', async () => {
@@ -343,7 +348,7 @@ describe('shared detail actions after navigation', () => {
         expect(collectByClass(tree, 'summary-detail-failed')).toHaveLength(1);
     });
 
-    it('keeps team regeneration creator-only without changing collaboration rights', () => {
+    it('removes team regeneration for both creator and participant', () => {
         const page = makePage(1);
         page.state = { ...page.state, loading: false,
             detail: baseDetail({ summary_mode: SummaryMode.BY_GROUP, status: TaskStatus.COMPLETED,
@@ -352,7 +357,7 @@ describe('shared detail actions after navigation', () => {
             element.props?.['data-testid'] === summaryTestIds.detailRegenerateBtn)).toBe(false);
         page.state.detail!.creator_id = WKApp.loginInfo.uid;
         expect(collectElements(page.renderHeader()).some(element =>
-            element.props?.['data-testid'] === summaryTestIds.detailRegenerateBtn)).toBe(true);
+            element.props?.['data-testid'] === summaryTestIds.detailRegenerateBtn)).toBe(false);
     });
 });
 
@@ -3910,4 +3915,139 @@ describe('DAP-271 finding 5 — 异步成功事件归因入口快照(切 task �
         copySpy.mockRestore();
         track.mockRestore();
     });
+});
+
+it.each([false, undefined])("keeps generation reachable for a legacy completed summary with referenceable=%s", (referenceable) => {
+  const page = makePage(1);
+  page.state.detail = {task_id:1,status:TaskStatus.COMPLETED,trigger_type:TriggerType.MANUAL,referenceable} as any;
+  const fallback = vi.spyOn(page, "handleRegenerate").mockImplementation(() => {});
+  page.handleContinueRefine();
+  expect(fallback).toHaveBeenCalledTimes(1);
+});
+
+describe("version-specific source metadata", () => {
+  for (const kind of ["team", "personal"]) {
+    it.each([
+      {scope: {sources: []}},
+      {provenance_status: "unknown", scope: {}},
+      // Go's sources,omitempty omits a reader-filtered empty source array.
+      JSON.parse('{"content_version":2,"scope":{"channel_ids":[],"channel_names":[],"time_range":{"start":"2026-11-01","end":"2026-11-02"}}}'),
+    ])(`${kind} does not borrow task sources for an empty or unknown version`, (snapshot) => {
+      const page = makePage(1);
+      const taskSources = [{source_type: 4, source_id: "old-document", source_name: "Old document", source_version: "v1"}];
+      page.state = {
+        ...page.state,
+        detail: multiCollabDetail({}, {
+          sources: taskSources,
+          participants: kind === "personal" ? [{user_id: "test-uid"}] : [{user_id: "test-uid"}, {user_id: "u_b"}],
+          result: {content: "team body", version: 1, citations: [], team_citations: [], snapshot},
+        }),
+        members: kind === "personal" ? [submittedMember("test-uid", "Me", "personal body")] :
+          [submittedMember("test-uid", "Me", "personal body"), submittedMember("u_b", "Other", "other body")],
+        personalResult: {content: "personal body", worker_status: 2, citations: [], snapshot} as any,
+        personalLoading: false,
+        personalExpanded: true,
+      };
+      const tree = kind === "team" ? page.renderTeamSummary() : page.renderPersonalSummary();
+      expect(tree).not.toBeNull();
+      expect(JSON.stringify(tree)).not.toContain("old-document");
+    });
+  }
+  it("retains task source fallback for legacy records without a snapshot", () => {
+    const page = makePage(1);
+    const result = (page as any).renderSourceMetadata([{source_type: 1, source_id: "old-group", source_name: "Old group"}]);
+    expect(result).not.toBeNull();
+  });
+});
+
+describe("completed-summary optimization capability fallback", () => {
+  it.each(["disabled", "not-found", "unsupported"] as const)("updates the original task when capability is %s", async (mode) => {
+    const source = {getCapabilities: vi.fn().mockImplementation(async () => {
+      if (mode === "not-found") throw new SummaryWorkspaceApiError({message:"not found",kind:"transport",httpStatus:404});
+      return {enabled: mode !== "disabled",contract_version:mode === "unsupported" ? "unsupported" : "2",
+        max_time_range_days:90,direct_team_workflow:false,mixed_sources:false};
+    })};
+    const availability = new SummaryWorkbenchAvailability(source);
+    const resolve = vi.spyOn(summaryWorkbenchAvailability, "resolve").mockImplementation((space, options) => availability.resolve(space, options));
+    const page = makePage(1);
+    page.state.detail = baseDetail({status:TaskStatus.COMPLETED,trigger_type:TriggerType.AGENT,
+      referenceable:mode === "not-found" ? undefined : true,result_id:77,result:{id:77,content:"Original body",version:1,citations:[]}});
+    const onContinue = vi.spyOn(window,"dispatchEvent");
+    vi.mocked(api.streamRefineSummary).mockImplementation(async (_task, _body, options) => {
+      options.onEvent({type:"done",result_id:78,version:2,content:"Updated original",citations:[]} as any);
+    });
+    try {
+      await page.handleContinueRefine();
+      expect(page.state.showRegenerateModal).toBe(true);
+      expect(onContinue).not.toHaveBeenCalled();
+      page.state.refineFeedback = "Shorten";
+      await page.handleRegenerateConfirm();
+      expect(api.streamRefineSummary).toHaveBeenCalledWith(1,expect.objectContaining({base_result_id:77}),expect.anything());
+      expect(page.state.detail?.task_id).toBe(1);
+      expect(page.state.detail?.result?.content).toBe("Updated original");
+    } finally { resolve.mockRestore(); onContinue.mockRestore(); }
+  });
+});
+
+
+describe("historical preview source identity", () => {
+  for (const kind of ["completed", "team", "personal"]) {
+    it.each(["known", "empty", "unknown", "legacy", "loading"])(`${kind} uses the selected historical snapshot (%s) and restores current sources on close`, (mode) => {
+      const page = makePage(1);
+      const source = (id: string) => ({source_type: 4, source_id: id, source_name: id, source_version: "v1"});
+      const currentSnapshot = {scope: {sources: [source("current-source-B")]}};
+      const historicalSnapshot = mode === "legacy" ? undefined : mode === "unknown"
+        ? {provenance_status: "unknown", scope: {}}
+        : {scope: {sources: mode === "empty" ? [] : [source("historical-source-A")]}};
+      page.state = {
+        ...page.state,
+        detail: multiCollabDetail({}, {
+          sources: [source("task-source-C")],
+          participants: [{user_id: "test-uid"}, {user_id: "u_b"}],
+          result: {content: "current body", version: 2, citations: [], team_citations: [], snapshot: currentSnapshot},
+        }),
+        members: [submittedMember("test-uid", "Me", "personal body"), submittedMember("u_b", "Other", "other body")],
+        personalResult: {content: "personal body", worker_status: 2, citations: [], snapshot: currentSnapshot} as any,
+        personalLoading: false, personalExpanded: true,
+        showVersionDetailModal: true, versionDetailLoading: mode === "loading",
+        versionDetail: {result_id: 10, version: 1, content: "historical body", generated_at: "2026-10-01T00:00:00Z", operation_type: "generate", snapshot: historicalSnapshot} as any,
+      };
+      const render = () => kind === "completed" ? page.renderCompleted() : kind === "team" ? page.renderTeamSummary() : page.renderPersonalSummary();
+      const tree = render();
+      expect(tree).not.toBeNull();
+      const historical = JSON.stringify(tree);
+      expect(historical).not.toContain("current-source-B");
+      expect(historical).not.toContain("task-source-C");
+      if (mode === "known") expect(historical).toContain("historical-source-A");
+      else expect(historical).not.toContain("historical-source-A");
+      page.state = {...page.state, showVersionDetailModal: false};
+      const current = JSON.stringify(render());
+      expect(current).toContain("current-source-B");
+      expect(current).not.toContain("historical-source-A");
+    });
+  }
+});
+
+
+describe("read-only reference optimization fallback", () => {
+  it.each(["disabled", "not-found", "unsupported"] as const)("preserves independent-copy entry when capability is %s", async (mode) => {
+    const source = {getCapabilities: vi.fn().mockImplementation(async () => {
+      if (mode === "not-found") throw new SummaryWorkspaceApiError({message:"not found",kind:"transport",httpStatus:404});
+      return {enabled: mode !== "disabled",contract_version:mode === "unsupported" ? "unsupported" : "2",
+        max_time_range_days:90,direct_team_workflow:false,mixed_sources:false};
+    })};
+    const availability = new SummaryWorkbenchAvailability(source);
+    const resolve = vi.spyOn(summaryWorkbenchAvailability, "resolve").mockImplementation((space, options) => availability.resolve(space, options));
+    const page = makePage(1);
+    page.state.detail = baseDetail({status:TaskStatus.COMPLETED,summary_mode:SummaryMode.BY_GROUP,
+      creator_id:"another-user", referenceable:true, result_id:77,
+      permissions:{can_edit:false,can_edit_team:false,can_edit_personal:true}});
+    const events = vi.spyOn(window, "dispatchEvent");
+    try {
+      await page.handleContinueRefine();
+      expect(page.state.showRegenerateModal).toBe(false);
+      const event = events.mock.calls.map(([event]) => event).find(event => event.type === "summary-open-chat-with-reference") as CustomEvent;
+      expect(event?.detail.task_id).toBe(1);
+    } finally { resolve.mockRestore(); events.mockRestore(); }
+  });
 });

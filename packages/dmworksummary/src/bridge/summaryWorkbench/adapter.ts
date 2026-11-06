@@ -22,6 +22,7 @@ import {
   SUMMARY_WORKSPACE_RESULT_TYPES,
   SUMMARY_WORKSPACE_SNAPSHOT_VERSION,
   SummaryWorkspaceApiError,
+  type SummaryOptimizationContext,
   type SummaryWorkbenchScope,
   type SummaryWorkspaceAction,
   type SummaryWorkspaceCapabilitiesDTO,
@@ -403,6 +404,25 @@ export function decodeSummaryWorkspaceHistory(
   };
 }
 
+export function decodeSummaryOptimizationTarget(value: unknown, taskId?: number): SummaryOptimizationContext {
+  const record = requireRecord(value, "optimization");
+  const target = requireRecord(record.target, "optimization.target");
+  const id = requirePositiveInteger(target.task_id, "optimization.target.task_id");
+  if ((taskId !== undefined && taskId !== id) ||
+      (target.result_kind !== "team" && target.result_kind !== "personal")) {
+    throw protocolError("Invalid optimization target");
+  }
+  return {
+    target: {
+      task_id: id,
+      result_kind: target.result_kind,
+      expected_revision: requireString(target.expected_revision, "optimization.target.expected_revision"),
+    },
+    title: requireString(record.title, "optimization.title"),
+    can_save_version: requireBoolean(record.can_save_version, "optimization.can_save_version"),
+  };
+}
+
 export function decodeSummaryWorkspaceSaveResult(
   value: unknown
 ): CreateAgentSummaryResult {
@@ -410,6 +430,7 @@ export function decodeSummaryWorkspaceSaveResult(
   const finishStatus = decodeFinishStatus(record.finish_status);
   const gaps = decodeCoverageGaps(record.gaps);
   return {
+    ...(record.save_mode === "new_version" ? { save_mode: "new_version" as const, version: requirePositiveInteger(record.version, "save_result.version") } : {}),
     task_id: requirePositiveInteger(record.task_id, "save_result.task_id"),
     task_no: requireString(record.task_no, "save_result.task_no"),
     status: requireNonNegativeInteger(record.status, "save_result.status"),

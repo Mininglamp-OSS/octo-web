@@ -42,26 +42,18 @@ test.describe("@S15 @p1 @summary @detail @summary-detail @summary-edit S15 — S
     await sanityCheck(authedPage, ctx);
   });
 
-  for (const action of ["编辑", "重新生成"] as const) {
-    test(`列表${action}等待慢详情加载，保留正文或默认提示词`, async ({ authedPage }) => {
-      await registerS15SummaryDetailEditSave(authedPage, 1000);
-      const ctx = startRequestMonitor(authedPage, sanityConfig);
-      await authedPage.getByRole("button", { name: "智能总结" }).click();
-      await expect(authedPage.getByTestId(T.card(15015))).toBeVisible();
-      await authedPage.getByTestId(T.cardMenu(15015)).click();
-      await authedPage.getByText(action, { exact: true }).click();
-      if (action === "编辑") {
-        await expect(authedPage.getByTestId(T.editorTextarea)).toBeVisible();
-        await expect(authedPage.getByTestId(T.editorTextarea)).toContainText("S15 原始正文内容");
-      } else {
-        await expect(authedPage.getByTestId(T.regenerateModal)).toBeVisible();
-        await authedPage.getByText("全部重新生成", { exact: true }).click();
-        await expect(authedPage.locator('input[name="summary-regenerate-mode"][value="full"]')).toBeChecked();
-        await expect(authedPage.getByTestId(T.regenerateInput)).toHaveValue("S15 可编辑总结");
-      }
-      await sanityCheck(authedPage, ctx);
-    });
-  }
+  test("列表编辑等待慢详情加载，且不再提供重新生成", async ({ authedPage }) => {
+    await registerS15SummaryDetailEditSave(authedPage, 1000);
+    const ctx = startRequestMonitor(authedPage, sanityConfig);
+    await authedPage.getByRole("button", { name: "智能总结" }).click();
+    await expect(authedPage.getByTestId(T.card(15015))).toBeVisible();
+    await authedPage.getByTestId(T.cardMenu(15015)).click();
+    await expect(authedPage.getByText("重新生成", { exact: true })).toHaveCount(0);
+    await authedPage.getByText("编辑", { exact: true }).click();
+    await expect(authedPage.getByTestId(T.editorTextarea)).toBeVisible();
+    await expect(authedPage.getByTestId(T.editorTextarea)).toContainText("S15 原始正文内容");
+    await sanityCheck(authedPage, ctx);
+  });
 
   test("编辑取消不保存，再编辑保存后正文更新", async ({ authedPage }) => {
     await registerS15SummaryDetailEditSave(authedPage);

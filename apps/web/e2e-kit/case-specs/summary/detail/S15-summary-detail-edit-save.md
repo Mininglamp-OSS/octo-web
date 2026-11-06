@@ -39,7 +39,7 @@
 - 保存后出现 toast「保存成功」。
 - 详情页刷新后显示 `S15 已保存正文内容`。
 - 全程不显示「加载失败」。
-- 增补列表入口回归：详情接口延迟 1000ms，列表「编辑」仍在加载后打开并回填原正文；列表「重新生成」打开后切换全部重新生成，默认提示词保持原值，不依赖固定 300ms 时序。
+- 增补列表入口回归：详情接口延迟 1000ms，列表「编辑」仍在加载后打开并回填原正文，不依赖固定 300ms 时序；菜单不再提供「重新生成」。
 - 增补失败 Agent 回归：保留旧正文，真实权限组合 `can_edit=false`、`can_edit_personal=true` 时仍可编辑并保存到 personal-edit，创建时间只展示一次。
 
 ## 反例
@@ -62,3 +62,7 @@
 - `packages/dmworksummary/src/components/SummaryEditor.tsx:76`: `SummaryEditor.handleSave()` 调用 `editSummary()`。
 - `packages/dmworksummary/src/api/summaryApi.ts:714`: `editSummary()` 请求 `PUT /summaries/:id/edit`。
 - `packages/dmworksummary/src/i18n/zh-CN.json:567-572`: 编辑器保存成功和 placeholder 文案。
+
+## 继续优化入口统一后的回归边界
+
+列表慢加载用例保留「编辑」原始正文保护，另断言菜单没有「重新生成」。不再等待已移除的重新生成弹窗。新的继续优化、保存版本和冲突另存流程由 S16 实际工作台用例覆盖。

@@ -136,7 +136,21 @@ export interface SummaryWorkspaceConfirmRequestDTO {
   summary_context: SummaryWorkspaceContextDTO;
 }
 
+export interface SummaryOptimizationTarget {
+  task_id: number;
+  result_kind: "team" | "personal";
+  expected_revision: string;
+}
+
+export interface SummaryOptimizationContext {
+  target: SummaryOptimizationTarget;
+  title: string;
+  can_save_version: boolean;
+}
+
 export interface SummaryWorkspaceSavePreviewRequestDTO {
+  save_mode?: "new_summary" | "new_version";
+  target?: SummaryOptimizationTarget;
   session_id: string;
   agent_message_id: number;
   snapshot_version: typeof SUMMARY_WORKSPACE_SNAPSHOT_VERSION;

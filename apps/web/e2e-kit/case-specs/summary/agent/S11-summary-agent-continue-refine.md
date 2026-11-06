@@ -17,6 +17,9 @@
 - fixture: `fixtures-authed`，本地 mock 模式已预置登录态、Space `e2e-space-001` 和中文 locale。
 - baseline MSW handler 已覆盖 app shell / chat bootstrap 所需接口。
 - Per-case MSW handler: `e2e-kit/msw-handlers/s11-summary-agent-continue-refine.ts`
+  - `GET */summary/api/v1/summary-workbench/capabilities` — 工作台 enabled=true、contract_version=2。
+  - `GET */summary/api/v1/summaries/11011/optimization-target` — 返回原任务的版本保存目标。
+  - `GET */summary/api/v1/agent/chat/history` — 返回 v2 空会话及原任务引用。
   - `GET */summary/api/v1/summaries` — 引用选择器（status=3=COMPLETED）返回一条已完成 Agent 总结 `S11 Agent 原总结`。
   - `GET */summary/api/v1/summaries/11011` — 返回对应详情，`trigger_type=3` 且包含正文 `S11 原总结风险清单`。
   - `POST */summary/api/v1/summaries/11011/read`、`GET */summary/api/v1/summaries/11011/versions` — 详情页后续请求兜底。
@@ -35,15 +38,15 @@
 
 - 列表页显示 `S11 Agent 原总结`。
 - 详情页显示标题 `S11 Agent 原总结` 和「继续优化」按钮。
-- 点击「继续优化」后，创建页显示「Agent 总结」模式、欢迎语「你好，我是总结助手，想总结什么尽管告诉我。」。
-- 顶部显示「已引用」和 `S11 Agent 原总结`。
+- 点击「继续优化」后，显示新版工作台及输入框。
+- 工作台引用按钮显示 `S11 Agent 原总结`。
 - 点击引用卡片后，右侧对照面板显示标题 `S11 Agent 原总结`。
 - 右侧对照面板正文显示 `S11 原总结风险清单`。
 
 ## 反例
 
-- 如果详情页 `referenceable` 不为 `true`（且非兼容回退的 Agent 类型），页面不应显示「继续优化」；本 case 会因找不到按钮失败。
-- 如果继续优化没有把当前 task 作为 `derivedFromTask` 传给创建页，Agent 工作台不会显示「已引用」卡片，case 应失败。
+- 如果总结不可引用或工作台能力不可用，「继续优化」应进入原任务调整流程；本 case 显式启用 v2 工作台并提供可引用总结，以验证自动引用路径。
+- 如果继续优化没有把当前 task 作为 `derivedFromTask` 传给创建页，工作台不会显示原总结引用按钮，case 应失败。
 - 如果引用侧栏漏 mock 详情接口，右侧面板会显示「加载失败」或 sanityCheck 报 401。
 
 ## 视觉基准
