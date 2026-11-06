@@ -30,6 +30,14 @@ vi.mock("@octo/base", () => ({
     <button {...props}>{children}</button>
   ),
 }));
+vi.mock("../ui/LoopRuntimePicker", () => ({
+  default: ({ groups, value, onChange, disabled, loading }: any) => (
+    <select aria-label="mcp.expert.selectRuntimePlaceholder" value={value} disabled={disabled || loading} onChange={(e) => onChange(e.target.value)}>
+      <option value="" />
+      {groups.flatMap((g: any) => g.items).map((r: any) => <option key={r.id} value={r.id} disabled={!r.available}>{r.name}</option>)}
+    </select>
+  ),
+}));
 vi.mock("@douyinfe/semi-ui", () => ({
   Toast: { success: mock.success, error: mock.error },
   Select: ({ optionList, value, onChange, placeholder, disabled }: any) => (

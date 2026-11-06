@@ -436,5 +436,22 @@
     "newVersionSection": "发布新版本",
     "newVersionSectionDesc": "修改内容将随本次审核申请一起提交；审核通过后才会替换组织内在架的版本。",
     "pendingBlocksEdit": "该插件有正在审核的申请，审核完成后才能修改"
+  },
+  "runtimePicker": {
+    "mine": "我的",
+    "private": "私有",
+    "shared": "共享",
+    "available": "可用",
+    "unavailableStatus": "不可用",
+    "unavailable": "不可用配置 · {{count}}",
+    "loading": "正在加载运行时…",
+    "unknownMachine": "未知机器",
+    "offline": "离线",
+    "registrationFailed": "配置不可用",
+    "notOwned": "他人的私有运行时",
+    "all": "全部",
+    "scope": "运行时范围",
+    "permissionUnknown": "缺少可用权限信息",
+    "loadFailed": "加载运行时失败，请切换后重试"
   }
 }

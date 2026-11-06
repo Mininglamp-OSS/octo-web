@@ -25,6 +25,14 @@ vi.mock("@octo/base", () => ({
   WKModal: ({ visible, children, footer }: any) => visible ? <div>{children}{footer}</div> : null,
   WKButton: ({ children, disabled, onClick }: any) => <button disabled={disabled} onClick={onClick}>{children}</button>,
 }));
+vi.mock("../../ui/LoopRuntimePicker", () => ({
+  default: ({ groups, value, onChange, disabled, loading }: any) => (
+    <select aria-label="mcp.expert.selectRuntimePlaceholder" value={value} disabled={disabled || loading} onChange={(e) => onChange(e.target.value)}>
+      <option value="" />
+      {groups.flatMap((g: any) => g.items).map((r: any) => <option key={r.id} value={r.id} disabled={!r.available}>{r.name}</option>)}
+    </select>
+  ),
+}));
 vi.mock("@douyinfe/semi-ui", () => ({
   Toast: { success: vi.fn(), error: vi.fn() },
   Select: ({ value, optionList, onChange, disabled, placeholder }: any) => (
@@ -133,6 +141,20 @@ describe("market installation runtime selection", () => {
       expect(api.install).not.toHaveBeenCalled();
     },
   );
+
+  it("never defaults or submits to failed online configurations or explicit non-owned runtimes", async () => {
+    api.runtimes.mockResolvedValue([
+      { id: "theirs", name: "Other machine", status: "online", can_bind: false },
+      { id: "failed", name: "Broken profile", status: "online", can_bind: true, metadata: { runtime_profile_registration_error: true } },
+    ]);
+    await render(<ExpertAddToLoopModal item={item} onClose={vi.fn()} />);
+    await waitFor(() => expect(runtime().querySelector('option[value="failed"]')).not.toBeNull());
+    expect(runtime().value).toBe("");
+    expect(runtime().querySelector('option[value="theirs"]')).toBeNull();
+    expect((confirm() as HTMLButtonElement).disabled).toBe(true);
+    await clickConfirm();
+    expect(api.install).not.toHaveBeenCalled();
+  });
 
   it("clears the previous workspace runtime before the next list arrives", async () => {
     let resolveNext!: (rows: unknown[]) => void;

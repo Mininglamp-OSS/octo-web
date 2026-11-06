@@ -1417,6 +1417,17 @@ export interface LoopRuntime {
   id: string;
   name: string;
   status?: string;
+  daemonId?: string;
+  deviceInfo?: string;
+  customName?: string;
+  provider?: string;
+  runtimeMode?: string;
+  launchHeader?: string;
+  ownerId?: string;
+  canBind?: boolean;
+  visibility?: string;
+  profileId?: string;
+  metadata?: Record<string, unknown>;
 }
 
 // fleet wire shapes: WorkspaceResponse / AgentRuntimeResponse both key the
@@ -1430,6 +1441,17 @@ interface LoopRuntimeWire {
   id: string;
   name?: string;
   status?: string;
+  daemon_id?: string | null;
+  device_info?: string | null;
+  custom_name?: string | null;
+  provider?: string;
+  runtime_mode?: string;
+  launch_header?: string;
+  owner_id?: string | null;
+  can_bind?: boolean;
+  visibility?: string;
+  profile_id?: string | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 /** Fail loud on a fleet payload that is not a list. A routing miss (e.g. the
@@ -1455,18 +1477,30 @@ export async function listLoopWorkspaces(): Promise<LoopWorkspace[]> {
   }));
 }
 
-/** GET /fleet/api/v1/runtimes?workspace_id=&owner=me — owned runtimes in the chosen workspace. */
+/** Workspace runtimes. Mine uses owner=me; All omits the owner filter. */
 export async function listLoopRuntimes(
-  workspaceId: string
+  workspaceId: string,
+  scope: "mine" | "all" = "mine"
 ): Promise<LoopRuntime[]> {
   const data = await fleetGet<LoopRuntimeWire[] | null>("/runtimes", {
     workspace_id: workspaceId,
-    owner: "me",
+    ...(scope === "mine" ? { owner: "me" } : {}),
   });
   return expectFleetList<LoopRuntimeWire>(data).map((rt) => ({
     id: rt.id,
     name: rt.name ?? rt.id,
     status: rt.status,
+    daemonId: rt.daemon_id ?? undefined,
+    deviceInfo: rt.device_info ?? undefined,
+    customName: rt.custom_name ?? undefined,
+    provider: rt.provider,
+    runtimeMode: rt.runtime_mode,
+    launchHeader: rt.launch_header,
+    ownerId: rt.owner_id ?? undefined,
+    canBind: rt.can_bind,
+    visibility: rt.visibility,
+    profileId: rt.profile_id ?? undefined,
+    metadata: rt.metadata && typeof rt.metadata === "object" && !Array.isArray(rt.metadata) ? rt.metadata : undefined,
   }));
 }
 
@@ -1527,25 +1561,26 @@ export function getLoopWorkspaces(): Promise<LoopWorkspace[]> {
   return cachedWorkspaces;
 }
 
-/** Cached listLoopRuntimes for one workspace (keyed within the current Space).
+/** Cached listLoopRuntimes for one workspace/scope (within the current Space).
  *  Refresh before using runtime readiness to gate installation; prefetch data
  *  may no longer reflect whether the user's machine is online. */
 export function getLoopRuntimes(
   workspaceId: string,
-  { refresh = false }: { refresh?: boolean } = {}
+  { refresh = false, scope = "mine" }: { refresh?: boolean; scope?: "mine" | "all" } = {}
 ): Promise<LoopRuntime[]> {
   syncLoopCacheSpace();
-  const hit = cachedRuntimes.get(workspaceId);
+  const cacheKey = JSON.stringify([workspaceId, scope]);
+  const hit = cachedRuntimes.get(cacheKey);
   if (hit && !refresh) return hit;
-  const pending: Promise<LoopRuntime[]> = listLoopRuntimes(workspaceId).catch(
+  const pending: Promise<LoopRuntime[]> = listLoopRuntimes(workspaceId, scope).catch(
     (err) => {
       // Only evict if this promise is still the cached one (see getLoopWorkspaces).
-      if (cachedRuntimes.get(workspaceId) === pending)
-        cachedRuntimes.delete(workspaceId);
+      if (cachedRuntimes.get(cacheKey) === pending)
+        cachedRuntimes.delete(cacheKey);
       throw err;
     }
   );
-  cachedRuntimes.set(workspaceId, pending);
+  cachedRuntimes.set(cacheKey, pending);
   return pending;
 }
 
