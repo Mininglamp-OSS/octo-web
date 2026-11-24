@@ -31,7 +31,7 @@
     "axios": "^0.25.0",
     "classnames": "^2.3.1",
     "lucide-react": "^0.577.0",
-    "micromark-util-decode-string": "1.1.0",
+    "micromark-util-decode-string": "2.0.1",
     "react-markdown": "8",
     "rehype-sanitize": "^6.0.0",
     "remark-breaks": "^3.0.0",
